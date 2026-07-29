@@ -18,6 +18,9 @@ zte_json_is_flat_object() {
 # Prints nothing when the key is absent. String values must not
 # contain double quotes (goform read fields never do).
 zte_json_flat_get() {
+    case $2 in
+        ''|*[!A-Za-z0-9_]*) return 1 ;;
+    esac
     printf '%s' "$1" | sed -n \
         -e 's/.*"'"$2"'":"\([^"]*\)".*/\1/p' \
         -e 's/.*"'"$2"'":\(-[0-9][0-9.]*\)[,}].*/\1/p' \

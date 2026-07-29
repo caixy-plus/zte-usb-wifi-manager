@@ -20,4 +20,6 @@ assert_success zte_json_is_flat_object '{"a":"b"}'
 assert_failure zte_json_is_flat_object 'not json'
 assert_failure zte_json_is_flat_object ''
 assert_eq 'a\"b\\c' "$(zte_json_escape 'a"b\c')"
+# keys with sed-special characters are rejected, not interpolated
+assert_failure zte_json_flat_get '{"a":"1"}' 'bad/key'
 finish
