@@ -21,3 +21,14 @@ zte_validate_host() {
         *) return 0 ;;
     esac
 }
+
+zte_validate_interface() {
+    case ${1-} in
+        ''|*[!A-Za-z0-9_.:@-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+zte_validate_netdev() {
+    zte_validate_interface "${1-}"
+}

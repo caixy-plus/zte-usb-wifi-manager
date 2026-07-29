@@ -33,6 +33,14 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid device host'
 		return 1
 	}
+	zte_validate_interface "$interface" || {
+		logger -t zte-usb-wifi-manager 'invalid network interface name'
+		return 1
+	}
+	zte_validate_netdev "$netdev" || {
+		logger -t zte-usb-wifi-manager 'invalid network device name'
+		return 1
+	}
 	zte_is_uint "$failure_threshold" &&
 		[ "$failure_threshold" -ge 1 ] || {
 		logger -t zte-usb-wifi-manager 'invalid failure threshold'
@@ -67,7 +75,7 @@ write_status() {
 collect_network() {
 	if command -v ubus >/dev/null 2>&1 &&
 		command -v jsonfilter >/dev/null 2>&1; then
-		network_json=$(zte_netifd_collect "$interface")
+		network_json=$(zte_netifd_collect "$interface" "$netdev")
 	else
 		network_json=$(zte_netifd_json 0 "$netdev" '' '' 0)
 	fi
@@ -75,14 +83,14 @@ collect_network() {
 
 poll_once() {
 	ok=0
-	device_json=''
+	candidate_device_json=''
 	health=credentials_missing
 
 	if password=$(zte_read_password "$credential_file") &&
 		[ -n "$password" ]; then
 		health=degraded
 		if raw_json=$(zte_adapter_fetch "$host" "$password" "$COOKIE_FILE") &&
-			device_json=$(zte_adapter_normalize "$raw_json"); then
+			candidate_device_json=$(zte_adapter_normalize "$raw_json"); then
 			ok=1
 		fi
 		failure_result=$(zte_failures_next \
@@ -91,6 +99,11 @@ poll_once() {
 		health=${failure_result#*:}
 	fi
 	password=
+	device_json=$(zte_device_retain \
+		"$last_device_json" "$candidate_device_json" "$ok")
+	if [ "$ok" = 1 ]; then
+		last_device_json=$device_json
+	fi
 
 	case $health in
 		ok)
@@ -137,9 +150,10 @@ main() {
 	load_config
 	init_state
 	failures=0
+	last_device_json=''
 	while [ "$enabled" = 1 ]; do
 		poll_once
-		sleep "$poll_interval"
+		sleep "$(zte_backoff_interval "$poll_interval" "$failures")"
 	done
 }
 

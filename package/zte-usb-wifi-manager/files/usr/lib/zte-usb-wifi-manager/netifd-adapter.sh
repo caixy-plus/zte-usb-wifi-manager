@@ -19,10 +19,11 @@ zte_netifd_json() {
 
 zte_netifd_collect() {
     _zte_ifname=${1-}
+    _zte_fallback_netdev=${2-}
 
     if ! _zte_status=$(ubus call "network.interface.$_zte_ifname" status 2>/dev/null) ||
         [ -z "$_zte_status" ]; then
-        zte_netifd_json 0 '' '' '' 0
+        zte_netifd_json 0 "$_zte_fallback_netdev" '' '' 0
         return
     fi
 
@@ -34,6 +35,7 @@ zte_netifd_collect() {
     esac
     _zte_l3_device=$(jsonfilter -s "$_zte_status" -e '@.l3_device' 2>/dev/null) ||
         _zte_l3_device=''
+    [ -n "$_zte_l3_device" ] || _zte_l3_device=$_zte_fallback_netdev
     _zte_ipv4=$(jsonfilter -s "$_zte_status" -e '@["ipv4-address"][0].address' 2>/dev/null) ||
         _zte_ipv4=''
     _zte_gateway=$(jsonfilter -s "$_zte_status" -e '@.route[0].nexthop' 2>/dev/null) ||

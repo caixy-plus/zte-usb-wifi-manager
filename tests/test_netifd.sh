@@ -23,6 +23,9 @@ ubus() {
         status)
             printf '%s\n' '{"up":true,"l3_device":"eth2"}'
             ;;
+        status_no_l3)
+            printf '%s\n' '{"up":true}'
+            ;;
         empty)
             return 0
             ;;
@@ -35,7 +38,10 @@ ubus() {
 jsonfilter() {
     case $4 in
         '@.up') printf '%s\n' true ;;
-        '@.l3_device') printf '%s\n' eth2 ;;
+        '@.l3_device')
+            [ "$_zte_test_ubus_mode" != status_no_l3 ] || return 1
+            printf '%s\n' eth2
+            ;;
         *) return 1 ;;
     esac
 }
@@ -45,24 +51,31 @@ ip() {
 }
 
 _zte_test_ubus_mode=status
-actual=$(zte_netifd_collect wwan)
+actual=$(zte_netifd_collect wwan eth9)
 assert_eq \
     '{"up":true,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":false}' \
     "$actual" \
     "missing optional netifd fields produce normalized JSON"
 
 _zte_test_ubus_mode=fail
-actual=$(zte_netifd_collect wwan)
+actual=$(zte_netifd_collect wwan eth9)
 assert_eq \
-    '{"up":false,"l3_device":"","ipv4":"","gateway":"","is_default_route":false}' \
+    '{"up":false,"l3_device":"eth9","ipv4":"","gateway":"","is_default_route":false}' \
     "$actual" \
     "ubus failure produces a down fallback"
 
 _zte_test_ubus_mode=empty
-actual=$(zte_netifd_collect wwan)
+actual=$(zte_netifd_collect wwan eth9)
 assert_eq \
-    '{"up":false,"l3_device":"","ipv4":"","gateway":"","is_default_route":false}' \
+    '{"up":false,"l3_device":"eth9","ipv4":"","gateway":"","is_default_route":false}' \
     "$actual" \
     "empty ubus status produces a down fallback"
+
+_zte_test_ubus_mode=status_no_l3
+actual=$(zte_netifd_collect wwan eth9)
+assert_eq \
+    '{"up":true,"l3_device":"eth9","ipv4":"","gateway":"","is_default_route":false}' \
+    "$actual" \
+    "missing l3_device uses the configured fallback"
 
 finish
