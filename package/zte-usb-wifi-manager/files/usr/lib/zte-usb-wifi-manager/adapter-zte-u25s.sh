@@ -43,12 +43,14 @@ zte_adapter_bool() {
 
 # Succeed when the response contains at least one known read field.
 zte_adapter_has_any_field() {
-	case $1 in
-		*'"mc_modem_main_state":'*|*'"network_type":'*|*'"network_signalbar":'*|\
-		*'"network_provider_fullname":'*|*'"Z5g_rsrp":'*|*'"ppp_status":'*|\
-		*'"simcard_active_slot_temp":'*|*'"battery_exist":'*|\
-		*'"battery_vol_percent":'*|*'"battery_charging":'*) return 0 ;;
-	esac
+	_zte_old_ifs=$IFS
+	IFS=,
+	for _zte_field in $ZTE_READ_FIELDS; do
+		IFS=$_zte_old_ifs
+		zte_json_flat_has "$1" "$_zte_field" && return 0
+		IFS=,
+	done
+	IFS=$_zte_old_ifs
 	return 1
 }
 
@@ -87,20 +89,46 @@ zte_adapter_normalize() {
 	_zte_rsrp=$(zte_json_flat_get "$_zte_raw" Z5g_rsrp)
 	_zte_ppp=$(zte_json_flat_get "$_zte_raw" ppp_status)
 	_zte_slot=$(zte_json_flat_get "$_zte_raw" simcard_active_slot_temp)
-	_zte_present=$(zte_adapter_bool "$(zte_json_flat_get "$_zte_raw" battery_exist)")
-	_zte_charging=$(zte_adapter_bool "$(zte_json_flat_get "$_zte_raw" battery_charging)")
-	_zte_percent_raw=$(zte_json_flat_get "$_zte_raw" battery_vol_percent)
-	if zte_is_uint "$_zte_percent_raw"; then _zte_percent=$_zte_percent_raw; else _zte_percent=null; fi
+
+	if zte_json_flat_has "$_zte_raw" battery_exist; then
+		_zte_present_raw=$(zte_json_flat_get "$_zte_raw" battery_exist)
+		case $_zte_present_raw in
+			1|true|yes|0|false|no) ;;
+			*) return 1 ;;
+		esac
+		_zte_present=$(zte_adapter_bool "$_zte_present_raw")
+	else
+		_zte_present=null
+	fi
+
+	if zte_json_flat_has "$_zte_raw" battery_charging; then
+		_zte_charging_raw=$(zte_json_flat_get "$_zte_raw" battery_charging)
+		case $_zte_charging_raw in
+			1|true|yes|0|false|no) ;;
+			*) return 1 ;;
+		esac
+		_zte_charging=$(zte_adapter_bool "$_zte_charging_raw")
+	else
+		_zte_charging=null
+	fi
+
+	if zte_json_flat_has "$_zte_raw" battery_vol_percent; then
+		_zte_percent_raw=$(zte_json_flat_get "$_zte_raw" battery_vol_percent)
+		zte_is_uint "$_zte_percent_raw" &&
+			[ "${#_zte_percent_raw}" -le 3 ] &&
+			[ "$_zte_percent_raw" -le 100 ] || return 1
+		_zte_percent=$_zte_percent_raw
+	else
+		_zte_percent=null
+	fi
 
 	_zte_missing=''
 	_zte_old_ifs=$IFS
 	IFS=,
 	for _zte_field in $ZTE_READ_FIELDS; do
 		IFS=$_zte_old_ifs
-		case $_zte_raw in
-			*"\"$_zte_field\":"*) ;;
-			*) _zte_missing=${_zte_missing:+$_zte_missing,}$_zte_field ;;
-		esac
+		zte_json_flat_has "$_zte_raw" "$_zte_field" ||
+			_zte_missing=${_zte_missing:+$_zte_missing,}$_zte_field
 		IFS=,
 	done
 	IFS=$_zte_old_ifs

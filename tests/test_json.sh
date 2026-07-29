@@ -17,8 +17,16 @@ assert_eq '' "$(zte_json_flat_get '{"xnetwork_type":"X"}' network_type)"
 # values with spaces and CJK survive
 assert_eq '中国移动 4G' "$(zte_json_flat_get '{"p":"中国移动 4G"}' p)"
 assert_success zte_json_is_flat_object '{"a":"b"}'
+assert_success zte_json_is_flat_object '{}'
+assert_success zte_json_is_flat_object ' { "provider" : "中国移动 4G", "escaped" : "a\"b\\c", "number" : -12.5e+2, "enabled" : true, "disabled" : false, "empty" : null } '
 assert_failure zte_json_is_flat_object 'not json'
 assert_failure zte_json_is_flat_object ''
+assert_failure zte_json_is_flat_object '{"battery_vol_percent":}'
+assert_failure zte_json_is_flat_object '{"a":"b",}'
+assert_failure zte_json_is_flat_object '{"a" "b"}'
+assert_failure zte_json_is_flat_object '{"a":"b"} trailing'
+assert_failure zte_json_is_flat_object '{"nested":{"a":"b"}}'
+assert_failure zte_json_is_flat_object '{"nested":["a"]}'
 assert_eq 'a\"b\\c' "$(zte_json_escape 'a"b\c')"
 # keys with sed-special characters are rejected, not interpolated
 assert_failure zte_json_flat_get '{"a":"1"}' 'bad/key'
