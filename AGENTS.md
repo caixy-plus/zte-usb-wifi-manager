@@ -17,9 +17,12 @@ ZTE USB WiFi Manager is an OpenWrt backend package plus a LuCI application for a
 
 One-directional data flow; each layer only talks to the next:
 
-1. `zte-usb-wifi-managerd` (procd-managed, respawns) loads UCI config, validates
-   it via `validation.sh`, and periodically writes a normalized JSON snapshot to
-   `/var/run/zte-usb-wifi-manager/status.json` (atomic tmp-then-mv).
+1. `zte-usb-wifi-managerd` (procd-managed, respawns) loads and validates UCI
+   config, uses the HTTP/session layer and U25S adapter to log in and batch-read
+   the device, combines the normalized result with netifd state and read-only
+   policy monitoring, and atomically writes the composed snapshot to
+   `/var/run/zte-usb-wifi-manager/status.json`. Consecutive failures trigger
+   polling backoff while the last trusted device state is retained.
 2. `usr/libexec/rpcd/zte_usb_wifi` exposes exactly two ubus methods, `status`
    and `capabilities`. It serves the cached snapshot and never touches the
    device itself.
