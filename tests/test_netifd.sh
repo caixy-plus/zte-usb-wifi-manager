@@ -1,4 +1,5 @@
 #!/bin/sh
+set -eu
 
 TEST_NAME=netifd
 . ./tests/testlib.sh
@@ -16,5 +17,52 @@ assert_eq \
     '{"up":false,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":false}' \
     "$actual" \
     "down interface is rendered with empty addresses"
+
+ubus() {
+    case $_zte_test_ubus_mode in
+        status)
+            printf '%s\n' '{"up":true,"l3_device":"eth2"}'
+            ;;
+        empty)
+            return 0
+            ;;
+        fail)
+            return 1
+            ;;
+    esac
+}
+
+jsonfilter() {
+    case $4 in
+        '@.up') printf '%s\n' true ;;
+        '@.l3_device') printf '%s\n' eth2 ;;
+        *) return 1 ;;
+    esac
+}
+
+ip() {
+    return 1
+}
+
+_zte_test_ubus_mode=status
+actual=$(zte_netifd_collect wwan)
+assert_eq \
+    '{"up":true,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":false}' \
+    "$actual" \
+    "missing optional netifd fields produce normalized JSON"
+
+_zte_test_ubus_mode=fail
+actual=$(zte_netifd_collect wwan)
+assert_eq \
+    '{"up":false,"l3_device":"","ipv4":"","gateway":"","is_default_route":false}' \
+    "$actual" \
+    "ubus failure produces a down fallback"
+
+_zte_test_ubus_mode=empty
+actual=$(zte_netifd_collect wwan)
+assert_eq \
+    '{"up":false,"l3_device":"","ipv4":"","gateway":"","is_default_route":false}' \
+    "$actual" \
+    "empty ubus status produces a down fallback"
 
 finish

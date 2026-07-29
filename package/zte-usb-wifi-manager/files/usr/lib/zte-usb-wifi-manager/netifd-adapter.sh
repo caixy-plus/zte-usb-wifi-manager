@@ -1,45 +1,54 @@
 #!/bin/sh
 
 zte_netifd_json() {
-    case $1 in
-        1) up=true ;;
-        *) up=false ;;
+    case ${1:-0} in
+        1) _zte_up=true ;;
+        *) _zte_up=false ;;
     esac
-    l3_device=$(zte_json_escape "$2")
-    ipv4=$(zte_json_escape "$3")
-    gateway=$(zte_json_escape "$4")
-    case $5 in
-        1) is_default_route=true ;;
-        *) is_default_route=false ;;
+    _zte_l3_device=$(zte_json_escape "${2-}")
+    _zte_ipv4=$(zte_json_escape "${3-}")
+    _zte_gateway=$(zte_json_escape "${4-}")
+    case ${5:-0} in
+        1) _zte_is_default_route=true ;;
+        *) _zte_is_default_route=false ;;
     esac
 
     printf '{"up":%s,"l3_device":"%s","ipv4":"%s","gateway":"%s","is_default_route":%s}\n' \
-        "$up" "$l3_device" "$ipv4" "$gateway" "$is_default_route"
+        "$_zte_up" "$_zte_l3_device" "$_zte_ipv4" "$_zte_gateway" "$_zte_is_default_route"
 }
 
 zte_netifd_collect() {
-    ifname=$1
+    _zte_ifname=${1-}
 
-    if ! status=$(ubus call "network.interface.$ifname" status 2>/dev/null) ||
-        [ -z "$status" ]; then
+    if ! _zte_status=$(ubus call "network.interface.$_zte_ifname" status 2>/dev/null) ||
+        [ -z "$_zte_status" ]; then
         zte_netifd_json 0 '' '' '' 0
         return
     fi
 
-    up_value=$(jsonfilter -s "$status" -e '@.up')
-    case $up_value in
-        1|true) up=1 ;;
-        *) up=0 ;;
+    _zte_up_value=$(jsonfilter -s "$_zte_status" -e '@.up' 2>/dev/null) ||
+        _zte_up_value=''
+    case $_zte_up_value in
+        1|true) _zte_up=1 ;;
+        *) _zte_up=0 ;;
     esac
-    l3_device=$(jsonfilter -s "$status" -e '@.l3_device')
-    ipv4=$(jsonfilter -s "$status" -e '@["ipv4-address"][0].address')
-    gateway=$(jsonfilter -s "$status" -e '@.route[0].nexthop')
+    _zte_l3_device=$(jsonfilter -s "$_zte_status" -e '@.l3_device' 2>/dev/null) ||
+        _zte_l3_device=''
+    _zte_ipv4=$(jsonfilter -s "$_zte_status" -e '@["ipv4-address"][0].address' 2>/dev/null) ||
+        _zte_ipv4=''
+    _zte_gateway=$(jsonfilter -s "$_zte_status" -e '@.route[0].nexthop' 2>/dev/null) ||
+        _zte_gateway=''
 
-    is_default_route=0
-    if [ -n "$l3_device" ] &&
-        ip route show default | grep -q "dev $l3_device "; then
-        is_default_route=1
+    _zte_is_default_route=0
+    if [ -n "$_zte_l3_device" ] &&
+        ip route show default 2>/dev/null | grep -q "dev $_zte_l3_device "; then
+        _zte_is_default_route=1
     fi
 
-    zte_netifd_json "$up" "$l3_device" "$ipv4" "$gateway" "$is_default_route"
+    zte_netifd_json \
+        "$_zte_up" \
+        "$_zte_l3_device" \
+        "$_zte_ipv4" \
+        "$_zte_gateway" \
+        "$_zte_is_default_route"
 }
