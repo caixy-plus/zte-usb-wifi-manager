@@ -4,7 +4,16 @@ SHELL := /bin/sh
 
 test:
 	@set -e; \
-	for test_file in tests/test_validation.sh tests/test_policy.sh tests/test_structure.sh; do \
+	for test_file in \
+		tests/test_validation.sh \
+		tests/test_policy.sh \
+		tests/test_json.sh \
+		tests/test_http.sh \
+		tests/test_session.sh \
+		tests/test_adapter.sh \
+		tests/test_snapshot.sh \
+		tests/test_netifd.sh \
+		tests/test_structure.sh; do \
 		"$$test_file"; \
 	done
 	@set -e; \

@@ -34,4 +34,18 @@ fi
 assert_file_contains docs/design/zte-usb-wifi-manager-ui.html '<title>中兴随身 WiFi 管理</title>'
 assert_file_contains docs/design/zte-usb-wifi-manager-design.md '^# 中兴随身 WiFi 管理工具详细设计文档$'
 
+daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
+for library in json.sh session.sh snapshot.sh netifd-adapter.sh; do
+    assert_file_contains "$daemon" "$library"
+done
+for function in zte_adapter_fetch zte_failures_next zte_snapshot_compose; do
+    assert_file_contains "$daemon" "$function"
+done
+assert_file_contains "$daemon" 'init_state'
+assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/session.sh" 'goformId=LOGIN'
+assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh" 'multi_data=1'
+assert_file_contains tests/fixtures/u25s/read_ok.json 'NR5G-SA'
+assert_file_contains Makefile 'tests/test_session.sh'
+assert_file_contains Makefile 'tests/test_adapter.sh'
+
 finish
