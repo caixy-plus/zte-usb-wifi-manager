@@ -75,10 +75,20 @@ function batteryLabel(battery) {
 	return battery.percent + '%' + (battery.charging === true ? ' · ' + _('充电中') : '');
 }
 
+function onlineLabel(status) {
+	if (status.online === true)
+		return _('在线');
+	if (status.online === false)
+		return _('离线');
+	return null;
+}
+
 function uplinkLabel(network) {
-	if (network.up !== true)
+	if (network.up === true)
+		return network.l3_device ? _('已连接') + ' (' + network.l3_device + ')' : _('已连接');
+	if (network.up === false)
 		return _('未连接');
-	return network.l3_device ? _('已连接') + ' (' + network.l3_device + ')' : _('已连接');
+	return null;
 }
 
 function updatedLabel(updated) {
@@ -115,7 +125,7 @@ return view.extend({
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('只读状态总览')),
 				row(_('设备型号'), device.model || status.model || capabilities.model),
-				row(_('设备在线'), status.online === true ? _('在线') : _('离线')),
+				row(_('设备在线'), onlineLabel(status)),
 				row(_('后端状态'), stateLabel(status.state)),
 				row(_('网络制式'), cellular.type),
 				row(_('运营商'), cellular.provider),

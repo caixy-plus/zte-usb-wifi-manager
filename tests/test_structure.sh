@@ -27,6 +27,10 @@ assert_file_contains "$view" 'status\.device'
 assert_file_contains "$view" 'is_default_route'
 assert_file_contains "$view" 'battery'
 assert_file_contains "$view" '仅监控'
+assert_file_contains "$view" 'status\.online === true'
+assert_file_contains "$view" 'status\.online === false'
+assert_file_contains "$view" 'network\.up === true'
+assert_file_contains "$view" 'network\.up === false'
 
 if grep -R -q '双卡智能切换\\|SET_DUAL_SIM_SMART_SWITCH' \
     "$backend" "$luci" 2>/dev/null; then
