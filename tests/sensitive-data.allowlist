@@ -1,0 +1,14 @@
+# Exact entries only: path:line:TYPE
+docs/plans/2026-07-29-phase1-read-only.md:257:SECRET_ASSIGNMENT
+tests/test_http.sh:81:SECRET_ASSIGNMENT
+tests/test_session.sh:64:SECRET_ASSIGNMENT
+tests/test_sensitive_data.sh:31:HTTP_COOKIE
+tests/test_sensitive_data.sh:33:URL_CREDENTIALS
+tests/test_sensitive_data.sh:35:PHONE_NUMBER
+tests/test_sensitive_data.sh:36:15_DIGIT_IDENTIFIER
+tests/test_sensitive_data.sh:37:15_DIGIT_IDENTIFIER
+tests/test_sensitive_data.sh:38:ICCID
+tests/test_sensitive_data.sh:76:PHONE_NUMBER
+tests/test_sensitive_data.sh:76:15_DIGIT_IDENTIFIER
+tests/test_sensitive_data.sh:76:ICCID
+tests/test_sensitive_data.sh:94:PHONE_NUMBER

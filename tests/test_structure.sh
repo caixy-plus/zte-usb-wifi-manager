@@ -18,6 +18,24 @@ menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'
 
+acl="$luci/root/usr/share/rpcd/acl.d/luci-app-zte-usb-wifi-manager.json"
+if grep -q '"uci"' "$acl"; then
+    fail 'LuCI ACL must not grant UCI access'
+else
+    pass
+fi
+assert_success node -e '
+const fs = require("fs");
+const acl = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const read = acl["luci-app-zte-usb-wifi-manager"].read;
+if (JSON.stringify(Object.keys(read)) !== JSON.stringify(["ubus"]))
+    process.exit(1);
+if (JSON.stringify(Object.keys(read.ubus)) !== JSON.stringify(["zte_usb_wifi"]))
+    process.exit(1);
+if (JSON.stringify(read.ubus.zte_usb_wifi) !== JSON.stringify(["status", "capabilities"]))
+    process.exit(1);
+' "$acl"
+
 view="$luci/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js"
 for tab in overview network wifi traffic sms battery schedule device diagnostics logs; do
     assert_file_contains "$view" "id: '$tab'"

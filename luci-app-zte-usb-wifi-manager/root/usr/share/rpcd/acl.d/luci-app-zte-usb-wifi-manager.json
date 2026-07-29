@@ -7,10 +7,7 @@
           "status",
           "capabilities"
         ]
-      },
-      "uci": [
-        "zte-usb-wifi-manager"
-      ]
+      }
     }
   }
 }

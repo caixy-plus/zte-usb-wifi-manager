@@ -27,7 +27,7 @@ One-directional data flow; each layer only talks to the next:
    and `capabilities`. It serves the cached snapshot and never touches the
    device itself.
 3. The LuCI view (`view/zte-usb-wifi-manager/index.js`) calls those ubus
-   methods only. The ACL grants just the UCI/ubus reads it needs.
+   methods only. The ACL grants only those two ubus reads.
 
 Device specifics (ZTE U25S HTTP API, field names, capability flags) are
 isolated in `adapter-zte-u25s.sh` behind `zte_adapter_*` functions, so the
