@@ -1,4 +1,6 @@
 #!/bin/sh
+# HTTP stubs are injected into functions from the sourced adapter library.
+# shellcheck disable=SC2329
 set -eu
 TEST_NAME=test_adapter
 . ./tests/testlib.sh

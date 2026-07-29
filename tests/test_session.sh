@@ -1,4 +1,6 @@
 #!/bin/sh
+# HTTP stubs are injected into functions from the sourced session library.
+# shellcheck disable=SC2329
 set -eu
 TEST_NAME=test_session
 . ./tests/testlib.sh

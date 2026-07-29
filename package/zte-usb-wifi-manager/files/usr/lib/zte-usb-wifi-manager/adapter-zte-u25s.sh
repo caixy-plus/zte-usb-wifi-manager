@@ -1,4 +1,6 @@
 #!/bin/sh
+# Public adapter metadata and capability constants are consumed by the framework.
+# shellcheck disable=SC2034
 
 ZTE_ADAPTER_ID=zte_u25s
 ZTE_ADAPTER_MODEL=U25S

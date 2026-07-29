@@ -9,6 +9,7 @@ assert_file_contains "$lib" 'max-time'
 assert_file_contains "$lib" 'X-Requested-With'
 assert_file_contains "$lib" 'application/x-www-form-urlencoded'
 
+# shellcheck source=../package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/http.sh
 . "$lib"
 if command -v zte_http_get >/dev/null 2>&1; then pass; else fail 'zte_http_get missing'; fi
 if command -v zte_http_post >/dev/null 2>&1; then pass; else fail 'zte_http_post missing'; fi

@@ -1,4 +1,6 @@
 #!/bin/sh
+# OpenWrt config_get assigns the variable named by its first argument.
+# shellcheck disable=SC2154
 set -eu
 
 . /lib/functions.sh

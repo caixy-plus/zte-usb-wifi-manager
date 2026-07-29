@@ -44,6 +44,8 @@ zte_session_login() {
 # Rejects files with any group/other permission bit set.
 zte_read_password() {
     [ -f "$1" ] || return 1
+    # Only the fixed-width permission field is inspected; filename text is ignored.
+    # shellcheck disable=SC2012
     [ "$(ls -ld "$1" | cut -c 5-10)" = '------' ] || return 1
     sed -n 's/^password=//p' "$1" | head -n 1
 }

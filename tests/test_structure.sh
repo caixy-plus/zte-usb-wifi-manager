@@ -1,11 +1,13 @@
 #!/bin/sh
+# Variables in this test are assigned through eval and dynamic config_get stubs.
+# shellcheck disable=SC2034
 set -eu
 
 TEST_NAME=test_structure
 . ./tests/testlib.sh
 
 backend=package/zte-usb-wifi-manager
-luci=luci-app-zte-usb-wifi-manager
+luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
