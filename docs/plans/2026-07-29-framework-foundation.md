@@ -187,6 +187,6 @@ README must state current scope, unsupported writes, target hardware, repository
 Run: `make test`  
 Expected: all three test suites pass and all shell files pass syntax checks.
 
-- [ ] **Step 5: Publish**
+- [x] **Step 5: Publish**
 
 Initialize Git history, create `caixy-plus/zte-usb-wifi-manager` as a public GitHub repository, push `main`, and verify the remote visibility and default branch.
