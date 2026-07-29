@@ -52,7 +52,10 @@ assert_failure zte_read_password "$work/does-not-exist"
 mkdir -p "$work/bin"
 printf '#!/bin/sh\nprintf garbage\n' >"$work/bin/sha256sum"
 chmod +x "$work/bin/sha256sum"
-assert_failure env PATH="$work/bin:/usr/bin:/bin" zte_sha256_hex test123
+saved_path=$PATH
+PATH="$work/bin:/usr/bin:/bin"
+assert_failure zte_sha256_hex test123
+PATH=$saved_path
 
 rm -rf "$work"
 finish
