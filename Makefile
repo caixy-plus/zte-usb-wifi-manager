@@ -16,6 +16,7 @@ test:
 		tests/test_structure.sh; do \
 		"$$test_file"; \
 	done
+	@node tests/test_luci.js
 	@set -e; \
 	find package tests -type f \( -name '*.sh' -o -perm -u+x \) -print | \
 	while IFS= read -r shell_file; do \

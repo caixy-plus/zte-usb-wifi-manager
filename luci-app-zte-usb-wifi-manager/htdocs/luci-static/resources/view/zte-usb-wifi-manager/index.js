@@ -1,7 +1,6 @@
 'use strict';
 'require view';
 'require rpc';
-'require ui';
 
 var callStatus = rpc.declare({
 	object: 'zte_usb_wifi',
@@ -42,20 +41,38 @@ function dash(value) {
 
 function row(label, value) {
 	return E('div', { 'class': 'cbi-value' }, [
-		E('label', { 'class': 'cbi-value-title' }, label),
+		E('div', { 'class': 'cbi-value-title' }, label),
 		E('div', { 'class': 'cbi-value-field' }, dash(value))
 	]);
 }
 
-function stateLabel(state) {
-	var labels = {
-		ok: _('正常'),
-		degraded: _('降级（显示最近一次有效设备数据）'),
-		fail_safe: _('故障安全'),
-		credentials_missing: _('缺少设备凭据')
-	};
+function stateLabel(state, hasDevice) {
+	var label;
 
-	return labels[state] || dash(state);
+	switch (state) {
+	case 'ok':
+		label = _('正常');
+		break;
+	case 'degraded':
+		label = _('降级');
+		break;
+	case 'fail_safe':
+		label = _('故障安全');
+		break;
+	case 'credentials_missing':
+		label = _('缺少设备凭据');
+		break;
+	case 'framework_ready':
+		label = _('框架已就绪');
+		break;
+	default:
+		label = typeof state === 'string' ? state : null;
+	}
+
+	if (label && state !== 'ok' && hasDevice)
+		return label + _('（设备数据来自最近一次成功读取）');
+
+	return label;
 }
 
 function signalLabel(cellular) {
@@ -112,6 +129,8 @@ return view.extend({
 		var status = data && data[0] && typeof data[0] === 'object' ? data[0] : {};
 		var capabilities = data && data[1] && typeof data[1] === 'object' ? data[1] : {};
 		var device = status.device && typeof status.device === 'object' ? status.device : {};
+		var hasDevice = status.device && typeof status.device === 'object' &&
+			Object.keys(status.device).length > 0;
 		var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
 		var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 		var network = status.network && typeof status.network === 'object' ? status.network : {};
@@ -126,7 +145,7 @@ return view.extend({
 				E('h3', {}, _('只读状态总览')),
 				row(_('设备型号'), device.model || status.model || capabilities.model),
 				row(_('设备在线'), onlineLabel(status)),
-				row(_('后端状态'), stateLabel(status.state)),
+				row(_('后端状态'), stateLabel(status.state, hasDevice)),
 				row(_('网络制式'), cellular.type),
 				row(_('运营商'), cellular.provider),
 				row(_('信号'), signalLabel(cellular)),
@@ -136,7 +155,7 @@ return view.extend({
 					(network.is_default_route === false ? _('否') : null)),
 				row(_('电池策略'), _('仅监控，不控制供电') +
 					(policy.state ? ' (' + policy.state + ')' : '')),
-				row(_('更新时间'), updatedLabel(status.updated)),
+				row(_('状态快照时间'), updatedLabel(status.updated)),
 				E('div', { 'class': 'alert-message warning' },
 					_('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
 			])
