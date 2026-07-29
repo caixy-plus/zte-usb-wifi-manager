@@ -26,9 +26,17 @@ zte_http_get() { printf '%s\n' '{"LD":"LD-abc123"}'; }
 # Injected into zte_session_login from the sourced production library.
 # shellcheck disable=SC2329
 zte_http_post() { printf '%s' "$2" >"$post_log"; printf '%s\n' '{"result":"0"}'; }
+_zte_digest=unchanged-digest
+_zte_step1=unchanged-step1
+_zte_step2=unchanged-step2
+_zte_hash=unchanged-hash
 assert_success zte_session_login 192.168.0.1 test123 "$work/cookies"
 assert_eq 'goformId=LOGIN&password=3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078' \
     "$(cat "$post_log")"
+assert_eq unchanged-digest "$_zte_digest"
+assert_eq unchanged-step1 "$_zte_step1"
+assert_eq unchanged-step2 "$_zte_step2"
+assert_eq unchanged-hash "$_zte_hash"
 
 # non-zero login result is rejected
 # Injected into zte_session_login from the sourced production library.
@@ -56,6 +64,16 @@ assert_eq 0 "$(wc -l <"$post_calls" | tr -d ' ')"
 printf 'password=s3cret value\n' >"$work/credentials"
 chmod 600 "$work/credentials"
 assert_eq 's3cret value' "$(zte_read_password "$work/credentials")"
+
+current_uid=$(id -u)
+# Injected into zte_read_password to simulate a credential file owned by
+# another account without requiring privileged chown in the test.
+# shellcheck disable=SC2329
+zte_file_owner_uid() { printf '%s\n' "$owner_uid_result"; }
+owner_uid_result=$((current_uid + 1))
+assert_failure zte_read_password "$work/credentials"
+
+owner_uid_result=$current_uid
 chmod 644 "$work/credentials"
 assert_failure zte_read_password "$work/credentials"
 assert_failure zte_read_password "$work/does-not-exist"

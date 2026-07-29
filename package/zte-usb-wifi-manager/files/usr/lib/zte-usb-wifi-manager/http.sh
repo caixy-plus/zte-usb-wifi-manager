@@ -18,11 +18,11 @@ zte_http_get() {
 
 # $1 url, $2 form body, $3 cookie jar; prints response body
 zte_http_post() {
-    curl -fsS --max-time "$ZTE_HTTP_TIMEOUT" \
+    printf '%s' "$2" | curl -fsS --max-time "$ZTE_HTTP_TIMEOUT" \
         -b "$3" -c "$3" \
         -H "Referer: $(zte_http_referer "$1")" \
         -H 'X-Requested-With: XMLHttpRequest' \
         -H 'Content-Type: application/x-www-form-urlencoded' \
-        --data "$2" \
+        --data-binary @- \
         "$1"
 }

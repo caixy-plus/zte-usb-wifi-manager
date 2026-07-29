@@ -25,7 +25,7 @@ zte_session_digest() {
 }
 
 # $1 host, $2 password, $3 cookie jar. Never logs password, digest or cookie.
-zte_session_login() {
+zte_session_login() (
     _zte_host=$1
     _zte_ld_response=$(zte_http_get \
         "http://$_zte_host/goform/goform_get_cmd_process?cmd=LD&isTest=false" "$3") || return 1
@@ -38,12 +38,27 @@ zte_session_login() {
         "http://$_zte_host/goform/goform_set_cmd_process" \
         "goformId=LOGIN&password=$_zte_digest" "$3") || return 1
     [ "$(zte_json_flat_get "$_zte_login_response" result)" = 0 ]
+)
+
+# $1 file; prints its numeric owner UID.
+zte_file_owner_uid() {
+    if _zte_owner=$(stat -c '%u' "$1" 2>/dev/null); then
+        printf '%s\n' "$_zte_owner"
+    else
+        stat -f '%u' "$1" 2>/dev/null
+    fi
 }
 
-# $1 credential file (root-only, containing a "password=..." line).
-# Rejects files with any group/other permission bit set.
+zte_effective_uid() {
+    id -u
+}
+
+# $1 credential file containing a "password=..." line.
+# Accepts only a regular file owned by the effective process UID, with no
+# group/other permission bits. The daemon therefore requires root ownership.
 zte_read_password() {
     [ -f "$1" ] || return 1
+    [ "$(zte_file_owner_uid "$1")" = "$(zte_effective_uid)" ] || return 1
     # Only the fixed-width permission field is inspected; filename text is ignored.
     # shellcheck disable=SC2012
     [ "$(ls -ld "$1" | cut -c 5-10)" = '------' ] || return 1
