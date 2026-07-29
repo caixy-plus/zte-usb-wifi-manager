@@ -1,6 +1,4 @@
 #!/bin/sh
-# HTTP stubs are injected into functions from the sourced session library.
-# shellcheck disable=SC2329
 set -eu
 TEST_NAME=test_session
 . ./tests/testlib.sh
@@ -22,22 +20,34 @@ assert_eq '1AF5BB73CFA199DB1C17EB9FFE782A23B496E2128D7D74EE688C6FF575B9A471' \
 # successful login posts the expected digest (stub writes body to a file
 # because zte_http_post runs inside command substitution)
 post_log=$work/post-body
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_get() { printf '%s\n' '{"LD":"LD-abc123"}'; }
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_post() { printf '%s' "$2" >"$post_log"; printf '%s\n' '{"result":"0"}'; }
 assert_success zte_session_login 192.168.0.1 test123 "$work/cookies"
 assert_eq 'goformId=LOGIN&password=3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078' \
     "$(cat "$post_log")"
 
 # non-zero login result is rejected
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_post() { printf '%s\n' '{"result":"3"}'; }
 assert_failure zte_session_login 192.168.0.1 test123 "$work/cookies"
 
 # missing or malformed LD is rejected without ever posting
 post_calls=$work/post-calls
 : >"$post_calls"
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_post() { printf 'x\n' >>"$post_calls"; printf '%s\n' '{"result":"0"}'; }
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_get() { printf '%s\n' '{}'; }
 assert_failure zte_session_login 192.168.0.1 test123 "$work/cookies"
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_get() { printf '%s\n' 'not json'; }
 assert_failure zte_session_login 192.168.0.1 test123 "$work/cookies"
 assert_eq 0 "$(wc -l <"$post_calls" | tr -d ' ')"

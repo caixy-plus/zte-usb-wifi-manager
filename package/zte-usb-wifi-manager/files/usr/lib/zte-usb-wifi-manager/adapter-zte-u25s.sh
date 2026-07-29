@@ -1,15 +1,23 @@
 #!/bin/sh
-# Public adapter metadata and capability constants are consumed by the framework.
-# shellcheck disable=SC2034
 
+# Reserved by the adapter structure contract for runtime adapter selection.
+# shellcheck disable=SC2034
 ZTE_ADAPTER_ID=zte_u25s
 ZTE_ADAPTER_MODEL=U25S
 
 # Write capabilities remain disabled until their request parameters and
 # recovery behavior have been calibrated on the target firmware.
+# Reserved by the adapter structure contract for future capability gating.
+# shellcheck disable=SC2034
 ZTE_CAP_SIM_SWITCH=0
+# Reserved by the adapter structure contract for future capability gating.
+# shellcheck disable=SC2034
 ZTE_CAP_CELLULAR_WRITE=0
+# Reserved by the adapter structure contract for future capability gating.
+# shellcheck disable=SC2034
 ZTE_CAP_WIFI_WRITE=0
+# Reserved by the adapter structure contract for future capability gating.
+# shellcheck disable=SC2034
 ZTE_CAP_SMS_WRITE=0
 
 ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,battery_exist,battery_vol_percent,battery_charging'

@@ -1,6 +1,4 @@
 #!/bin/sh
-# HTTP stubs are injected into functions from the sourced adapter library.
-# shellcheck disable=SC2329
 set -eu
 TEST_NAME=test_adapter
 . ./tests/testlib.sh
@@ -28,6 +26,8 @@ assert_success zte_adapter_has_any_field "$(cat "$fixtures/read_ok.json")"
 assert_failure zte_adapter_has_any_field "$(cat "$fixtures/read_session_expired.json")"
 
 # fetch with a warm cookie jar performs no login
+# Injected into zte_adapter_fetch from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_get() { cat "$fixtures/read_ok.json"; }
 raw=$(zte_adapter_fetch 192.168.0.1 secret "$jar")
 assert_eq "$(cat "$fixtures/read_ok.json")" "$raw"
@@ -50,6 +50,8 @@ esac
 # malformed response fails without any retry
 get_calls=$work/get-calls
 printf 0 >"$get_calls"
+# Injected into zte_adapter_fetch from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_get() {
     n=$(cat "$get_calls"); n=$((n + 1)); printf '%s' "$n" >"$get_calls"
     cat "$fixtures/read_malformed.json"
@@ -61,7 +63,11 @@ assert_eq 1 "$(cat "$get_calls")"
 printf 0 >"$get_calls"
 logins=$work/logins
 : >"$logins"
+# Injected into zte_adapter_fetch from the sourced production library.
+# shellcheck disable=SC2329
 zte_session_login() { printf 'x\n' >>"$logins"; return 0; }
+# Injected into zte_adapter_fetch from the sourced production library.
+# shellcheck disable=SC2329
 zte_http_get() {
     n=$(cat "$get_calls"); n=$((n + 1)); printf '%s' "$n" >"$get_calls"
     if [ "$n" -eq 1 ]; then

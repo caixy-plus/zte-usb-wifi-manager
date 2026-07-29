@@ -1,6 +1,4 @@
 #!/bin/sh
-# Variables in this test are assigned through eval and dynamic config_get stubs.
-# shellcheck disable=SC2034
 set -eu
 
 TEST_NAME=test_structure
@@ -85,12 +83,16 @@ dev2='{"online":true,"model":"U25S","battery":{"present":true,"percent":83,"char
 net='{"up":true,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":false}'
 credential_file=unused
 host=192.168.0.1
+# Read by the eval-defined production poll_once function.
+# shellcheck disable=SC2034
 COOKIE_FILE=$work/cookies
 failure_threshold=3
 battery_enabled=0
 battery_low=70
 battery_high=100
 failures=0
+# Read by the eval-defined production poll_once function.
+# shellcheck disable=SC2034
 last_device_json=''
 
 zte_read_password() { printf '%s\n' secret; }
@@ -156,6 +158,8 @@ assert_eq "$net" "$network_json"
 . "$lib/validation.sh"
 eval "$(extract_daemon_function load_config)"
 config_load() { :; }
+# Assignments are read by the eval-defined production load_config function.
+# shellcheck disable=SC2034
 config_get() {
     case $1 in
         enabled) enabled=1 ;;
@@ -183,12 +187,16 @@ assert_success load_config
 
 sleep_log=$work/sleep
 : >"$sleep_log"
+# Assignments are read by the eval-defined production main function.
+# shellcheck disable=SC2034
 load_config() {
     enabled=1
     poll_interval=30
 }
 init_state() { :; }
 main_poll_count=0
+# Assignments are read by the eval-defined production main function.
+# shellcheck disable=SC2034
 poll_once() {
     main_poll_count=$((main_poll_count + 1))
     case $main_poll_count in
