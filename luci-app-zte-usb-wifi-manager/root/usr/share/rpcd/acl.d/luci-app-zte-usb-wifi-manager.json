@@ -1,0 +1,16 @@
+{
+  "luci-app-zte-usb-wifi-manager": {
+    "description": "Read ZTE USB WiFi Manager status",
+    "read": {
+      "ubus": {
+        "zte_usb_wifi": [
+          "status",
+          "capabilities"
+        ]
+      },
+      "uci": [
+        "zte-usb-wifi-manager"
+      ]
+    }
+  }
+}

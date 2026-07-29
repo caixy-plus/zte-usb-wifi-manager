@@ -1,0 +1,8 @@
+.DS_Store
+*.apk
+*.ipk
+*.log
+build/
+dist/
+.idea/
+.vscode/

@@ -1,0 +1,15 @@
+{
+  "admin/services/zte-usb-wifi-manager": {
+    "title": "中兴随身 WiFi",
+    "order": 60,
+    "action": {
+      "type": "view",
+      "path": "zte-usb-wifi-manager/index"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-zte-usb-wifi-manager"
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+
+. /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh
+
+STATUS_FILE=/var/run/zte-usb-wifi-manager/status.json
+
+list_methods() {
+	printf '%s\n' '{"status":{},"capabilities":{}}'
+}
+
+get_status() {
+	if [ -s "$STATUS_FILE" ]; then
+		cat "$STATUS_FILE"
+	else
+		zte_adapter_framework_status_json
+	fi
+}
+
+case ${1-} in
+	list)
+		list_methods
+		;;
+	call)
+		case ${2-} in
+			status) get_status ;;
+			capabilities) zte_adapter_capabilities_json ;;
+			*) exit 1 ;;
+		esac
+		;;
+	*)
+		exit 1
+		;;
+esac

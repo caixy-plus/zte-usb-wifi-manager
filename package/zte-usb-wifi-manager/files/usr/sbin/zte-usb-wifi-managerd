@@ -1,0 +1,48 @@
+#!/bin/sh
+set -eu
+
+. /lib/functions.sh
+. /usr/share/libubox/jshn.sh
+. /usr/lib/zte-usb-wifi-manager/validation.sh
+. /usr/lib/zte-usb-wifi-manager/policy.sh
+. /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh
+
+STATE_DIR=/var/run/zte-usb-wifi-manager
+STATUS_FILE=$STATE_DIR/status.json
+
+load_config() {
+	config_load zte-usb-wifi-manager
+	config_get enabled main enabled 1
+	config_get poll_interval main poll_interval 30
+	config_get host zte host 192.168.0.1
+
+	zte_validate_host "$host" || {
+		logger -t zte-usb-wifi-manager 'invalid device host'
+		return 1
+	}
+
+	case $poll_interval in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	[ "$poll_interval" -ge 10 ]
+}
+
+write_framework_status() {
+	umask 077
+	mkdir -p "$STATE_DIR"
+	tmp_file=$STATUS_FILE.tmp.$$
+	zte_adapter_framework_status_json >"$tmp_file"
+	mv "$tmp_file" "$STATUS_FILE"
+}
+
+main() {
+	load_config
+	write_framework_status
+
+	while [ "$enabled" = 1 ]; do
+		sleep "$poll_interval"
+		write_framework_status
+	done
+}
+
+main "$@"

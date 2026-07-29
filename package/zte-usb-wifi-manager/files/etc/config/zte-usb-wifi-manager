@@ -1,0 +1,21 @@
+config core 'main'
+	option enabled '1'
+	option write_enabled '0'
+	option poll_interval '30'
+	option failure_threshold '3'
+	option fail_safe_power 'on'
+
+config device 'zte'
+	option host '192.168.0.1'
+	option interface 'usbwan'
+	option netdev 'eth2'
+	option adapter 'zte_u25s'
+	option credential_file '/etc/zte-usb-wifi-manager/credentials'
+
+config battery 'policy'
+	option enabled '0'
+	option low_percent '70'
+	option high_percent '100'
+
+config power 'usb'
+	option backend 'unconfigured'
