@@ -34,7 +34,7 @@
 ```text
 .
 ├── package/zte-usb-wifi-manager/        # 后端包、守护进程、策略与适配器
-├── luci-app-zte-usb-wifi-manager/       # LuCI 菜单、ACL 和页面骨架
+├── luci-app-zte-usb-wifi-manager/       # LuCI 菜单、ACL 和只读状态总览
 ├── tests/                               # POSIX Shell 测试
 ├── docs/design/                         # UI 成品稿与详细设计文档
 ├── docs/plans/                          # 可执行实施计划
@@ -46,6 +46,7 @@
 - [UI 成品设计稿](docs/design/zte-usb-wifi-manager-ui.html)
 - [详细设计文档](docs/design/zte-usb-wifi-manager-design.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
+- [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 
 ## 本地验证
 
@@ -70,7 +71,7 @@ make lint
 
 1. ✅ 已接入 U25S 只读登录和批量状态读取。
 2. 用脱敏实机 fixture 替换当前合成 fixture。
-3. 完成 rpcd 状态聚合和真实 LuCI 总览。
+3. 在 TR3000 + U25S 上完成 rpcd 缓存状态与 LuCI 总览的只读实机验收。
 4. 逐项校准并开放明确要求的设备写操作。
 5. 完成 USB 供电后端、故障保护和 72 小时稳定性测试。
 
