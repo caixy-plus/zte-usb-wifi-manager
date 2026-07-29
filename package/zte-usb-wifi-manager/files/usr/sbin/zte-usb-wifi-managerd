@@ -106,8 +106,8 @@ poll_once() {
 			reason=device_read_threshold_reached
 			;;
 		credentials_missing)
-			state=degraded
-			reason=credentials_missing
+			state=credentials_missing
+			reason=credential_file_unreadable
 			;;
 	esac
 

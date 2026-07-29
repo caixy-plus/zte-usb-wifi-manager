@@ -42,6 +42,8 @@ for function in zte_adapter_fetch zte_failures_next zte_snapshot_compose; do
     assert_file_contains "$daemon" "$function"
 done
 assert_file_contains "$daemon" 'init_state'
+assert_file_contains "$daemon" '^[[:space:]]*state=credentials_missing$'
+assert_file_contains "$daemon" '^[[:space:]]*reason=credential_file_unreadable$'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/session.sh" 'goformId=LOGIN'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh" 'multi_data=1'
 assert_file_contains tests/fixtures/u25s/read_ok.json 'NR5G-SA'
