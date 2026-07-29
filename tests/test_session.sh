@@ -66,17 +66,42 @@ chmod 600 "$work/credentials"
 assert_eq 's3cret value' "$(zte_read_password "$work/credentials")"
 
 current_uid=$(id -u)
-# Injected into zte_read_password to simulate a credential file owned by
-# another account without requiring privileged chown in the test.
+assert_eq "$current_uid" "$(zte_file_owner_uid "$work/credentials")" \
+    'credential owner helper did not report the real owner UID'
+
+# Injected into zte_read_password to simulate a process running as another
+# account without requiring privileged chown in the test.
 # shellcheck disable=SC2329
-zte_file_owner_uid() { printf '%s\n' "$owner_uid_result"; }
-owner_uid_result=$((current_uid + 1))
+zte_effective_uid() { printf '%s\n' "$effective_uid_result"; }
+effective_uid_result=$((current_uid + 1))
 assert_failure zte_read_password "$work/credentials"
 
-owner_uid_result=$current_uid
+effective_uid_result=$current_uid
 chmod 644 "$work/credentials"
 assert_failure zte_read_password "$work/credentials"
+
+for credential_mode in 400 700 200 000; do
+    chmod "$credential_mode" "$work/credentials"
+    assert_failure zte_read_password "$work/credentials"
+done
+
+chmod 600 "$work/credentials"
+ln -s "$work/credentials" "$work/credentials-link"
+assert_failure zte_read_password "$work/credentials-link"
 assert_failure zte_read_password "$work/does-not-exist"
+
+# A read failure must propagate instead of being hidden by a successful final
+# command in a pipeline.
+mkdir -p "$work/read-failure-bin"
+cat >"$work/read-failure-bin/awk" <<'EOF'
+#!/bin/sh
+exit 7
+EOF
+chmod +x "$work/read-failure-bin/awk"
+saved_path=$PATH
+PATH="$work/read-failure-bin:$PATH"
+assert_failure zte_read_password "$work/credentials"
+PATH=$saved_path
 
 # a broken hash tool must fail, not produce a wrong digest
 mkdir -p "$work/bin"

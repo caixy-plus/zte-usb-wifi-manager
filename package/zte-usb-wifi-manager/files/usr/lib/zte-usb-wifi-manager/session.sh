@@ -58,9 +58,20 @@ zte_effective_uid() {
 # group/other permission bits. The daemon therefore requires root ownership.
 zte_read_password() {
     [ -f "$1" ] || return 1
+    [ ! -L "$1" ] || return 1
     [ "$(zte_file_owner_uid "$1")" = "$(zte_effective_uid)" ] || return 1
     # Only the fixed-width permission field is inspected; filename text is ignored.
     # shellcheck disable=SC2012
-    [ "$(ls -ld "$1" | cut -c 5-10)" = '------' ] || return 1
-    sed -n 's/^password=//p' "$1" | head -n 1
+    [ "$(ls -ld "$1" | cut -c 2-10)" = 'rw-------' ] || return 1
+    awk '
+        index($0, "password=") == 1 {
+            print substr($0, 10)
+            found = 1
+            exit
+        }
+        END {
+            if (!found)
+                exit 1
+        }
+    ' "$1"
 }

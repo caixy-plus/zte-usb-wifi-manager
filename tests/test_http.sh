@@ -67,10 +67,19 @@ EOF
 )
 assert_eq "$expected_get_argv" "$(cat "$ZTE_TEST_CURL_ARGV")" \
     'GET curl arguments do not match the safe request contract'
-assert_eq '' "$(cat "$ZTE_TEST_CURL_STDIN")" 'GET unexpectedly sent stdin data'
+expected_empty_stdin=$work/expected-empty-stdin
+: >"$expected_empty_stdin"
+if cmp -s "$expected_empty_stdin" "$ZTE_TEST_CURL_STDIN"; then
+    pass
+else
+    fail 'GET unexpectedly sent stdin bytes'
+fi
+assert_eq 0 "$(wc -c <"$ZTE_TEST_CURL_STDIN" | tr -d ' ')" \
+    'GET stdin was not empty'
 
 post_url='http://192.168.0.1/goform/goform_set_cmd_process'
-form_body='goformId=LOGIN&password=3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078 digest value&token=a=b'
+form_body='goformId=LOGIN&password=3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078 digest value&token=a=b
+line=two&tail=END!'
 ZTE_TEST_CURL_RESPONSE='POST response body'
 export ZTE_TEST_CURL_RESPONSE
 assert_eq 'POST response body' "$(zte_http_post "$post_url" "$form_body" "$cookie_jar")"
@@ -95,15 +104,33 @@ EOF
 )
 assert_eq "$expected_post_argv" "$(cat "$ZTE_TEST_CURL_ARGV")" \
     'POST curl arguments expose the form body or omit required request arguments'
-assert_eq "$form_body" "$(cat "$ZTE_TEST_CURL_STDIN")" \
-    'POST form body was not transferred unchanged over stdin'
+expected_stdin=$work/expected-stdin
+printf '%s' "$form_body" >"$expected_stdin"
+if cmp -s "$expected_stdin" "$ZTE_TEST_CURL_STDIN"; then
+    pass
+else
+    fail 'POST form body bytes were not transferred unchanged over stdin'
+fi
+assert_eq "$(wc -c <"$expected_stdin" | tr -d ' ')" \
+    "$(wc -c <"$ZTE_TEST_CURL_STDIN" | tr -d ' ')" \
+    'POST stdin byte count differs from the form body'
 
 ZTE_TEST_CURL_RESPONSE=
 ZTE_TEST_CURL_EXIT=22
 export ZTE_TEST_CURL_RESPONSE
 export ZTE_TEST_CURL_EXIT
-assert_failure zte_http_get "$get_url" "$cookie_jar"
-assert_failure zte_http_post "$post_url" "$form_body" "$cookie_jar"
+if zte_http_get "$get_url" "$cookie_jar"; then
+    get_exit=0
+else
+    get_exit=$?
+fi
+assert_eq 22 "$get_exit" 'GET did not preserve curl exit status 22'
+if zte_http_post "$post_url" "$form_body" "$cookie_jar"; then
+    post_exit=0
+else
+    post_exit=$?
+fi
+assert_eq 22 "$post_exit" 'POST did not preserve curl exit status 22'
 
 PATH=$saved_path
 export PATH
