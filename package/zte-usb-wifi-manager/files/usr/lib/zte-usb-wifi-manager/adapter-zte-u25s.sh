@@ -114,9 +114,10 @@ zte_adapter_normalize() {
 
 	if zte_json_flat_has "$_zte_raw" battery_vol_percent; then
 		_zte_percent_raw=$(zte_json_flat_get "$_zte_raw" battery_vol_percent)
-		zte_is_uint "$_zte_percent_raw" &&
-			[ "${#_zte_percent_raw}" -le 3 ] &&
-			[ "$_zte_percent_raw" -le 100 ] || return 1
+		case $_zte_percent_raw in
+			0|[1-9]|[1-9][0-9]|100) ;;
+			*) return 1 ;;
+		esac
 		_zte_percent=$_zte_percent_raw
 	else
 		_zte_percent=null

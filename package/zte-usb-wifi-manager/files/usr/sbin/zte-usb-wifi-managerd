@@ -141,7 +141,7 @@ poll_once() {
 	policy_state=unavailable
 	power_action=none
 	if [ "$ok" = 1 ]; then
-		battery_percent=$(zte_json_flat_get "$device_json" percent)
+		battery_percent=$(zte_json_path_get "$device_json" battery percent)
 		if zte_is_uint "$battery_percent"; then
 			policy_result=$(zte_policy_decide \
 				"$battery_enabled" 0 0 0 "$battery_percent" \

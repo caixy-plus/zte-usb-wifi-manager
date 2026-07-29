@@ -75,11 +75,11 @@ zte_snapshot_compose() {
 
     if [ -n "$_zte_device" ]; then
         if [ "$_zte_state" = ok ]; then
-            _zte_online=$(zte_json_flat_get "$_zte_device" online)
+            _zte_online=$(zte_json_top_get "$_zte_device" online)
         else
             _zte_online=false
         fi
-        _zte_model=$(zte_json_flat_get "$_zte_device" model)
+        _zte_model=$(zte_json_top_get "$_zte_device" model)
         _zte_device_json=$_zte_device
     else
         _zte_online=false
