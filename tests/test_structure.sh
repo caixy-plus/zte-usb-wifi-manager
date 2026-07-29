@@ -23,6 +23,10 @@ for tab in overview network wifi traffic sms battery schedule device diagnostics
     assert_file_contains "$view" "id: '$tab'"
 done
 assert_file_contains "$view" '设备写接口尚未完成实机校准'
+assert_file_contains "$view" 'status\.device'
+assert_file_contains "$view" 'is_default_route'
+assert_file_contains "$view" 'battery'
+assert_file_contains "$view" '仅监控'
 
 if grep -R -q '双卡智能切换\\|SET_DUAL_SIM_SMART_SWITCH' \
     "$backend" "$luci" 2>/dev/null; then
