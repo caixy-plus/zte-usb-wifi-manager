@@ -11,6 +11,7 @@ ZTE USB WiFi Manager is an OpenWrt backend package plus a LuCI application for a
 - A feature belongs in the product only when visible in the target device UI, verified on the target firmware, or explicitly requested.
 - Never commit credentials, cookies, device identifiers, phone numbers, or SMS content.
 - LuCI calls rpcd/ubus; it does not run shell commands directly.
+- Development testing never touches the main router: offline simulation first, spare-hardware bench for USB power/recovery, main router only for final read-only gray rollout. See `docs/design/testing-strategy.md`.
 
 ## Architecture
 
