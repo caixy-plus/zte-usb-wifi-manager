@@ -148,13 +148,14 @@ assert_file_contains "$qemu_evidence" 'Release 卸载.*PASS'
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'
 for library in \
-    json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh event-log.sh
+    json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh event-log.sh \
+    actions.sh
 do
     assert_file_contains "$daemon" "$library"
 done
 for function in \
     zte_adapter_fetch zte_failures_next zte_snapshot_compose zte_power_apply \
-    zte_event_write
+    zte_event_write zte_action_claim zte_action_finish
 do
     assert_file_contains "$daemon" "$function"
 done
@@ -428,6 +429,8 @@ poll_once() {
 sleep() { printf '%s\n' "$1" >>"$sleep_log"; }
 : >"$event_call_log"
 STATE_DIR=$work/real-state
+process_actions() { :; }
+zte_action_recover_running() { :; }
 main
 assert_eq \
     "$work/real-state|info|service|service_started|1722345678|524288" \

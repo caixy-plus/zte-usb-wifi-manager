@@ -9,6 +9,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/policy.sh
 . /usr/lib/zte-usb-wifi-manager/power-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/event-log.sh
+. /usr/lib/zte-usb-wifi-manager/actions.sh
 . /usr/lib/zte-usb-wifi-manager/snapshot.sh
 . /usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
@@ -161,6 +162,23 @@ record_state_change() {
 	fi
 }
 
+process_actions() {
+	_zte_action_record=$(zte_action_claim "$STATE_DIR" 2>/dev/null) ||
+		return 0
+	_zte_operation_id=$(zte_json_top_get "$_zte_action_record" operation_id)
+	_zte_action_type=$(zte_json_top_get "$_zte_action_record" type)
+	if ! zte_operation_id_valid "$_zte_operation_id" ||
+		! zte_action_type_valid "$_zte_action_type"; then
+		logger -t zte-usb-wifi-manager 'invalid queued action record'
+		return 1
+	fi
+	_zte_action_time=$(date +%s)
+	zte_action_finish \
+		"$STATE_DIR" "$_zte_operation_id" failed unsupported \
+		"$_zte_action_time" || return 1
+	record_event warn action action_unsupported "$_zte_action_time" || :
+}
+
 poll_once() {
 	ok=0
 	candidate_device_json=''
@@ -244,9 +262,11 @@ main() {
 	last_device_json=''
 	last_power_action=''
 	last_logged_state=''
+	zte_action_recover_running "$STATE_DIR" "$(date +%s)" || :
 	record_event info service service_started "$(date +%s)" || :
 	while [ "$enabled" = 1 ]; do
 		poll_once
+		process_actions
 		sleep "$(zte_backoff_interval "$poll_interval" "$failures")"
 	done
 }

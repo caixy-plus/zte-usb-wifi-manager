@@ -98,3 +98,88 @@ zte_action_enqueue() {
 	chmod 600 "$_zte_action_tmp" || return 1
 	mv "$_zte_action_tmp" "$_zte_action_target"
 }
+
+zte_action_result_state_valid() {
+	case ${1-} in
+		succeeded|failed|timed_out) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_action_code_valid() {
+	_zte_action_code=${1-}
+	case $_zte_action_code in
+		''|*[!a-z0-9_:-]*) return 1 ;;
+	esac
+	[ "${#_zte_action_code}" -le 64 ]
+}
+
+zte_action_claim() {
+	_zte_action_root=$1
+	zte_action_init "$_zte_action_root" || return 1
+	_zte_action_source=''
+	for _zte_action_file in "$_zte_action_root"/actions/pending/*.json; do
+		if [ -f "$_zte_action_file" ]; then
+			_zte_action_source=$_zte_action_file
+			break
+		fi
+	done
+	[ -n "$_zte_action_source" ] || return 1
+
+	_zte_action_name=${_zte_action_source##*/}
+	_zte_operation_id=${_zte_action_name%.json}
+	zte_operation_id_valid "$_zte_operation_id" || return 1
+	_zte_action_running=$_zte_action_root/actions/running/$_zte_action_name
+	mv "$_zte_action_source" "$_zte_action_running" || return 1
+
+	_zte_action_tmp=$_zte_action_running.tmp.$$
+	sed 's/"state":"queued"/"state":"running"/' \
+		"$_zte_action_running" >"$_zte_action_tmp" || return 1
+	chmod 600 "$_zte_action_tmp" || return 1
+	mv "$_zte_action_tmp" "$_zte_action_running" || return 1
+	cat "$_zte_action_running"
+}
+
+zte_action_finish() {
+	_zte_action_root=$1
+	_zte_operation_id=$2
+	_zte_action_state=$3
+	_zte_action_code=$4
+	_zte_action_updated=$5
+
+	zte_operation_id_valid "$_zte_operation_id" || return 1
+	zte_action_result_state_valid "$_zte_action_state" || return 1
+	zte_action_code_valid "$_zte_action_code" || return 1
+	zte_is_uint "$_zte_action_updated" || return 1
+	_zte_action_running=$_zte_action_root/actions/running/$_zte_operation_id.json
+	[ -s "$_zte_action_running" ] || return 1
+	_zte_action_type=$(zte_json_top_get "$(cat "$_zte_action_running")" type)
+	zte_action_type_valid "$_zte_action_type" || return 1
+
+	_zte_action_result=$_zte_action_root/actions/results/$_zte_operation_id.json
+	_zte_action_tmp=$_zte_action_result.tmp.$$
+	umask 077
+	printf '{"operation_id":"%s","type":"%s","state":"%s","code":"%s","updated":%s}\n' \
+		"$_zte_operation_id" "$_zte_action_type" "$_zte_action_state" \
+		"$_zte_action_code" "$_zte_action_updated" >"$_zte_action_tmp" ||
+		return 1
+	chmod 600 "$_zte_action_tmp" || return 1
+	mv "$_zte_action_tmp" "$_zte_action_result" || return 1
+	rm -f "$_zte_action_running"
+}
+
+zte_action_recover_running() {
+	_zte_action_root=$1
+	_zte_action_updated=$2
+	zte_is_uint "$_zte_action_updated" || return 1
+	zte_action_init "$_zte_action_root" || return 1
+
+	for _zte_action_file in "$_zte_action_root"/actions/running/*.json; do
+		[ -f "$_zte_action_file" ] || continue
+		_zte_action_name=${_zte_action_file##*/}
+		_zte_operation_id=${_zte_action_name%.json}
+		zte_action_finish \
+			"$_zte_action_root" "$_zte_operation_id" failed \
+			daemon_restarted "$_zte_action_updated" || return 1
+	done
+}
