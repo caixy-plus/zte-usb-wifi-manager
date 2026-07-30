@@ -100,6 +100,7 @@ assert_file_contains "$package_validation" 'jsonfilter'
 assert_file_contains "$package_validation" 'opkg list-installed'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
+assert_file_contains "$daemon" '^set -e$'
 for library in json.sh session.sh snapshot.sh netifd-adapter.sh; do
     assert_file_contains "$daemon" "$library"
 done
