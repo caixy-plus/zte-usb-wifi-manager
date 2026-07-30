@@ -382,6 +382,13 @@ assert_eq FAIL_SAFE_ON "$policy_state"
 # Assigned by the eval-defined production calculate_policy function.
 # shellcheck disable=SC2154
 assert_eq ON "$power_action"
+# Read by the eval-defined production calculate_policy function.
+# shellcheck disable=SC2034
+health=credentials_missing
+calculate_policy
+assert_eq '1|1|0|UNKNOWN' "$(cat "$fail_safe_policy_log")"
+assert_eq FAIL_SAFE_ON "$policy_state"
+assert_eq ON "$power_action"
 
 # Production collect_network passes both configured names to the adapter.
 eval "$(extract_daemon_function collect_network)"

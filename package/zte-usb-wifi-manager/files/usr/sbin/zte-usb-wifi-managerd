@@ -250,30 +250,39 @@ calculate_policy() {
 	power_action=none
 	policy_result=''
 
-	if [ "$health" = fail_safe ]; then
-		policy_result=$(zte_policy_decide \
-			"$battery_enabled" 1 0 0 0 \
-			"$battery_low" "$battery_high" UNKNOWN) ||
-			policy_result=''
-	elif [ "$ok" = 1 ]; then
-		battery_percent=$(zte_json_path_get "$device_json" battery percent)
-		battery_charging=$(zte_json_path_get "$device_json" battery charging)
-		case $battery_charging in
-			true) current_power=ON ;;
-			false) current_power=OFF ;;
-			*) current_power=UNKNOWN ;;
-		esac
-		if zte_is_uint "$battery_percent"; then
-			pre_departure=0
-			pre_departure=$(schedule_pre_departure_now) ||
-				pre_departure=0
+	case $health in
+		fail_safe|credentials_missing)
 			policy_result=$(zte_policy_decide \
-				"$battery_enabled" 0 "$manual_full" \
-				"$pre_departure" "$battery_percent" \
-				"$battery_low" "$battery_high" "$current_power") ||
+				"$battery_enabled" 1 0 0 0 \
+				"$battery_low" "$battery_high" UNKNOWN) ||
 				policy_result=''
-		fi
-	fi
+			;;
+		*)
+			if [ "$ok" = 1 ]; then
+				battery_percent=$(
+					zte_json_path_get "$device_json" battery percent
+				)
+				battery_charging=$(
+					zte_json_path_get "$device_json" battery charging
+				)
+				case $battery_charging in
+					true) current_power=ON ;;
+					false) current_power=OFF ;;
+					*) current_power=UNKNOWN ;;
+				esac
+				if zte_is_uint "$battery_percent"; then
+					pre_departure=0
+					pre_departure=$(schedule_pre_departure_now) ||
+						pre_departure=0
+					policy_result=$(zte_policy_decide \
+						"$battery_enabled" 0 "$manual_full" \
+						"$pre_departure" "$battery_percent" \
+				"$battery_low" "$battery_high" "$current_power") ||
+						policy_result=''
+				fi
+			fi
+			;;
+	esac
 
 	if [ -n "$policy_result" ]; then
 		policy_state=${policy_result%%:*}
