@@ -29,10 +29,11 @@ IFS='|' read -r release format sdk_file sdk_sha256 image_file image_sha256 \
     feeds_sha256 <<EOF
 $matrix
 EOF
-[ -n "$release" ] && [ -n "$format" ] && [ -n "$sdk_file" ] &&
-    [ -n "$sdk_sha256" ] && [ -n "$image_file" ] &&
-    [ -n "$image_sha256" ] && [ -n "$feeds_sha256" ] ||
+if [ -z "$release" ] || [ -z "$format" ] || [ -z "$sdk_file" ] ||
+    [ -z "$sdk_sha256" ] || [ -z "$image_file" ] ||
+    [ -z "$image_sha256" ] || [ -z "$feeds_sha256" ]; then
     die 'invalid release matrix entry'
+fi
 
 case $output_dir in
     /*) ;;
@@ -139,8 +140,9 @@ luci_count=$(wc -l <"$luci_list" | tr -d ' ')
     die "expected one LuCI .$format package, found $luci_count"
 IFS= read -r luci_package <"$luci_list"
 
-[ ! -L "$backend_package" ] && [ ! -L "$luci_package" ] ||
+if [ -L "$backend_package" ] || [ -L "$luci_package" ]; then
     die 'package outputs must be regular files, not symlinks'
+fi
 
 # Read the architecture from inside the built packages; never trust the
 # filename or the matrix value. APK v3 metadata is dumped with the SDK's own

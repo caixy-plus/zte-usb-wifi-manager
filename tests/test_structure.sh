@@ -1,4 +1,7 @@
 #!/bin/sh
+# Production functions are intentionally extracted and defined through eval
+# below, which ShellCheck 0.9 cannot model.
+# shellcheck disable=SC2218,SC2317
 set -eu
 
 TEST_NAME=test_structure
@@ -142,7 +145,9 @@ atomic_move_log=$work/atomic-moves
 # Injected into the eval-defined production write_status function.
 # shellcheck disable=SC2329
 mv() {
-    [ "$#" -eq 2 ] && [ -f "$1" ] || return 1
+    if [ "$#" -ne 2 ] || [ ! -f "$1" ]; then
+        return 1
+    fi
     printf '%s|%s|%s\n' "$1" "$2" "$(cat "$1")" >>"$atomic_move_log"
     command mv "$1" "$2"
 }

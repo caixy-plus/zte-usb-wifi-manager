@@ -1,4 +1,7 @@
 #!/bin/sh
+# HTTP stubs are invoked from production functions loaded with source, which
+# ShellCheck 0.9 cannot trace across files.
+# shellcheck disable=SC2317
 set -eu
 TEST_NAME=test_session
 . ./tests/testlib.sh
