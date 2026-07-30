@@ -78,6 +78,9 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5'
 assert_file_contains README.md 'OpenWrt 24\.10\.7'
 assert_file_contains README.md 'OpenWrt 25\.12\.5.*QEMU 安装验证通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*QEMU 安装验证通过'
+assert_file_contains README.md 'LuCI 十个标签已可切换'
+assert_file_contains README.md 'SIM 类型与电池扩展状态'
+assert_file_contains README.md 'Wi-Fi、流量、短信和日志仍等待经过验证的 fixture'
 if grep -Fq '等待 QEMU 安装验证' README.md; then
     fail 'README must not retain a pending QEMU validation status'
 else
