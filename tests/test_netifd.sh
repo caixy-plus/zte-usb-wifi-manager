@@ -40,16 +40,34 @@ jsonfilter() {
         '@.up') printf '%s\n' true ;;
         '@.l3_device')
             [ "$_zte_test_ubus_mode" != status_no_l3 ] || return 1
-            printf '%s\n' eth2
+            printf '%s\n' "$_zte_test_l3_device"
             ;;
         *) return 1 ;;
     esac
 }
 
 ip() {
-    return 1
+    printf '%s\n' "$*" >>"$_zte_test_ip_calls"
+    case $_zte_test_ip_mode:$* in
+        ipv4:'route show default dev eth0.1')
+            printf '%s\n' 'default via 192.0.2.1 dev eth0.1'
+            ;;
+        ipv6:'-6 route show default dev eth0.1')
+            printf '%s\n' 'default via 2001:db8::1 dev eth0.1'
+            ;;
+        regex_neighbor:'route show default')
+            printf '%s\n' 'default via 192.0.2.1 dev eth0x1 proto static'
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
+_zte_test_l3_device=eth2
+_zte_test_ip_calls=$(mktemp /tmp/zte-test-netifd-ip.XXXXXX)
+trap 'rm -f "$_zte_test_ip_calls"' EXIT HUP INT TERM
+_zte_test_ip_mode=none
 _zte_test_ubus_mode=status
 actual=$(zte_netifd_collect wwan eth9)
 assert_eq \
@@ -77,5 +95,35 @@ assert_eq \
     '{"up":true,"l3_device":"eth9","ipv4":"","gateway":"","is_default_route":false}' \
     "$actual" \
     "missing l3_device uses the configured fallback"
+
+_zte_test_ubus_mode=status
+_zte_test_l3_device=eth0.1
+
+_zte_test_ip_mode=regex_neighbor
+: >"$_zte_test_ip_calls"
+actual=$(zte_netifd_collect wwan eth9)
+assert_eq \
+    '{"up":true,"l3_device":"eth0.1","ipv4":"","gateway":"","is_default_route":false}' \
+    "$actual" \
+    'a regex-neighboring device name must not match the default route'
+
+_zte_test_ip_mode=ipv4
+: >"$_zte_test_ip_calls"
+actual=$(zte_netifd_collect wwan eth9)
+assert_eq \
+    '{"up":true,"l3_device":"eth0.1","ipv4":"","gateway":"","is_default_route":true}' \
+    "$actual" \
+    'an exact IPv4 default route must be detected'
+assert_eq 'route show default dev eth0.1' \
+    "$(sed -n '1p' "$_zte_test_ip_calls")" \
+    'the device must be passed as an exact ip argument'
+
+_zte_test_ip_mode=ipv6
+: >"$_zte_test_ip_calls"
+actual=$(zte_netifd_collect wwan eth9)
+assert_eq \
+    '{"up":true,"l3_device":"eth0.1","ipv4":"","gateway":"","is_default_route":true}' \
+    "$actual" \
+    'an IPv6-only default route must be detected'
 
 finish

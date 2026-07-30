@@ -35,7 +35,9 @@ zte_policy_decide() {
         printf '%s\n' 'MAINTAIN_BATTERY:OFF'
     elif [ "$current_power" = ON ]; then
         printf '%s\n' 'MAINTAIN_CHARGING:ON'
-    else
+    elif [ "$current_power" = OFF ]; then
         printf '%s\n' 'MAINTAIN_BATTERY:OFF'
+    else
+        return 1
     fi
 }

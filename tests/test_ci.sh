@@ -30,7 +30,7 @@ export PATH
 FAKE_SHELLCHECK_COUNT=$work/failing-count
 FAKE_SHELLCHECK_FAIL_FIRST=1
 export FAKE_SHELLCHECK_COUNT FAKE_SHELLCHECK_FAIL_FIRST
-assert_failure make lint
+assert_failure make lint >/dev/null 2>&1
 
 FAKE_SHELLCHECK_COUNT=$work/success-count
 FAKE_SHELLCHECK_FAIL_FIRST=0

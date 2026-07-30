@@ -1,9 +1,10 @@
 #!/bin/sh
 set -eu
 
-. /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh
+ZTE_USB_WIFI_LIB_DIR=${ZTE_USB_WIFI_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+. "$ZTE_USB_WIFI_LIB_DIR/adapter-zte-u25s-metadata.sh"
 
-STATUS_FILE=/var/run/zte-usb-wifi-manager/status.json
+STATUS_FILE=${ZTE_USB_WIFI_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
 
 list_methods() {
 	printf '%s\n' '{"status":{},"capabilities":{}}'

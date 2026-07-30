@@ -50,6 +50,8 @@ init_repo "$work/bad"
     printf '{"password":"%s"}\n' 'literal-json-secret-value' >json-secret.json
     printf 'international_phone=%s\n' '+8613812345678' >international-phone.txt
     printf 'password=%s\n' 'unicode-secret-value' >'敏感.txt'
+    comment_marker='#'
+    printf '%s password=%s\n' "$comment_marker" 'comment-secret-value' >comment.txt
     newline_name=$(printf 'secret-filename\npart.txt')
     printf 'Cookie: newline=%s\n' 'newline-cookie-value' >"$newline_name"
     printf '\000password=binary-secret-value\n' >binary.dat
@@ -88,6 +90,7 @@ for finding in \
     "$(file_id json-secret.json):1 SECRET_ASSIGNMENT" \
     "$(file_id international-phone.txt):1 PHONE_NUMBER" \
     "$(file_id '敏感.txt'):1 SECRET_ASSIGNMENT" \
+    "$(file_id comment.txt):1 SECRET_ASSIGNMENT" \
     "$(file_id "$newline_path"):1 HTTP_COOKIE"; do
     case $bad_output in
         *"$finding"*) pass ;;
@@ -113,7 +116,8 @@ else
 fi
 for secret_fragment in \
     real-auth-value real-cookie-value literal-password-value \
-    literal-json-secret-value unicode-secret-value newline-cookie-value \
+    literal-json-secret-value unicode-secret-value comment-secret-value \
+    newline-cookie-value \
     outside-untracked-secret-value outside-secret-directory \
     13812345678 123456789012345 8986001234567890123 \
     '敏感.txt' secret-filename; do

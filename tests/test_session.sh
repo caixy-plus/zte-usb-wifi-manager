@@ -63,6 +63,8 @@ assert_eq 0 "$(wc -l <"$post_calls" | tr -d ' ')"
 # credential file reading
 printf 'password=s3cret value\n' >"$work/credentials"
 chmod 600 "$work/credentials"
+assert_eq 600 "$(zte_file_mode "$work/credentials")" \
+    'credential mode helper must report numeric mode'
 assert_eq 's3cret value' "$(zte_read_password "$work/credentials")"
 
 current_uid=$(id -u)

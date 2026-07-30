@@ -13,6 +13,9 @@ assert_eq 'MAINTAIN_CHARGING:ON' "$(zte_policy_decide 1 0 0 0 70 70 100 OFF)"
 assert_eq 'MAINTAIN_BATTERY:OFF' "$(zte_policy_decide 1 0 0 0 100 70 100 ON)"
 assert_eq 'MAINTAIN_CHARGING:ON' "$(zte_policy_decide 1 0 0 0 82 70 100 ON)"
 assert_eq 'MAINTAIN_BATTERY:OFF' "$(zte_policy_decide 1 0 0 0 82 70 100 OFF)"
+assert_eq 'MAINTAIN_CHARGING:ON' "$(zte_policy_decide 1 0 0 0 70 70 100 UNKNOWN)"
+assert_eq 'MAINTAIN_BATTERY:OFF' "$(zte_policy_decide 1 0 0 0 100 70 100 UNKNOWN)"
+assert_failure zte_policy_decide 1 0 0 0 82 70 100 UNKNOWN
 assert_failure zte_policy_decide 1 0 0 0 unknown 70 100 ON
 
 finish

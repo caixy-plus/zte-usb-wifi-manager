@@ -19,13 +19,20 @@ cat >"$work/bin/curl" <<'EOF'
 : >"$ZTE_TEST_CURL_ARGV"
 read_stdin=0
 previous=
+cookie_jar=
 for argument do
     printf '%s\n' "$argument" >>"$ZTE_TEST_CURL_ARGV"
     if [ "$previous" = '--data-binary' ] && [ "$argument" = '@-' ]; then
         read_stdin=1
     fi
+    if [ "$previous" = '-c' ]; then
+        cookie_jar=$argument
+    fi
     previous=$argument
 done
+if [ -n "$cookie_jar" ]; then
+    printf '%s\n' 'test-cookie' >"$cookie_jar"
+fi
 if [ "$read_stdin" -eq 1 ]; then
     cat >"$ZTE_TEST_CURL_STDIN"
 else
@@ -50,6 +57,8 @@ export ZTE_TEST_CURL_ARGV ZTE_TEST_CURL_STDIN ZTE_TEST_CURL_RESPONSE ZTE_TEST_CU
 cookie_jar=$work/cookie-jar
 get_url='http://192.168.0.1/goform/goform_get_cmd_process?cmd=LD&isTest=false'
 assert_eq 'GET response body' "$(zte_http_get "$get_url" "$cookie_jar")"
+assert_eq 600 "$(test_file_mode "$cookie_jar")" \
+    'GET cookie jar must be explicitly restricted to mode 600'
 expected_get_argv=$(cat <<EOF
 -fsS
 --max-time
@@ -83,6 +92,8 @@ line=two&tail=END!'
 ZTE_TEST_CURL_RESPONSE='POST response body'
 export ZTE_TEST_CURL_RESPONSE
 assert_eq 'POST response body' "$(zte_http_post "$post_url" "$form_body" "$cookie_jar")"
+assert_eq 600 "$(test_file_mode "$cookie_jar")" \
+    'POST cookie jar must be explicitly restricted to mode 600'
 expected_post_argv=$(cat <<EOF
 -fsS
 --max-time
@@ -119,18 +130,24 @@ ZTE_TEST_CURL_RESPONSE=
 ZTE_TEST_CURL_EXIT=22
 export ZTE_TEST_CURL_RESPONSE
 export ZTE_TEST_CURL_EXIT
+chmod 644 "$cookie_jar"
 if zte_http_get "$get_url" "$cookie_jar"; then
     get_exit=0
 else
     get_exit=$?
 fi
 assert_eq 22 "$get_exit" 'GET did not preserve curl exit status 22'
+assert_eq 600 "$(test_file_mode "$cookie_jar")" \
+    'GET failure must still restrict the cookie jar to mode 600'
+chmod 644 "$cookie_jar"
 if zte_http_post "$post_url" "$form_body" "$cookie_jar"; then
     post_exit=0
 else
     post_exit=$?
 fi
 assert_eq 22 "$post_exit" 'POST did not preserve curl exit status 22'
+assert_eq 600 "$(test_file_mode "$cookie_jar")" \
+    'POST failure must still restrict the cookie jar to mode 600'
 
 PATH=$saved_path
 export PATH

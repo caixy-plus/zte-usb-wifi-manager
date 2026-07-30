@@ -14,7 +14,7 @@
 - `make test` runs all suites + `sh -n` + JSON parse + secret scan; `make lint` runs ShellCheck.
 - Test stubs that must survive command substitution (`$(...)`) write counters/logs to temp files, not shell variables.
 
-**Sourcing order (daemon and tests):** `validation.sh` → `json.sh` → `http.sh` → `session.sh` → `policy.sh` → `snapshot.sh` → `netifd-adapter.sh` → `adapter-zte-u25s.sh`.
+**Sourcing order (daemon and tests):** `validation.sh` → `json.sh` → `http.sh` → `session.sh` → `policy.sh` → `snapshot.sh` → `netifd-adapter.sh` → `adapter-zte-u25s-metadata.sh` → `adapter-zte-u25s.sh`.
 
 ---
 

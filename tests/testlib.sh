@@ -51,6 +51,14 @@ assert_file_contains() {
     fi
 }
 
+test_file_mode() {
+    if mode=$(stat -c '%a' "$1" 2>/dev/null); then
+        printf '%s\n' "$mode"
+    else
+        stat -f '%Lp' "$1" 2>/dev/null
+    fi
+}
+
 finish() {
     if [ "$TEST_FAILURES" -ne 0 ]; then
         printf 'FAIL %s (%s/%s failed)\n' "$TEST_NAME" "$TEST_FAILURES" "$TEST_COUNT" >&2

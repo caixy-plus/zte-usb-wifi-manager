@@ -95,7 +95,7 @@ function findingTypes(line) {
         types.push('URL_CREDENTIALS');
 
     const secretKey = /(^|[^a-z0-9_])["']?(password|passwd|secret|token|api_key|apikey|access_key)["']?\s*[:=]\s*("[^"]+"|'[^']+'|[a-z0-9][a-z0-9._-]*(?=[\s#;,}]|$))/i;
-    if (!/^\s*#/.test(line) && secretKey.test(line) && !placeholder)
+    if (secretKey.test(line) && !placeholder)
         types.push('SECRET_ASSIGNMENT');
 
     if (/(^|[^0-9])(?:\+?86)?1[3-9][0-9]{9}([^0-9]|$)/.test(line))
@@ -106,7 +106,7 @@ function findingTypes(line) {
         types.push('ICCID');
 
     const sensitiveKey = /(^|[^a-z0-9])["']?(imei|imsi|iccid|msisdn|phone_number|device_id)["']?\s*[:=]\s*("[^"]+"|'[^']+'|[a-z0-9][a-z0-9._-]*(?=[\s#;,}]|$))/i;
-    if (!/^\s*#/.test(line) && sensitiveKey.test(line) && !placeholder)
+    if (sensitiveKey.test(line) && !placeholder)
         types.push('SENSITIVE_FIELD');
 
     return types;

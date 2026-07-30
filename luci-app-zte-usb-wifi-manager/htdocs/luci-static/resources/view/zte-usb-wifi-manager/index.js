@@ -1,17 +1,21 @@
 'use strict';
 'require view';
 'require rpc';
+'require poll';
+
+var POLL_INTERVAL_SECONDS = 30;
+var STALE_AFTER_SECONDS = 360;
 
 var callStatus = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'status',
-	expect: {}
+	reject: true
 });
 
 var callCapabilities = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'capabilities',
-	expect: {}
+	reject: true
 });
 
 var tabs = [
@@ -117,17 +121,52 @@ function updatedLabel(updated) {
 	return new Date(timestamp * 1000).toLocaleString();
 }
 
-return view.extend({
-	load: function() {
-		return Promise.all([
-			L.resolveDefault(callStatus(), {}),
-			L.resolveDefault(callCapabilities(), {})
-		]);
-	},
+function rpcResult(call) {
+	var request;
 
-	render: function(data) {
-		var status = data && data[0] && typeof data[0] === 'object' ? data[0] : {};
-		var capabilities = data && data[1] && typeof data[1] === 'object' ? data[1] : {};
+	try {
+		request = call();
+	}
+	catch (error) {
+		return Promise.resolve({ ok: false, value: {} });
+	}
+
+	return Promise.resolve(request).then(function(value) {
+		if (!value || typeof value !== 'object')
+			return { ok: false, value: {} };
+
+		return {
+			ok: true,
+			value: value
+		};
+	}, function() {
+		return { ok: false, value: {} };
+	});
+}
+
+function loadData() {
+	return Promise.all([
+		rpcResult(callStatus),
+		rpcResult(callCapabilities)
+	]);
+}
+
+function snapshotIsStale(updated) {
+	var timestamp = Number(updated);
+
+	return isFinite(timestamp) && timestamp > 0 &&
+		Math.floor(Date.now() / 1000) - timestamp > STALE_AFTER_SECONDS;
+}
+
+function renderStatus(data) {
+		var statusResult = data && data[0] && typeof data[0] === 'object'
+			? data[0] : { ok: false, value: {} };
+		var capabilitiesResult = data && data[1] && typeof data[1] === 'object'
+			? data[1] : { ok: false, value: {} };
+		var status = statusResult.ok && statusResult.value &&
+			typeof statusResult.value === 'object' ? statusResult.value : {};
+		var capabilities = capabilitiesResult.ok && capabilitiesResult.value &&
+			typeof capabilitiesResult.value === 'object' ? capabilitiesResult.value : {};
 		var device = status.device && typeof status.device === 'object' ? status.device : {};
 		var hasDevice = status.device && typeof status.device === 'object' &&
 			Object.keys(status.device).length > 0;
@@ -135,9 +174,21 @@ return view.extend({
 		var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 		var network = status.network && typeof status.network === 'object' ? status.network : {};
 		var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
+		var alerts = [];
+
+		if (!statusResult.ok)
+			alerts.push(E('div', { 'class': 'alert-message error' },
+				_('无法读取后端状态，请检查 rpcd 服务和访问权限。')));
+		if (!capabilitiesResult.ok)
+			alerts.push(E('div', { 'class': 'alert-message error' },
+				_('无法读取设备能力信息。')));
+		if (statusResult.ok && snapshotIsStale(status.updated))
+			alerts.push(E('div', { 'class': 'alert-message warning' },
+				_('状态快照长时间未更新，后台守护进程可能已停止。')));
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
+			alerts,
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab, index) {
 				return renderTab(tab, index === 0);
 			})),
@@ -160,6 +211,25 @@ return view.extend({
 					_('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
 			])
 		]);
+}
+
+return view.extend({
+	load: loadData,
+
+	render: function(data) {
+		var root = renderStatus(data);
+
+		poll.add(function() {
+			return loadData().then(function(nextData) {
+				var replacement = renderStatus(nextData);
+
+				if (root.parentNode)
+					root.parentNode.replaceChild(replacement, root);
+				root = replacement;
+			});
+		}, POLL_INTERVAL_SECONDS);
+
+		return root;
 	},
 
 	handleSaveApply: null,

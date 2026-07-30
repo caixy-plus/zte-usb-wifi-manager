@@ -7,6 +7,7 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/json.sh"
 . "$lib/http.sh"
 . "$lib/session.sh"
+. "$lib/adapter-zte-u25s-metadata.sh"
 . "$lib/adapter-zte-u25s.sh"
 . "$lib/snapshot.sh"
 

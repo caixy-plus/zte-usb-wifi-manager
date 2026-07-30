@@ -3,7 +3,6 @@ config core 'main'
 	option write_enabled '0'
 	option poll_interval '30'
 	option failure_threshold '3'
-	option fail_safe_power 'on'
 
 config device 'zte'
 	option host '192.168.0.1'

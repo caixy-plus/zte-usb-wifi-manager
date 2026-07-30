@@ -9,6 +9,7 @@ set -eu
 . /usr/lib/zte-usb-wifi-manager/policy.sh
 . /usr/lib/zte-usb-wifi-manager/snapshot.sh
 . /usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
+. /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
 . /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh
 
 STATE_DIR=/var/run/zte-usb-wifi-manager
@@ -145,9 +146,11 @@ poll_once() {
 		if zte_is_uint "$battery_percent"; then
 			policy_result=$(zte_policy_decide \
 				"$battery_enabled" 0 0 0 "$battery_percent" \
-				"$battery_low" "$battery_high" ON)
-			policy_state=${policy_result%%:*}
-			power_action=${policy_result#*:}
+				"$battery_low" "$battery_high" UNKNOWN) || policy_result=''
+			if [ -n "$policy_result" ]; then
+				policy_state=${policy_result%%:*}
+				power_action=${policy_result#*:}
+			fi
 		fi
 	fi
 

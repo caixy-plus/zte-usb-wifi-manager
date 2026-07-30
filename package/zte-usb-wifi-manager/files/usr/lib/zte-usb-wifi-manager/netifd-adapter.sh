@@ -43,7 +43,10 @@ zte_netifd_collect() {
 
     _zte_is_default_route=0
     if [ -n "$_zte_l3_device" ] &&
-        ip route show default 2>/dev/null | grep -q "dev $_zte_l3_device "; then
+        { ip route show default dev "$_zte_l3_device" 2>/dev/null |
+            grep -q . ||
+          ip -6 route show default dev "$_zte_l3_device" 2>/dev/null |
+            grep -q .; }; then
         _zte_is_default_route=1
     fi
 

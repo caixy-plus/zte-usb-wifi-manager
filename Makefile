@@ -11,6 +11,7 @@ test:
 		tests/test_http.sh \
 		tests/test_session.sh \
 		tests/test_adapter.sh \
+		tests/test_rpcd.sh \
 		tests/test_snapshot.sh \
 		tests/test_netifd.sh \
 		tests/test_structure.sh \

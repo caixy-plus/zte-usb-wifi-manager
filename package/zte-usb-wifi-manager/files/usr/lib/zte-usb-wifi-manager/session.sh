@@ -53,6 +53,14 @@ zte_effective_uid() {
     id -u
 }
 
+zte_file_mode() {
+    if _zte_mode=$(stat -c '%a' "$1" 2>/dev/null); then
+        printf '%s\n' "$_zte_mode"
+    else
+        stat -f '%Lp' "$1" 2>/dev/null
+    fi
+}
+
 # $1 credential file containing a "password=..." line.
 # Accepts only a regular file owned by the effective process UID, with no
 # group/other permission bits. The daemon therefore requires root ownership.
@@ -60,9 +68,7 @@ zte_read_password() {
     [ -f "$1" ] || return 1
     [ ! -L "$1" ] || return 1
     [ "$(zte_file_owner_uid "$1")" = "$(zte_effective_uid)" ] || return 1
-    # Only the fixed-width permission field is inspected; filename text is ignored.
-    # shellcheck disable=SC2012
-    [ "$(ls -ld "$1" | cut -c 2-10)" = 'rw-------' ] || return 1
+    [ "$(zte_file_mode "$1")" = 600 ] || return 1
     awk '
         index($0, "password=") == 1 {
             print substr($0, 10)

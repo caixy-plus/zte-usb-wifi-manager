@@ -622,6 +622,7 @@ zte-usb-wifi-manager/
 │   ├── usr/libexec/rpcd/zte-usb-wifi
 │   ├── usr/sbin/zte-usb-wifi-managerd
 │   └── usr/lib/zte-usb-wifi-manager/
+│       ├── adapter-zte-u25s-metadata.sh
 │       ├── adapter-zte-u25s.sh
 │       ├── netifd-adapter.sh
 │       ├── power-adapter.sh

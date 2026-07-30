@@ -11,7 +11,7 @@ define Package/zte-usb-wifi-manager
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=ZTE USB WiFi Manager backend
-  DEPENDS:=+curl +jshn +rpcd +ubus +uci
+  DEPENDS:=+curl +ip-tiny +jshn +rpcd +ubus +uci
 endef
 
 define Package/zte-usb-wifi-manager/description

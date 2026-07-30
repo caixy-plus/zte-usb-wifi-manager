@@ -12,7 +12,7 @@ assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option wr
 assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" '^USE_PROCD=1$'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabilities"'
-assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh" '^ZTE_CAP_SIM_SWITCH=0$'
+assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" '^ZTE_CAP_SIM_SWITCH=0$'
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
@@ -93,8 +93,40 @@ work=/tmp/zte-test-daemon.$$
 mkdir -p "$work"
 fetch_count=$work/fetch-count
 status_log=$work/status
+policy_power_log=$work/policy-power
 printf 0 >"$fetch_count"
 : >"$status_log"
+
+# Exercise the production atomic writer against an isolated status path.
+eval "$(extract_daemon_function write_status)"
+STATE_DIR=$work/real-state
+STATUS_FILE=$STATE_DIR/status.json
+atomic_move_log=$work/atomic-moves
+: >"$atomic_move_log"
+# Injected into the eval-defined production write_status function.
+# shellcheck disable=SC2329
+mv() {
+    [ "$#" -eq 2 ] && [ -f "$1" ] || return 1
+    printf '%s|%s|%s\n' "$1" "$2" "$(cat "$1")" >>"$atomic_move_log"
+    command mv "$1" "$2"
+}
+write_status '{"generation":1}'
+write_status '{"generation":2}'
+unset -f mv
+assert_eq \
+    "$STATUS_FILE.tmp.$$|$STATUS_FILE|{\"generation\":1}
+$STATUS_FILE.tmp.$$|$STATUS_FILE|{\"generation\":2}" \
+    "$(cat "$atomic_move_log")" \
+    'write_status must publish complete temporary files through mv'
+assert_eq '{"generation":2}' "$(cat "$STATUS_FILE")" \
+    'write_status must atomically replace the previous snapshot'
+assert_eq 600 "$(test_file_mode "$STATUS_FILE")" \
+    'write_status must publish a mode-600 snapshot'
+if find "$STATE_DIR" -name 'status.json.tmp.*' -print | grep -q .; then
+    fail 'write_status left a temporary snapshot behind'
+else
+    pass
+fi
 
 dev1='{"online":true,"model":"U25S","battery":{"present":true,"percent":82,"charging":false}}'
 dev2='{"online":true,"model":"U25S","battery":{"present":true,"percent":83,"charging":false}}'
@@ -136,11 +168,16 @@ collect_network() { network_json=$net; }
 zte_is_uint() {
     case ${1-} in ''|*[!0-9]*) return 1 ;; esac
 }
-zte_policy_decide() { printf '%s\n' 'DISABLED:KEEP'; }
+zte_policy_decide() {
+    printf '%s\n' "$8" >"$policy_power_log"
+    printf '%s\n' 'DISABLED:KEEP'
+}
 date() { printf '%s\n' 1722345678; }
 write_status() { printf '%s\n' "$1" >>"$status_log"; }
 
 poll_once
+assert_eq UNKNOWN "$(cat "$policy_power_log")" \
+    'read-only daemon must not invent a current USB power state'
 poll_once
 poll_once
 poll_once

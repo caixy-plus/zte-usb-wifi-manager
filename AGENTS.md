@@ -29,12 +29,14 @@ One-directional data flow; each layer only talks to the next:
 3. The LuCI view (`view/zte-usb-wifi-manager/index.js`) calls those ubus
    methods only. The ACL grants only those two ubus reads.
 
-Device specifics (ZTE U25S HTTP API, field names, capability flags) are
-isolated in `adapter-zte-u25s.sh` behind `zte_adapter_*` functions, so the
-daemon, rpcd script, and policy core stay device-agnostic. `policy.sh` is a
-pure, deterministic function (`zte_policy_decide`) mapping battery state to a
-power action; `validation.sh` holds all input validation. Both are plain
-libraries sourced by the daemon and directly unit-tested.
+Static ZTE U25S identity and capability flags are isolated in
+`adapter-zte-u25s-metadata.sh`; HTTP API details and field normalization remain
+in `adapter-zte-u25s.sh` behind `zte_adapter_*` functions. The rpcd script
+sources metadata only, while the daemon loads both files, keeping rpcd and the
+policy core independent of the HTTP/session stack. `policy.sh` is a pure,
+deterministic function (`zte_policy_decide`) mapping battery state to a power
+action; `validation.sh` holds all input validation. Both are plain libraries
+sourced by the daemon and directly unit-tested.
 
 Capability gating is code, not UI: uncalibrated device features must return
 `unsupported` from the adapter (`ZTE_CAP_*=0`), never merely be hidden in LuCI.
