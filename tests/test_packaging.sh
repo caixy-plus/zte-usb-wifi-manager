@@ -23,4 +23,23 @@ assert_file_contains "$builder" 'build-manifest\.json'
 assert_failure ./scripts/build-openwrt-packages.sh 23.05.6 \
     /tmp/zte-invalid-output >/dev/null 2>&1
 
+workflow=.github/workflows/packages.yml
+assert_file_contains "$workflow" 'workflow_dispatch:'
+assert_file_contains "$workflow" 'tags:'
+assert_file_contains "$workflow" '25\.12\.5'
+assert_file_contains "$workflow" '24\.10\.7'
+assert_file_contains "$workflow" 'contents: read'
+assert_file_contains "$workflow" 'contents: write'
+assert_file_contains "$workflow" 'scripts/build-openwrt-packages\.sh'
+assert_file_contains "$workflow" 'SHA256SUMS'
+assert_file_contains "$workflow" 'gh release create'
+assert_file_contains "$workflow" '\-\-prerelease'
+
+if grep -Eq 'pull_request:|--force-depends|--force-architecture' \
+    "$workflow" 2>/dev/null; then
+    fail 'packaging workflow must not run on pull requests or force installs'
+else
+    pass
+fi
+
 finish
