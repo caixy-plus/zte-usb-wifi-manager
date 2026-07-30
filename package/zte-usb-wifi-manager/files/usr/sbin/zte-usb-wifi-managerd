@@ -8,6 +8,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/session.sh
 . /usr/lib/zte-usb-wifi-manager/policy.sh
 . /usr/lib/zte-usb-wifi-manager/power-adapter.sh
+. /usr/lib/zte-usb-wifi-manager/event-log.sh
 . /usr/lib/zte-usb-wifi-manager/snapshot.sh
 . /usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
@@ -16,6 +17,7 @@ set -e
 STATE_DIR=/var/run/zte-usb-wifi-manager
 STATUS_FILE=$STATE_DIR/status.json
 COOKIE_FILE=$STATE_DIR/cookies.txt
+EVENT_LOG_MAX_BYTES=524288
 
 load_config() {
 	# config_get assigns these global variables by the name in its first argument.
@@ -81,6 +83,7 @@ init_state() {
 	umask 077
 	mkdir -p "$STATE_DIR"
 	chmod 700 "$STATE_DIR"
+	zte_event_init "$STATE_DIR"
 }
 
 write_status() {
@@ -127,6 +130,34 @@ apply_policy_action() {
 		last_power_action=$_zte_policy_action
 	else
 		logger -t zte-usb-wifi-manager 'power decision recording failed'
+	fi
+}
+
+record_event() {
+	_zte_event_level=$1
+	_zte_event_type=$2
+	_zte_event_code=$3
+	_zte_event_time=$4
+	zte_event_write \
+		"$STATE_DIR" "$_zte_event_level" "$_zte_event_type" \
+		"$_zte_event_code" "$_zte_event_time" "$EVENT_LOG_MAX_BYTES"
+}
+
+record_state_change() {
+	_zte_new_state=$1
+	_zte_state_time=$2
+	[ "$_zte_new_state" != "$last_logged_state" ] || return 0
+
+	case $_zte_new_state in
+		ok) _zte_state_level=info ;;
+		degraded|credentials_missing) _zte_state_level=warn ;;
+		fail_safe) _zte_state_level=error ;;
+		*) return 0 ;;
+	esac
+	if record_event \
+		"$_zte_state_level" state "state_$_zte_new_state" \
+		"$_zte_state_time"; then
+		last_logged_state=$_zte_new_state
 	fi
 }
 
@@ -203,6 +234,7 @@ poll_once() {
 		"$state" "$reason" "$device_json" "$network_json" \
 		"$policy_state" "$power_action" "$failures" "$updated")
 	write_status "$status_json"
+	record_state_change "$state" "$updated"
 }
 
 main() {
@@ -211,6 +243,8 @@ main() {
 	failures=0
 	last_device_json=''
 	last_power_action=''
+	last_logged_state=''
+	record_event info service service_started "$(date +%s)" || :
 	while [ "$enabled" = 1 ]; do
 		poll_once
 		sleep "$(zte_backoff_interval "$poll_interval" "$failures")"

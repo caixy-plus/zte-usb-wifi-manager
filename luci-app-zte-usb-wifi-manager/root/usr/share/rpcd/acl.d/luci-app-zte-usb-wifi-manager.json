@@ -6,7 +6,8 @@
         "zte_usb_wifi": [
           "status",
           "capabilities",
-          "operation_status"
+          "operation_status",
+          "logs"
         ]
       }
     },

@@ -5,6 +5,7 @@ ZTE_USB_WIFI_LIB_DIR=${ZTE_USB_WIFI_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 . "$ZTE_USB_WIFI_LIB_DIR/validation.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/json.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/actions.sh"
+. "$ZTE_USB_WIFI_LIB_DIR/event-log.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/adapter-zte-u25s-metadata.sh"
 
 STATUS_FILE=${ZTE_USB_WIFI_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
@@ -12,7 +13,7 @@ STATE_DIR=${ZTE_USB_WIFI_STATE_DIR:-/var/run/zte-usb-wifi-manager}
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
+		'{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
 }
 
 get_status() {
@@ -21,6 +22,23 @@ get_status() {
 	else
 		zte_adapter_framework_status_json
 	fi
+}
+
+get_logs() {
+	_zte_request='{}'
+	IFS= read -r _zte_request || :
+	if ! zte_json_is_flat_object "$_zte_request"; then
+		printf '%s\n' '{"ok":false,"error":"invalid_limit"}'
+		return
+	fi
+	_zte_log_limit=$(zte_json_flat_get "$_zte_request" limit)
+	if ! _zte_event_is_uint "$_zte_log_limit" ||
+		[ "$_zte_log_limit" -lt 1 ] ||
+		[ "$_zte_log_limit" -gt 200 ]; then
+		printf '%s\n' '{"ok":false,"error":"invalid_limit"}'
+		return
+	fi
+	zte_event_list "$STATE_DIR" "$_zte_log_limit"
 }
 
 get_operation_status() {
@@ -89,6 +107,7 @@ case ${1-} in
 			status) get_status ;;
 			capabilities) zte_adapter_capabilities_json ;;
 			operation_status) get_operation_status ;;
+			logs) get_logs ;;
 			cellular_action|wifi_action|traffic_action|sms_action)
 				handle_action "$2"
 				;;

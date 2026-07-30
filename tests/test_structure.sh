@@ -45,7 +45,7 @@ if (JSON.stringify(Object.keys(read)) !== JSON.stringify(["ubus"]))
 if (JSON.stringify(Object.keys(read.ubus)) !== JSON.stringify(["zte_usb_wifi"]))
     process.exit(1);
 if (JSON.stringify(read.ubus.zte_usb_wifi) !==
-    JSON.stringify(["status", "capabilities", "operation_status"]))
+    JSON.stringify(["status", "capabilities", "operation_status", "logs"]))
     process.exit(1);
 if (JSON.stringify(write.ubus.zte_usb_wifi) !==
     JSON.stringify(["cellular_action", "wifi_action", "traffic_action", "sms_action"]))
@@ -147,11 +147,14 @@ assert_file_contains "$qemu_evidence" 'Release 卸载.*PASS'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'
-for library in json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh; do
+for library in \
+    json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh event-log.sh
+do
     assert_file_contains "$daemon" "$library"
 done
 for function in \
-    zte_adapter_fetch zte_failures_next zte_snapshot_compose zte_power_apply
+    zte_adapter_fetch zte_failures_next zte_snapshot_compose zte_power_apply \
+    zte_event_write
 do
     assert_file_contains "$daemon" "$function"
 done
@@ -191,6 +194,8 @@ extract_daemon_function() {
 eval "$(extract_daemon_function poll_once)"
 eval "$(extract_daemon_function main)"
 eval "$(extract_daemon_function apply_policy_action)"
+eval "$(extract_daemon_function record_event)"
+eval "$(extract_daemon_function record_state_change)"
 
 work=/tmp/zte-test-daemon.$$
 mkdir -p "$work"
@@ -251,6 +256,18 @@ failures=0
 # Read by the eval-defined production poll_once function.
 # shellcheck disable=SC2034
 last_device_json=''
+# Read by the eval-defined production record_state_change function.
+# shellcheck disable=SC2034
+last_logged_state=''
+# Read by the eval-defined production record_event function.
+# shellcheck disable=SC2034
+EVENT_LOG_MAX_BYTES=524288
+event_call_log=$work/event-calls
+: >"$event_call_log"
+zte_event_write() {
+    printf '%s|%s|%s|%s|%s|%s\n' \
+        "$1" "$2" "$3" "$4" "$5" "$6" >>"$event_call_log"
+}
 
 zte_read_password() { printf '%s\n' secret; }
 zte_adapter_fetch() {
@@ -300,6 +317,12 @@ assert_eq \
 assert_eq \
     "$(zte_snapshot_compose ok '' "$dev2" "$net" DISABLED KEEP 0 1722345678)" \
     "$(sed -n '4p' "$status_log")"
+assert_eq \
+    "$work/real-state|info|state|state_ok|1722345678|524288
+$work/real-state|warn|state|state_degraded|1722345678|524288
+$work/real-state|info|state|state_ok|1722345678|524288" \
+    "$(cat "$event_call_log")" \
+    'daemon must log state transitions without logging every poll'
 
 # Production collect_network passes both configured names to the adapter.
 eval "$(extract_daemon_function collect_network)"
@@ -403,7 +426,12 @@ poll_once() {
     esac
 }
 sleep() { printf '%s\n' "$1" >>"$sleep_log"; }
+: >"$event_call_log"
+STATE_DIR=$work/real-state
 main
+assert_eq \
+    "$work/real-state|info|service|service_started|1722345678|524288" \
+    "$(sed -n '1p' "$event_call_log")"
 assert_eq '60
 120
 30' "$(cat "$sleep_log")"

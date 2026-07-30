@@ -23,6 +23,7 @@ else
 fi
 assert_file_contains "$rpcd" 'adapter-zte-u25s-metadata\.sh'
 assert_file_contains "$rpcd" 'actions\.sh'
+assert_file_contains "$rpcd" 'event-log\.sh'
 assert_file_contains "$rpcd" 'json\.sh'
 if grep -q '/adapter-zte-u25s\.sh' "$rpcd"; then
     fail 'rpcd must not load the HTTP/session adapter stack'
@@ -48,7 +49,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
+assert_eq '{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, capabilities, and operation status'
 
@@ -120,6 +121,20 @@ if find "$state_dir/actions/pending" -type f -name '*.json' 2>/dev/null |
 else
     pass
 fi
+
+assert_eq '{"events":[]}' "$(printf '%s\n' '{"limit":20}' | rpcd_call call logs)"
+mkdir -p "$state_dir/logs"
+printf '%s\n' \
+    '{"time":1722345678,"level":"info","type":"service","code":"service_started"}' \
+    >"$state_dir/logs/events.jsonl"
+logs=$(printf '%s\n' '{"limit":1}' | rpcd_call call logs)
+assert_eq \
+    '{"events":[{"time":1722345678,"level":"info","type":"service","code":"service_started"}]}' \
+    "$logs"
+assert_eq '{"ok":false,"error":"invalid_limit"}' \
+    "$(printf '%s\n' '{"limit":0}' | rpcd_call call logs)"
+assert_eq '{"ok":false,"error":"invalid_limit"}' \
+    "$(printf '%s\n' '{"limit":201}' | rpcd_call call logs)"
 
 assert_failure rpcd_call call unknown
 assert_failure rpcd_call unknown
