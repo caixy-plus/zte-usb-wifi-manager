@@ -183,3 +183,36 @@ zte_action_recover_running() {
 			daemon_restarted "$_zte_action_updated" || return 1
 	done
 }
+
+zte_action_prune_results() {
+	_zte_action_root=$1
+	_zte_action_max=$2
+	zte_is_uint "$_zte_action_max" &&
+		[ "$_zte_action_max" -ge 1 ] || return 1
+	zte_action_init "$_zte_action_root" || return 1
+
+	_zte_action_results=$_zte_action_root/actions/results
+	_zte_action_count=0
+	for _zte_action_file in "$_zte_action_results"/op-*.json; do
+		[ -f "$_zte_action_file" ] || continue
+		_zte_action_count=$((_zte_action_count + 1))
+	done
+	_zte_action_remove=$((_zte_action_count - _zte_action_max))
+	[ "$_zte_action_remove" -gt 0 ] || return 0
+
+	_zte_action_list=$_zte_action_results/.prune.$$
+	find "$_zte_action_results" -type f -name 'op-*.json' |
+		LC_ALL=C sort >"$_zte_action_list" || return 1
+	sed -n "1,${_zte_action_remove}p" "$_zte_action_list" |
+		while IFS= read -r _zte_action_file; do
+			case $_zte_action_file in
+				"$_zte_action_results"/op-*.json)
+					rm -f "$_zte_action_file" || exit 1
+					;;
+				*) exit 1 ;;
+			esac
+		done
+	_zte_action_status=$?
+	rm -f "$_zte_action_list"
+	return "$_zte_action_status"
+}

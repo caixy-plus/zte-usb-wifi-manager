@@ -87,4 +87,28 @@ assert_eq \
     '{"operation_id":"op-1722345684-1238","type":"set_wifi","state":"failed","code":"daemon_restarted","updated":1722345685}' \
     "$(zte_action_get "$state" "$second_id")"
 
+prune_state=$work/prune
+assert_success zte_action_init "$prune_state"
+index=0
+while [ "$index" -lt 8 ]; do
+    operation_id=op-17223457$((10 + index))-20$index
+    assert_success zte_action_enqueue \
+        "$prune_state" "$operation_id" set_wifi '{"enabled":true}' \
+        "17223457$((10 + index))"
+    zte_action_claim "$prune_state" >/dev/null
+    assert_success zte_action_finish \
+        "$prune_state" "$operation_id" failed unsupported \
+        "17223457$((10 + index))"
+    index=$((index + 1))
+done
+assert_success zte_action_prune_results "$prune_state" 5
+assert_eq 5 \
+    "$(find "$prune_state/actions/results" -type f -name '*.json' |
+        wc -l | tr -d ' ')"
+assert_failure test -e \
+    "$prune_state/actions/results/op-1722345710-200.json"
+assert_success test -e \
+    "$prune_state/actions/results/op-1722345717-207.json"
+assert_failure zte_action_prune_results "$prune_state" 0
+
 finish
