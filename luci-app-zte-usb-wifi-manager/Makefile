@@ -10,3 +10,5 @@ LUCI_DEPENDS:=+zte-usb-wifi-manager
 LUCI_PKGARCH:=all
 
 include $(TOPDIR)/feeds/luci/luci.mk
+
+# call BuildPackage - OpenWrt buildroot signature

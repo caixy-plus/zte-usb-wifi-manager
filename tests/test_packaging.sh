@@ -6,6 +6,7 @@ TEST_NAME=test_packaging
 
 work=/tmp/zte-test-packaging.$$
 trap 'rm -rf "$work"' EXIT HUP INT TERM
+mkdir -p "$work"
 
 expected_2512='25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst|0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c|openwrt-25.12.5-x86-64-generic-ext4-combined.img.gz|23e2538e8ab0eb52dfed1c65d608ecdb71ffd432dd54885da138ae67cd9e4461|e11279b01e7fea7f7d399e25e969d9382be6891071cbc1225804195224b27b52'
 expected_2410='24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f|fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148'
@@ -37,14 +38,27 @@ assert_file_contains "$builder" \
     "zte-usb-wifi-manager-0\\.1\\.0_rc1-r1\\.apk"
 assert_file_contains "$builder" \
     "zte-usb-wifi-manager_0\\.1\\.0_rc1-r1_all\\.ipk"
+backend_package_definition="$work/backend-package-definition"
+sed -n '/^define Package\/zte-usb-wifi-manager$/,/^endef$/p' \
+    package/zte-usb-wifi-manager/Makefile >"$backend_package_definition"
+assert_file_contains "$backend_package_definition" '  PKGARCH:=all'
 # Internal architecture must be read from the built packages, not assumed.
 assert_file_contains "$builder" 'adbdump'
 assert_file_contains "$builder" 'Architecture: all'
-# The curl dependency needs an explicit TLS backend: a fresh SDK defconfig
-# does not reliably settle curl's SSL choice default, which breaks the curl
-# compile with "TLS not detected".
-assert_file_contains "$builder" 'CONFIG_PACKAGE_libmbedtls=m'
-assert_file_contains "$builder" 'CONFIG_LIBCURL_MBEDTLS=y'
+# Runtime dependencies come from the target router's signed package feeds.
+# Installing every source feed makes the SDK rebuild curl and other unrelated
+# packages that the trimmed SDK cannot satisfy.
+if grep -Fq './scripts/feeds install -a' "$builder"; then
+    fail 'builder must not install every feed package into the source graph'
+else
+    pass
+fi
+assert_file_contains "$builder" \
+    './scripts/feeds install -p luci luci-base'
+assert_file_contains "$builder" \
+    'package/feeds/packages/curl'
+assert_file_contains luci-app-zte-usb-wifi-manager/Makefile \
+    'call BuildPackage'
 
 builder_repo="$work/builder-repo"
 fake_bin="$work/fake-bin"
@@ -112,8 +126,17 @@ case " $* " in
         root=$destination/sdk-root
         mkdir -p "$root/scripts" "$root/package" "$root/feeds/luci" \
             "$root/bin/packages/fixture" "$root/staging_dir/host/bin"
+        : >"$root/feeds/luci/luci.mk"
         cat >"$root/scripts/feeds" <<'SCRIPT'
 #!/bin/sh
+case " $* " in
+    ' install -a ')
+        exit 65
+        ;;
+    ' install -p luci luci-base ')
+        mkdir -p package/feeds/luci/luci-base
+        ;;
+esac
 exit 0
 SCRIPT
         cat >"$root/staging_dir/host/bin/apk" <<'SCRIPT'
@@ -162,28 +185,10 @@ cat >"$fake_bin/make" <<'EOF'
 set -eu
 case " $* " in
     ' defconfig ')
-        count_file=.fake-defconfig-count
-        count=0
-        [ ! -f "$count_file" ] || count=$(cat "$count_file")
-        count=$((count + 1))
-        printf '%s\n' "$count" >"$count_file"
-        if [ "$count" -eq 1 ]; then
-            grep -v \
-                -e '^CONFIG_PACKAGE_libmbedtls=' \
-                -e '^CONFIG_LIBCURL_MBEDTLS=' \
-                .config >.config.next
-            mv .config.next .config
-            printf '%s\n' 'CONFIG_PACKAGE_libcurl=m' >>.config
-        else
-            sed 's/^CONFIG_PACKAGE_libmbedtls=m$/CONFIG_PACKAGE_libmbedtls=y/' \
-                .config >.config.next
-            mv .config.next .config
-        fi
         ;;
     *' package/zte-usb-wifi-manager/compile '*)
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
-        grep -Fqx 'CONFIG_LIBCURL_MBEDTLS=y' .config || exit 1
-        grep -Eq '^CONFIG_PACKAGE_libmbedtls=[my]$' .config || exit 1
+        [ ! -e package/feeds/packages/curl ] || exit 1
         printf 'apk-backend\n' \
             >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r1.apk
         printf 'ipk-backend\n' \

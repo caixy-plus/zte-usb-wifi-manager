@@ -89,7 +89,14 @@ IFS= read -r sdk_dir <"$sdk_list"
     cd "$sdk_dir"
     cp "$work_dir/feeds.buildinfo" feeds.conf
     ./scripts/feeds update -a
-    ./scripts/feeds install -a
+    [ -f feeds/luci/luci.mk ] ||
+        die 'pinned LuCI feed does not contain luci.mk'
+    # Install only LuCI's build helper. Runtime dependencies such as curl are
+    # supplied by the target router's signed package repositories; adding all
+    # feed sources here would make the trimmed SDK try to rebuild them.
+    ./scripts/feeds install -p luci luci-base
+    [ ! -e package/feeds/packages/curl ] ||
+        die 'selective feed setup unexpectedly installed curl source'
     ln -s "$repo_root/package/zte-usb-wifi-manager" \
         package/zte-usb-wifi-manager
     ln -s "$repo_root/luci-app-zte-usb-wifi-manager" \
@@ -97,17 +104,11 @@ IFS= read -r sdk_dir <"$sdk_list"
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
         'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
-    # Resolve the plugin dependencies first so libcurl's nested configuration
-    # and its selectable TLS dependencies exist before they are pinned.
     make defconfig
-    printf '%s\n' \
-        'CONFIG_PACKAGE_libmbedtls=m' \
-        'CONFIG_LIBCURL_MBEDTLS=y' >>.config
-    make defconfig
-    grep -Eq '^CONFIG_PACKAGE_libmbedtls=[my]$' .config ||
-        die 'SDK configuration did not select the libmbedtls package'
-    grep -Fqx 'CONFIG_LIBCURL_MBEDTLS=y' .config ||
-        die 'SDK configuration did not select the libcurl mbedTLS backend'
+    grep -Fqx 'CONFIG_PACKAGE_zte-usb-wifi-manager=m' .config ||
+        die 'SDK configuration did not select the backend package'
+    grep -Fqx 'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' .config ||
+        die 'SDK configuration did not select the LuCI package'
     make package/zte-usb-wifi-manager/compile V=s
     make package/luci-app-zte-usb-wifi-manager/compile V=s
 )
