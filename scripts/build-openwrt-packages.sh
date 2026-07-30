@@ -104,7 +104,7 @@ IFS= read -r sdk_dir <"$sdk_list"
         'CONFIG_PACKAGE_libmbedtls=m' \
         'CONFIG_LIBCURL_MBEDTLS=y' >>.config
     make defconfig
-    grep -Fqx 'CONFIG_PACKAGE_libmbedtls=m' .config ||
+    grep -Eq '^CONFIG_PACKAGE_libmbedtls=[my]$' .config ||
         die 'SDK configuration did not select the libmbedtls package'
     grep -Fqx 'CONFIG_LIBCURL_MBEDTLS=y' .config ||
         die 'SDK configuration did not select the libcurl mbedTLS backend'

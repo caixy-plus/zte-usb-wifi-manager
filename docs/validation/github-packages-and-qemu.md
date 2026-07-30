@@ -74,7 +74,15 @@ grep -Fqx "$image_sha256 *$image_file" "$vm_dir/sha256sums"
     cd "$vm_dir"
     printf '%s\n' "$image_sha256 *$image_file" | "$sha256sum_cmd" -c -
 )
-gzip -dc "$vm_dir/$image_file" >"$vm_dir/base.img"
+gzip_status=0
+gzip -dc "$vm_dir/$image_file" >"$vm_dir/base.img" || gzip_status=$?
+# macOS gzip 会把 24.10.7 官方镜像的尾随填充报告为状态 2；压缩文件
+# 已由官方 SHA-256 校验，且下一步还会让 qemu-img 验证解压后的磁盘。
+case "$release:$gzip_status" in
+    25.12.5:0|24.10.7:0|24.10.7:2) ;;
+    *) exit "$gzip_status" ;;
+esac
+qemu-img info "$vm_dir/base.img" >/dev/null
 qemu-img create -f qcow2 -F raw -b "$vm_dir/base.img" "$vm_dir/overlay.qcow2"
 ```
 
@@ -118,8 +126,8 @@ for private_net in \
     ip route replace prohibit "$private_net" metric 5
 done
 sysctl -w net.ipv6.conf.all.disable_ipv6=1
-ip route get 192.168.0.1 2>&1 | grep -Eq 'prohibit|unreachable'
-ip route get 10.0.0.1 2>&1 | grep -Eq 'prohibit|unreachable'
+if ip route get 192.168.0.1 >/dev/null 2>&1; then exit 1; fi
+if ip route get 10.0.0.1 >/dev/null 2>&1; then exit 1; fi
 ```
 
 这组拒绝路由必须在执行 `apk update` 或 `opkg update` 前生效。虚拟网段自身的

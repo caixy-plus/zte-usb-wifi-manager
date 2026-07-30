@@ -174,12 +174,16 @@ case " $* " in
                 .config >.config.next
             mv .config.next .config
             printf '%s\n' 'CONFIG_PACKAGE_libcurl=m' >>.config
+        else
+            sed 's/^CONFIG_PACKAGE_libmbedtls=m$/CONFIG_PACKAGE_libmbedtls=y/' \
+                .config >.config.next
+            mv .config.next .config
         fi
         ;;
     *' package/zte-usb-wifi-manager/compile '*)
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
         grep -Fqx 'CONFIG_LIBCURL_MBEDTLS=y' .config || exit 1
-        grep -Fqx 'CONFIG_PACKAGE_libmbedtls=m' .config || exit 1
+        grep -Eq '^CONFIG_PACKAGE_libmbedtls=[my]$' .config || exit 1
         printf 'apk-backend\n' \
             >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r1.apk
         printf 'ipk-backend\n' \
