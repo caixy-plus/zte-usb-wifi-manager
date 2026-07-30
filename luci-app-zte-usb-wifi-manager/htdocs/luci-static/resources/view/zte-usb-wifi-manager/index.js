@@ -1,7 +1,6 @@
 'use strict';
 'require view';
 'require rpc';
-'require ui';
 
 var callStatus = rpc.declare({
 	object: 'zte_usb_wifi',
@@ -36,6 +35,88 @@ function renderTab(tab, active) {
 	}, tab.label);
 }
 
+function dash(value) {
+	return value === null || value === undefined || value === '' ? '—' : value;
+}
+
+function row(label, value) {
+	return E('div', { 'class': 'cbi-value' }, [
+		E('div', { 'class': 'cbi-value-title' }, label),
+		E('div', { 'class': 'cbi-value-field' }, dash(value))
+	]);
+}
+
+function stateLabel(state, hasDevice) {
+	var label;
+
+	switch (state) {
+	case 'ok':
+		label = _('正常');
+		break;
+	case 'degraded':
+		label = _('降级');
+		break;
+	case 'fail_safe':
+		label = _('故障安全');
+		break;
+	case 'credentials_missing':
+		label = _('缺少设备凭据');
+		break;
+	case 'framework_ready':
+		label = _('框架已就绪');
+		break;
+	default:
+		label = typeof state === 'string' ? state : null;
+	}
+
+	if (label && state !== 'ok' && hasDevice)
+		return label + _('（设备数据来自最近一次成功读取）');
+
+	return label;
+}
+
+function signalLabel(cellular) {
+	if (cellular.rsrp !== null && cellular.rsrp !== undefined && cellular.rsrp !== '')
+		return cellular.rsrp + ' dBm';
+	if (cellular.signalbar !== null && cellular.signalbar !== undefined && cellular.signalbar !== '')
+		return cellular.signalbar + ' ' + _('格');
+	return null;
+}
+
+function batteryLabel(battery) {
+	if (battery.present === false)
+		return _('未检测到电池');
+	if (battery.percent === null || battery.percent === undefined || battery.percent === '')
+		return null;
+
+	return battery.percent + '%' + (battery.charging === true ? ' · ' + _('充电中') : '');
+}
+
+function onlineLabel(status) {
+	if (status.online === true)
+		return _('在线');
+	if (status.online === false)
+		return _('离线');
+	return null;
+}
+
+function uplinkLabel(network) {
+	if (network.up === true)
+		return network.l3_device ? _('已连接') + ' (' + network.l3_device + ')' : _('已连接');
+	if (network.up === false)
+		return _('未连接');
+	return null;
+}
+
+function updatedLabel(updated) {
+	var timestamp = Number(updated);
+
+	if (!isFinite(timestamp) || timestamp <= 0)
+		return null;
+
+	return new Date(timestamp * 1000).toLocaleString();
+}
+
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -45,8 +126,15 @@ return view.extend({
 	},
 
 	render: function(data) {
-		var status = data[0] || {};
-		var capabilities = data[1] || {};
+		var status = data && data[0] && typeof data[0] === 'object' ? data[0] : {};
+		var capabilities = data && data[1] && typeof data[1] === 'object' ? data[1] : {};
+		var device = status.device && typeof status.device === 'object' ? status.device : {};
+		var hasDevice = status.device && typeof status.device === 'object' &&
+			Object.keys(status.device).length > 0;
+		var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
+		var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
+		var network = status.network && typeof status.network === 'object' ? status.network : {};
+		var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
@@ -54,13 +142,22 @@ return view.extend({
 				return renderTab(tab, index === 0);
 			})),
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('框架状态')),
-				E('p', {}, status.state === 'framework_ready'
-					? _('后端框架已就绪，设备轮询尚未配置。')
-					: _('正在等待后端状态。')),
-				E('p', {}, _('目标型号：') + (status.model || capabilities.model || 'U25S')),
+				E('h3', {}, _('只读状态总览')),
+				row(_('设备型号'), device.model || status.model || capabilities.model),
+				row(_('设备在线'), onlineLabel(status)),
+				row(_('后端状态'), stateLabel(status.state, hasDevice)),
+				row(_('网络制式'), cellular.type),
+				row(_('运营商'), cellular.provider),
+				row(_('信号'), signalLabel(cellular)),
+				row(_('电量'), batteryLabel(battery)),
+				row(_('USB 上联'), uplinkLabel(network)),
+				row(_('默认出口'), network.is_default_route === true ? _('是') :
+					(network.is_default_route === false ? _('否') : null)),
+				row(_('电池策略'), _('仅监控，不控制供电') +
+					(policy.state ? ' (' + policy.state + ')' : '')),
+				row(_('状态快照时间'), updatedLabel(status.updated)),
 				E('div', { 'class': 'alert-message warning' },
-					_('设备写接口尚未完成实机校准，当前版本仅开放只读框架。'))
+					_('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
 			])
 		]);
 	},

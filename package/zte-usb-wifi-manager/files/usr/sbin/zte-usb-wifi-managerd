@@ -2,46 +2,170 @@
 set -eu
 
 . /lib/functions.sh
-. /usr/share/libubox/jshn.sh
 . /usr/lib/zte-usb-wifi-manager/validation.sh
+. /usr/lib/zte-usb-wifi-manager/json.sh
+. /usr/lib/zte-usb-wifi-manager/http.sh
+. /usr/lib/zte-usb-wifi-manager/session.sh
 . /usr/lib/zte-usb-wifi-manager/policy.sh
+. /usr/lib/zte-usb-wifi-manager/snapshot.sh
+. /usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh
 
 STATE_DIR=/var/run/zte-usb-wifi-manager
 STATUS_FILE=$STATE_DIR/status.json
+COOKIE_FILE=$STATE_DIR/cookies.txt
 
 load_config() {
+	# config_get assigns these global variables by the name in its first argument.
+	enabled=''
+	poll_interval=''
+	failure_threshold=''
+	host=''
+	interface=''
+	netdev=''
+	credential_file=''
+	battery_enabled=''
+	battery_low=''
+	battery_high=''
+
 	config_load zte-usb-wifi-manager
 	config_get enabled main enabled 1
 	config_get poll_interval main poll_interval 30
+	config_get failure_threshold main failure_threshold 3
 	config_get host zte host 192.168.0.1
+	config_get interface zte interface usbwan
+	config_get netdev zte netdev eth2
+	config_get credential_file zte credential_file \
+		/etc/zte-usb-wifi-manager/credentials
+	config_get battery_enabled policy enabled 0
+	config_get battery_low policy low_percent 70
+	config_get battery_high policy high_percent 100
 
 	zte_validate_host "$host" || {
 		logger -t zte-usb-wifi-manager 'invalid device host'
 		return 1
 	}
-
-	case $poll_interval in
-		''|*[!0-9]*) return 1 ;;
-	esac
-	[ "$poll_interval" -ge 10 ]
+	zte_validate_interface "$interface" || {
+		logger -t zte-usb-wifi-manager 'invalid network interface name'
+		return 1
+	}
+	zte_validate_netdev "$netdev" || {
+		logger -t zte-usb-wifi-manager 'invalid network device name'
+		return 1
+	}
+	zte_is_uint "$failure_threshold" &&
+		[ "$failure_threshold" -ge 1 ] || {
+		logger -t zte-usb-wifi-manager 'invalid failure threshold'
+		return 1
+	}
+	zte_is_uint "$poll_interval" &&
+		[ "$poll_interval" -ge 10 ] || {
+		logger -t zte-usb-wifi-manager 'invalid poll interval'
+		return 1
+	}
+	zte_validate_thresholds "$battery_low" "$battery_high" || {
+		logger -t zte-usb-wifi-manager 'invalid battery thresholds'
+		return 1
+	}
 }
 
-write_framework_status() {
+init_state() {
 	umask 077
 	mkdir -p "$STATE_DIR"
-	tmp_file=$STATUS_FILE.tmp.$$
-	zte_adapter_framework_status_json >"$tmp_file"
-	mv "$tmp_file" "$STATUS_FILE"
+	chmod 700 "$STATE_DIR"
+}
+
+write_status() {
+	umask 077
+	mkdir -p "$STATE_DIR"
+	_zte_status_tmp=$STATUS_FILE.tmp.$$
+	printf '%s\n' "$1" >"$_zte_status_tmp"
+	chmod 600 "$_zte_status_tmp"
+	mv "$_zte_status_tmp" "$STATUS_FILE"
+}
+
+collect_network() {
+	if command -v ubus >/dev/null 2>&1 &&
+		command -v jsonfilter >/dev/null 2>&1; then
+		network_json=$(zte_netifd_collect "$interface" "$netdev")
+	else
+		network_json=$(zte_netifd_json 0 "$netdev" '' '' 0)
+	fi
+}
+
+poll_once() {
+	ok=0
+	candidate_device_json=''
+	health=credentials_missing
+
+	if password=$(zte_read_password "$credential_file") &&
+		[ -n "$password" ]; then
+		health=degraded
+		if raw_json=$(zte_adapter_fetch "$host" "$password" "$COOKIE_FILE") &&
+			candidate_device_json=$(zte_adapter_normalize "$raw_json"); then
+			ok=1
+		fi
+		failure_result=$(zte_failures_next \
+			"$failures" "$ok" "$failure_threshold")
+		failures=${failure_result%%:*}
+		health=${failure_result#*:}
+	fi
+	password=
+	device_json=$(zte_device_retain \
+		"$last_device_json" "$candidate_device_json" "$ok")
+	if [ "$ok" = 1 ]; then
+		last_device_json=$device_json
+	fi
+
+	case $health in
+		ok)
+			state=ok
+			reason=''
+			;;
+		degraded)
+			state=degraded
+			reason=device_read_failed
+			;;
+		fail_safe)
+			state=fail_safe
+			reason=device_read_threshold_reached
+			;;
+		credentials_missing)
+			state=credentials_missing
+			reason=credential_file_unreadable
+			;;
+	esac
+
+	collect_network
+
+	policy_state=unavailable
+	power_action=none
+	if [ "$ok" = 1 ]; then
+		battery_percent=$(zte_json_path_get "$device_json" battery percent)
+		if zte_is_uint "$battery_percent"; then
+			policy_result=$(zte_policy_decide \
+				"$battery_enabled" 0 0 0 "$battery_percent" \
+				"$battery_low" "$battery_high" ON)
+			policy_state=${policy_result%%:*}
+			power_action=${policy_result#*:}
+		fi
+	fi
+
+	updated=$(date +%s)
+	status_json=$(zte_snapshot_compose \
+		"$state" "$reason" "$device_json" "$network_json" \
+		"$policy_state" "$power_action" "$failures" "$updated")
+	write_status "$status_json"
 }
 
 main() {
 	load_config
-	write_framework_status
-
+	init_state
+	failures=0
+	last_device_json=''
 	while [ "$enabled" = 1 ]; do
-		sleep "$poll_interval"
-		write_framework_status
+		poll_once
+		sleep "$(zte_backoff_interval "$poll_interval" "$failures")"
 	done
 }
 
