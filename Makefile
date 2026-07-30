@@ -12,6 +12,7 @@ test:
 		tests/test_session.sh \
 		tests/test_adapter.sh \
 		tests/test_u25s_simulator.sh \
+		tests/test_actions.sh \
 		tests/test_rpcd.sh \
 		tests/test_snapshot.sh \
 		tests/test_netifd.sh \
