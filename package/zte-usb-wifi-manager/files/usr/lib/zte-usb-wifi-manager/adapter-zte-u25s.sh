@@ -9,6 +9,16 @@ zte_adapter_bool() {
 	esac
 }
 
+# Print one flat JSON field as a JSON string, or null when it is absent.
+zte_adapter_json_field() {
+	if zte_json_flat_has "$1" "$2"; then
+		_zte_json_field_value=$(zte_json_flat_get "$1" "$2")
+		printf '"%s"' "$(zte_json_escape "$_zte_json_field_value")"
+	else
+		printf 'null'
+	fi
+}
+
 # Succeed when the response contains at least one known read field.
 zte_adapter_has_any_field() {
 	_zte_old_ifs=$IFS
@@ -56,7 +66,13 @@ zte_adapter_normalize() {
 	_zte_provider=$(zte_json_flat_get "$_zte_raw" network_provider_fullname)
 	_zte_rsrp=$(zte_json_flat_get "$_zte_raw" Z5g_rsrp)
 	_zte_ppp=$(zte_json_flat_get "$_zte_raw" ppp_status)
-	_zte_slot=$(zte_json_flat_get "$_zte_raw" simcard_active_slot_temp)
+	_zte_slot=$(zte_adapter_json_field "$_zte_raw" simcard_active_slot_temp)
+	_zte_sim_type=$(zte_adapter_json_field "$_zte_raw" usim_esim_type)
+	_zte_battery_value=$(zte_adapter_json_field "$_zte_raw" battery_value)
+	_zte_battery_pers=$(zte_adapter_json_field "$_zte_raw" battery_pers)
+	_zte_temperature_level=$(
+		zte_adapter_json_field "$_zte_raw" battery_temperature_level
+	)
 
 	if zte_json_flat_has "$_zte_raw" battery_exist; then
 		_zte_present_raw=$(zte_json_flat_get "$_zte_raw" battery_exist)
@@ -102,7 +118,7 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","ppp_status":"%s"},"sim":{"active_slot_raw":"%s"},"battery":{"present":%s,"percent":%s,"charging":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"model":"%s","modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_MODEL" \
 		"$(zte_json_escape "$_zte_modem_state")" \
 		"$(zte_json_escape "$_zte_net_type")" \
@@ -110,7 +126,8 @@ zte_adapter_normalize() {
 		"$(zte_json_escape "$_zte_signalbar")" \
 		"$(zte_json_escape "$_zte_rsrp")" \
 		"$(zte_json_escape "$_zte_ppp")" \
-		"$(zte_json_escape "$_zte_slot")" \
+		"$_zte_slot" "$_zte_sim_type" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
+		"$_zte_battery_value" "$_zte_battery_pers" "$_zte_temperature_level" \
 		"$(zte_json_escape "$_zte_missing")"
 }

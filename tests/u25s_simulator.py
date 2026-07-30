@@ -24,9 +24,13 @@ READ_FIELDS = {
     "Z5g_rsrp",
     "ppp_status",
     "simcard_active_slot_temp",
+    "usim_esim_type",
     "battery_exist",
     "battery_vol_percent",
     "battery_charging",
+    "battery_value",
+    "battery_pers",
+    "battery_temperature_level",
 }
 
 
