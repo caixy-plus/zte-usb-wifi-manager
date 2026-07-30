@@ -15,6 +15,12 @@ GitHub Actions 工作流运行
 工作流同时通过仓库测试和 lint。该次运行由 `workflow_dispatch` 触发，因此只生成
 Actions artifact，没有创建 GitHub Release。
 
+标签 `v0.1.0-rc1` 随后在提交
+`c39c90b2f15f88961aa462e8f5864b3b4b2d73b9` 上触发工作流
+[`30532866289`](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/runs/30532866289)。
+检查、两个 SDK 构建、汇总和 prerelease 发布任务全部 PASS，创建了
+[GitHub prerelease `v0.1.0-rc1`](https://github.com/caixy-plus/zte-usb-wifi-manager/releases/tag/v0.1.0-rc1)。
+
 ## 产物
 
 下载后的 artifact 恰好包含以下六个文件：
@@ -42,7 +48,8 @@ Actions artifact，没有创建 GitHub Release。
 | `zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk` | `bfe85a532454ff18871c6c959b1fb8a4946a14c99619392aa1cbe73fbbc2230b` |
 
 这些校验值只对应运行 `30532144723` 的 Actions artifact。标签工作流创建的 Release
-文件必须重新下载并按 Release 自带的 `SHA256SUMS` 独立校验。
+文件已经单独下载并按其自带的 `SHA256SUMS` 校验；最终 Release 文件的结果和校验值
+记录在 `2026-07-30-qemu-installation.md`。
 
 ## 构建边界
 

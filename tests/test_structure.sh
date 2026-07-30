@@ -76,7 +76,13 @@ assert_file_contains README.md 'opkg install'
 assert_file_contains README.md '/etc/zte-usb-wifi-manager/credentials'
 assert_file_contains README.md 'OpenWrt 25\.12\.5'
 assert_file_contains README.md 'OpenWrt 24\.10\.7'
-assert_file_contains README.md '等待 QEMU 安装验证'
+assert_file_contains README.md 'OpenWrt 25\.12\.5.*QEMU 安装验证通过'
+assert_file_contains README.md 'OpenWrt 24\.10\.7.*QEMU 安装验证通过'
+if grep -Fq '等待 QEMU 安装验证' README.md; then
+    fail 'README must not retain a pending QEMU validation status'
+else
+    pass
+fi
 assert_file_contains README.md 'coreutils-stat'
 assert_file_contains README.md '\./scripts/feeds install -p luci luci-base'
 if grep -Fq './scripts/feeds install -a' README.md; then
@@ -122,6 +128,12 @@ assert_file_contains "$qemu_evidence" 'OpenWrt 24\.10\.7.*PASS'
 assert_file_contains "$qemu_evidence" 'coreutils-stat'
 assert_file_contains "$qemu_evidence" 'validation=PASS'
 assert_file_contains "$qemu_evidence" 'uninstall=PASS'
+assert_file_contains "$qemu_evidence" '30532866289'
+assert_file_contains "$qemu_evidence" 'v0\.1\.0-rc1'
+assert_file_contains "$qemu_evidence" 'Release 文件完整性.*PASS'
+assert_file_contains "$qemu_evidence" 'Release 安装与依赖.*PASS'
+assert_file_contains "$qemu_evidence" 'Release 服务与 ubus.*PASS'
+assert_file_contains "$qemu_evidence" 'Release 卸载.*PASS'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'

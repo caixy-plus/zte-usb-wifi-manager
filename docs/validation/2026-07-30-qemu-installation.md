@@ -10,8 +10,18 @@ rpcd/ubus、只读默认值和卸载验证：
 | OpenWrt 25.12.5 x86/64 | PASS | PASS | PASS | PASS |
 | OpenWrt 24.10.7 x86/64 | PASS | PASS | PASS | PASS |
 
-这是发布前 Actions artifact 的验证。标签创建后的 GitHub Release 原始文件仍需在
-新的 QEMU overlay 中复验；完成前 README 保持“等待 QEMU 安装验证”。
+标签工作流
+[`30532866289`](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/runs/30532866289)
+随后从提交 `c39c90b2f15f88961aa462e8f5864b3b4b2d73b9` 构建并发布
+[`v0.1.0-rc1`](https://github.com/caixy-plus/zte-usb-wifi-manager/releases/tag/v0.1.0-rc1)。
+从 GitHub Release 重新下载的原始文件又在两套全新 QEMU overlay 中完整复验：
+
+| 最终发布项 | OpenWrt 25.12.5 | OpenWrt 24.10.7 |
+|---|---|---|
+| Release 文件完整性 | PASS | PASS |
+| Release 安装与依赖 | PASS | PASS |
+| Release 服务与 ubus | PASS | PASS |
+| Release 卸载 | PASS | PASS |
 
 ## 环境隔离
 
@@ -22,6 +32,9 @@ rpcd/ubus、只读默认值和卸载验证：
   更具体虚拟网段路由；IPv6 已关闭。
 - 没有连接、探测或修改主路由器和真实 U25S。
 - 测试凭据文件为空且权限为 `0600`，未写入密码、Cookie 或设备标识。
+
+发布前 artifact 和最终 Release 文件分别使用不同的 QEMU overlay。最终复验环境从
+未经插件安装修改的官方基础镜像创建，安装前确认插件和 `coreutils-stat` 均不存在。
 
 ## 安装验证
 
@@ -43,6 +56,20 @@ rpcd/ubus、只读默认值和卸载验证：
 
 两套环境的验证脚本最终都输出 `validation=PASS`。
 
+## Release 文件完整性
+
+Release 页面为公开的 prerelease，非草稿。下载目录恰好包含四个安装包、
+`build-manifest.json` 和 `SHA256SUMS`；清单中的源码提交与标签提交一致。
+执行 `sha256sum -c SHA256SUMS`：PASS。
+
+| 文件 | SHA-256 |
+|---|---|
+| `build-manifest.json` | `b5c4b929ce806e86e9c13ad7b5a97691cf4e30e2e3d371cc02593ffbd240c678` |
+| `luci-app-zte-usb-wifi-manager-0.1.0_rc1-r1.apk` | `7e1b306d0c2897f86f47c93777b5dfde0f6f90acbc3684ad74956af9de9e60c7` |
+| `luci-app-zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk` | `3296b8738f1aa1b65341089f1459f344a5160309eaca89121720fd36e25836bd` |
+| `zte-usb-wifi-manager-0.1.0_rc1-r1.apk` | `4b77881ed3cde76074defbbabedd472eff223cc57f627de719ef57a9b2f31949` |
+| `zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk` | `70bcec0771357738f01ebcb8d64dc4e0291b449552880b2f68b493a737b00981` |
+
 ## 卸载验证
 
 停止并禁用服务后，分别通过 `apk del` 和 `opkg remove` 卸载前后端包。包数据库中
@@ -51,3 +78,6 @@ rpcd/ubus、只读默认值和卸载验证：
 
 卸载过程中 init 脚本在服务已经停止时打印一次无害的 “service delete: Not found”
 提示；包管理器返回成功，且上述卸载后检查全部通过。
+
+最终 Release 复验脚本分别输出 `release_install=PASS`、
+`release_validation=PASS` 和 `release_uninstall=PASS`。
