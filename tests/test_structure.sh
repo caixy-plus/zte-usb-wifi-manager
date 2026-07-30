@@ -16,6 +16,10 @@ assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=1$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
+assert_file_contains "$backend/Makefile" \
+    '^define Package/zte-usb-wifi-manager/postrm$'
+assert_file_contains "$backend/Makefile" \
+    'rm -rf /var/run/zte-usb-wifi-manager'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
 assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" '^USE_PROCD=1$'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'

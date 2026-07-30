@@ -28,6 +28,14 @@ define Package/zte-usb-wifi-manager/conffiles
 /etc/config/zte-usb-wifi-manager
 endef
 
+define Package/zte-usb-wifi-manager/postrm
+#!/bin/sh
+if [ -z "$${IPKG_INSTROOT}" ]; then
+	rm -rf /var/run/zte-usb-wifi-manager
+fi
+exit 0
+endef
+
 define Package/zte-usb-wifi-manager/install
 	$(CP) ./files/* $(1)/
 endef
