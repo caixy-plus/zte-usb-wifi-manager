@@ -15,6 +15,15 @@ output_dir=$2
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
 
+build_inputs_status=$(git -C "$repo_root" status --porcelain \
+    --untracked-files=all -- \
+    scripts/build-openwrt-packages.sh \
+    scripts/openwrt-release-matrix.sh \
+    package/zte-usb-wifi-manager \
+    luci-app-zte-usb-wifi-manager)
+[ -z "$build_inputs_status" ] ||
+    die 'build inputs differ from HEAD; commit or restore them first'
+
 matrix=$("$script_dir/openwrt-release-matrix.sh" "$requested_release")
 IFS='|' read -r release format sdk_file sdk_sha256 image_file image_sha256 \
     feeds_sha256 <<EOF
@@ -32,10 +41,19 @@ esac
 
 [ ! -e "$output_dir" ] ||
     die "output directory already exists: $output_dir"
-mkdir -p "$output_dir"
 
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/zte-openwrt-build.XXXXXX")
-trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
+staged_output=
+cleanup() {
+    rm -rf "$work_dir"
+    [ -z "$staged_output" ] || rm -rf "$staged_output"
+}
+trap cleanup EXIT HUP INT TERM
+
+output_parent=$(dirname "$output_dir")
+output_name=$(basename "$output_dir")
+mkdir -p "$output_parent"
+staged_output=$(mktemp -d "$output_parent/.${output_name}.tmp.XXXXXX")
 
 base_url="https://downloads.openwrt.org/releases/$release/targets/x86/64"
 curl -fL --retry 3 --proto '=https' \
@@ -91,13 +109,13 @@ IFS= read -r sdk_dir <"$sdk_list"
 
 case $format in
     apk)
-        backend_pattern='zte-usb-wifi-manager-*.apk'
-        luci_pattern='luci-app-zte-usb-wifi-manager-*.apk'
+        backend_pattern='zte-usb-wifi-manager-0.1.0_rc1-r1.apk'
+        luci_pattern='luci-app-zte-usb-wifi-manager-0.1.0_rc1-r1.apk'
         package_architecture=noarch
         ;;
     ipk)
-        backend_pattern='zte-usb-wifi-manager_*_all.ipk'
-        luci_pattern='luci-app-zte-usb-wifi-manager_*_all.ipk'
+        backend_pattern='zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk'
+        luci_pattern='luci-app-zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk'
         package_architecture=all
         ;;
     *)
@@ -131,32 +149,67 @@ case $format in
     apk)
         apk_tool=$sdk_dir/staging_dir/host/bin/apk
         [ -x "$apk_tool" ] || die 'SDK apk host tool is missing'
-        for package_file in "$backend_package" "$luci_package"; do
-            "$apk_tool" adbdump "$package_file" 2>/dev/null |
-                grep -Fqx '  arch: noarch' ||
-                die "$package_file is not an arch:noarch APK"
-        done
+        backend_metadata=$("$apk_tool" adbdump "$backend_package" 2>/dev/null) ||
+            die "cannot read APK metadata: $backend_package"
+        luci_metadata=$("$apk_tool" adbdump "$luci_package" 2>/dev/null) ||
+            die "cannot read APK metadata: $luci_package"
+        printf '%s\n' "$backend_metadata" |
+            grep -Fqx '  name: zte-usb-wifi-manager' ||
+            die "$backend_package has unexpected APK metadata"
+        printf '%s\n' "$backend_metadata" |
+            grep -Fqx '  version: 0.1.0_rc1-r1' ||
+            die "$backend_package has unexpected APK metadata"
+        printf '%s\n' "$backend_metadata" |
+            grep -Fqx '  arch: noarch' ||
+            die "$backend_package has unexpected APK metadata"
+        printf '%s\n' "$luci_metadata" |
+            grep -Fqx '  name: luci-app-zte-usb-wifi-manager' ||
+            die "$luci_package has unexpected APK metadata"
+        printf '%s\n' "$luci_metadata" |
+            grep -Fqx '  version: 0.1.0_rc1-r1' ||
+            die "$luci_package has unexpected APK metadata"
+        printf '%s\n' "$luci_metadata" |
+            grep -Fqx '  arch: noarch' ||
+            die "$luci_package has unexpected APK metadata"
         ;;
     ipk)
-        for package_file in "$backend_package" "$luci_package"; do
-            ar p "$package_file" control.tar.gz 2>/dev/null |
-                tar -xzOf - ./control 2>/dev/null |
-                grep -Fqx 'Architecture: all' ||
-                die "$package_file is not an Architecture: all IPK"
-        done
+        backend_metadata=$(ar p "$backend_package" control.tar.gz 2>/dev/null |
+            tar -xzOf - ./control 2>/dev/null) ||
+            die "cannot read IPK metadata: $backend_package"
+        luci_metadata=$(ar p "$luci_package" control.tar.gz 2>/dev/null |
+            tar -xzOf - ./control 2>/dev/null) ||
+            die "cannot read IPK metadata: $luci_package"
+        printf '%s\n' "$backend_metadata" |
+            grep -Fqx 'Package: zte-usb-wifi-manager' ||
+            die "$backend_package has unexpected IPK metadata"
+        printf '%s\n' "$backend_metadata" |
+            grep -Fqx 'Version: 0.1.0_rc1-r1' ||
+            die "$backend_package has unexpected IPK metadata"
+        printf '%s\n' "$backend_metadata" |
+            grep -Fqx 'Architecture: all' ||
+            die "$backend_package has unexpected IPK metadata"
+        printf '%s\n' "$luci_metadata" |
+            grep -Fqx 'Package: luci-app-zte-usb-wifi-manager' ||
+            die "$luci_package has unexpected IPK metadata"
+        printf '%s\n' "$luci_metadata" |
+            grep -Fqx 'Version: 0.1.0_rc1-r1' ||
+            die "$luci_package has unexpected IPK metadata"
+        printf '%s\n' "$luci_metadata" |
+            grep -Fqx 'Architecture: all' ||
+            die "$luci_package has unexpected IPK metadata"
         ;;
 esac
 
 backend_name=$(basename "$backend_package")
 luci_name=$(basename "$luci_package")
-cp "$backend_package" "$output_dir/$backend_name"
-cp "$luci_package" "$output_dir/$luci_name"
+cp "$backend_package" "$staged_output/$backend_name"
+cp "$luci_package" "$staged_output/$luci_name"
 
-backend_sha256=$(sha256sum "$output_dir/$backend_name" | awk '{print $1}')
-luci_sha256=$(sha256sum "$output_dir/$luci_name" | awk '{print $1}')
+backend_sha256=$(sha256sum "$staged_output/$backend_name" | awk '{print $1}')
+luci_sha256=$(sha256sum "$staged_output/$luci_name" | awk '{print $1}')
 commit_sha=$(git -C "$repo_root" rev-parse HEAD)
 
-node - "$output_dir/build-manifest.json" \
+node - "$staged_output/build-manifest.json" \
     "$release" "$format" "$package_architecture" \
     "$sdk_file" "$sdk_sha256" "$feeds_sha256" "$commit_sha" \
     "$backend_name" "$backend_sha256" "$luci_name" "$luci_sha256" <<'NODE'
@@ -193,4 +246,6 @@ fs.writeFileSync(manifestPath, JSON.stringify({
 }, null, 2) + '\n');
 NODE
 
+mv "$staged_output" "$output_dir"
+staged_output=
 printf 'built OpenWrt %s packages in %s\n' "$release" "$output_dir"
