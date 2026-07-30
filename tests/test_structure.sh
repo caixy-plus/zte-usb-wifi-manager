@@ -69,6 +69,18 @@ assert_file_contains README.md '^## 安装$'
 assert_file_contains README.md 'apk add --allow-untrusted'
 assert_file_contains README.md 'opkg install'
 assert_file_contains README.md '/etc/zte-usb-wifi-manager/credentials'
+assert_file_contains README.md 'OpenWrt 25\.12\.5'
+assert_file_contains README.md 'OpenWrt 24\.10\.7'
+assert_file_contains README.md '等待 QEMU 安装验证'
+
+package_validation=docs/validation/github-packages-and-qemu.md
+assert_file_contains "$package_validation" '^# GitHub 安装包与 QEMU 验证$'
+assert_file_contains "$package_validation" 'gh workflow run packages\.yml'
+assert_file_contains "$package_validation" 'sha256sum -c SHA256SUMS'
+assert_file_contains "$package_validation" 'apk add --allow-untrusted'
+assert_file_contains "$package_validation" 'opkg install'
+assert_file_contains "$package_validation" 'ubus call zte_usb_wifi capabilities'
+assert_file_contains "$package_validation" 'gh release download'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 for library in json.sh session.sh snapshot.sh netifd-adapter.sh; do
