@@ -86,6 +86,8 @@ assert_file_contains README.md 'OpenWrt 24\.10\.7.*QEMU 安装验证通过'
 assert_file_contains README.md 'LuCI 十个标签已可切换'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
 assert_file_contains README.md 'Wi-Fi、流量、短信和日志仍等待经过验证的 fixture'
+assert_file_contains README.md 'mock/dry-run Power Adapter'
+assert_file_contains README.md 'hardware 后端仍保持禁用'
 if grep -Fq '等待 QEMU 安装验证' README.md; then
     fail 'README must not retain a pending QEMU validation status'
 else
@@ -145,10 +147,12 @@ assert_file_contains "$qemu_evidence" 'Release 卸载.*PASS'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'
-for library in json.sh session.sh snapshot.sh netifd-adapter.sh; do
+for library in json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh; do
     assert_file_contains "$daemon" "$library"
 done
-for function in zte_adapter_fetch zte_failures_next zte_snapshot_compose; do
+for function in \
+    zte_adapter_fetch zte_failures_next zte_snapshot_compose zte_power_apply
+do
     assert_file_contains "$daemon" "$function"
 done
 assert_file_contains "$daemon" 'sleep.*zte_backoff_interval'
@@ -182,6 +186,7 @@ extract_daemon_function() {
 }
 eval "$(extract_daemon_function poll_once)"
 eval "$(extract_daemon_function main)"
+eval "$(extract_daemon_function apply_policy_action)"
 
 work=/tmp/zte-test-daemon.$$
 mkdir -p "$work"
@@ -236,6 +241,8 @@ failure_threshold=3
 battery_enabled=0
 battery_low=70
 battery_high=100
+power_backend=unconfigured
+last_power_action=''
 failures=0
 # Read by the eval-defined production poll_once function.
 # shellcheck disable=SC2034
@@ -272,8 +279,8 @@ date() { printf '%s\n' 1722345678; }
 write_status() { printf '%s\n' "$1" >>"$status_log"; }
 
 poll_once
-assert_eq UNKNOWN "$(cat "$policy_power_log")" \
-    'read-only daemon must not invent a current USB power state'
+assert_eq OFF "$(cat "$policy_power_log")" \
+    'daemon must map the observed charging flag to current power state'
 poll_once
 poll_once
 poll_once
@@ -307,6 +314,7 @@ assert_eq "$net" "$network_json"
 
 # Production load_config rejects unsafe names without terminating the shell.
 . "$lib/validation.sh"
+. "$lib/power-adapter.sh"
 eval "$(extract_daemon_function load_config)"
 config_load() { :; }
 # Assignments are read by the eval-defined production load_config function.
@@ -323,18 +331,49 @@ config_get() {
         battery_enabled) battery_enabled=0 ;;
         battery_low) battery_low=70 ;;
         battery_high) battery_high=100 ;;
+        power_backend) power_backend=$_zte_test_power_backend ;;
     esac
 }
 logger() { :; }
 _zte_test_interface='bad/name'
 _zte_test_netdev=eth2
+_zte_test_power_backend=unconfigured
 assert_failure load_config
 _zte_test_interface=usbwan
 _zte_test_netdev='bad netdev'
 assert_failure load_config
 _zte_test_interface=usbwan
 _zte_test_netdev=eth2
+_zte_test_power_backend=invalid
+assert_failure load_config
+_zte_test_power_backend=unconfigured
 assert_success load_config
+
+power_call_log=$work/power-calls
+: >"$power_call_log"
+zte_power_apply() {
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$power_call_log"
+}
+STATE_DIR=$work/power-state
+mkdir -p "$STATE_DIR"
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_backend=unconfigured
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+last_power_action=''
+apply_policy_action MAINTAIN_CHARGING ON
+assert_eq '' "$(cat "$power_call_log")"
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_backend=dry-run
+apply_policy_action MAINTAIN_CHARGING ON
+apply_policy_action MAINTAIN_CHARGING ON
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq \
+    "dry-run|ON|battery_low|$STATE_DIR/power-decision.json
+dry-run|OFF|battery_high|$STATE_DIR/power-decision.json" \
+    "$(cat "$power_call_log")"
 
 sleep_log=$work/sleep
 : >"$sleep_log"
