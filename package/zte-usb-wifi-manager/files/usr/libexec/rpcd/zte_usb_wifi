@@ -77,6 +77,14 @@ sms_action:mark_sms_read)
 	esac
 }
 
+device_writes_enabled() {
+	command -v uci >/dev/null 2>&1 || return 1
+	_zte_write_enabled=$(
+		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
+	) || return 1
+	[ "$_zte_write_enabled" = 1 ]
+}
+
 handle_action() {
 	_zte_method=$1
 	_zte_request='{}'
@@ -95,7 +103,29 @@ handle_action() {
 		printf '%s\n' '{"ok":false,"error":"unsupported"}'
 		return
 	fi
-	printf '%s\n' '{"ok":false,"error":"write_not_enabled"}'
+	if ! device_writes_enabled; then
+		printf '%s\n' '{"ok":false,"error":"write_not_enabled"}'
+		return
+	fi
+	zte_action_init "$STATE_DIR" || {
+		printf '%s\n' '{"ok":false,"error":"queue_unavailable"}'
+		return
+	}
+	if zte_action_has_active "$STATE_DIR"; then
+		printf '%s\n' '{"ok":false,"error":"operation_busy"}'
+		return
+	fi
+
+	_zte_action_created=$(date +%s)
+	_zte_operation_id=op-$_zte_action_created-$$
+	if ! zte_action_enqueue \
+		"$STATE_DIR" "$_zte_operation_id" "$_zte_action" \
+		"$_zte_request" "$_zte_action_created"; then
+		printf '%s\n' '{"ok":false,"error":"queue_failed"}'
+		return
+	fi
+	printf '{"ok":true,"operation_id":"%s","state":"queued"}\n' \
+		"$_zte_operation_id"
 }
 
 case ${1-} in

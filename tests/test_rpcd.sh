@@ -6,10 +6,15 @@ TEST_NAME=test_rpcd
 
 rpcd=./package/zte-usb-wifi-manager/files/usr/libexec/rpcd/zte_usb_wifi
 metadata=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
+. "$(dirname "$metadata")/validation.sh"
+. "$(dirname "$metadata")/json.sh"
+. "$(dirname "$metadata")/actions.sh"
 work=$(mktemp -d /tmp/zte-test-rpcd.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 status_file=$work/status.json
 state_dir=$work/state
+write_lib=$work/write-lib
+test_bin=$work/bin
 
 if grep -Fq ':-/usr/lib/zte-usb-wifi-manager}' "$rpcd"; then
     pass
@@ -32,9 +37,10 @@ else
 fi
 
 rpcd_call() {
-    ZTE_USB_WIFI_LIB_DIR=$(dirname "$metadata") \
+    ZTE_USB_WIFI_LIB_DIR=${RPCD_TEST_LIB_DIR:-$(dirname "$metadata")} \
     ZTE_USB_WIFI_STATUS_FILE=$status_file \
     ZTE_USB_WIFI_STATE_DIR=$state_dir \
+    PATH="$test_bin:$PATH" \
         sh "$rpcd" "$@"
 }
 
@@ -121,6 +127,47 @@ if find "$state_dir/actions/pending" -type f -name '*.json' 2>/dev/null |
 else
     pass
 fi
+
+mkdir -p "$write_lib" "$test_bin"
+for library in validation.sh json.sh actions.sh event-log.sh; do
+    ln -s "$(pwd)/package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/$library" \
+        "$write_lib/$library"
+done
+sed 's/^ZTE_CAP_WIFI_WRITE=0$/ZTE_CAP_WIFI_WRITE=1/' \
+    "$metadata" >"$write_lib/adapter-zte-u25s-metadata.sh"
+# The generated stub must expand this variable when it executes, not here.
+# shellcheck disable=SC2016
+printf '%s\n' \
+    '#!/bin/sh' \
+    'if [ "$*" = "-q get zte-usb-wifi-manager.main.write_enabled" ]; then' \
+    '    printf "%s\n" "${ZTE_TEST_WRITE_ENABLED:-0}"' \
+    '    exit 0' \
+    'fi' \
+    'exit 1' >"$test_bin/uci"
+chmod +x "$test_bin/uci"
+RPCD_TEST_LIB_DIR=$write_lib
+export RPCD_TEST_LIB_DIR
+
+write_disabled=$(printf '%s\n' '{"action":"set_wifi"}' |
+    ZTE_TEST_WRITE_ENABLED=0 rpcd_call call wifi_action)
+assert_eq '{"ok":false,"error":"write_not_enabled"}' "$write_disabled"
+queued=$(printf '%s\n' '{"action":"set_wifi"}' |
+    ZTE_TEST_WRITE_ENABLED=1 rpcd_call call wifi_action)
+assert_success assert_json "$queued"
+case $queued in
+    '{"ok":true,"operation_id":"op-'*',"state":"queued"}') pass ;;
+    *) fail "supported write did not return a queued operation: $queued" ;;
+esac
+queued_id=$(zte_json_flat_get "$queued" operation_id)
+assert_success zte_operation_id_valid "$queued_id"
+assert_success test -f "$state_dir/actions/pending/$queued_id.json"
+assert_eq 600 \
+    "$(test_file_mode "$state_dir/actions/pending/$queued_id.json")"
+busy=$(printf '%s\n' '{"action":"set_wifi"}' |
+    ZTE_TEST_WRITE_ENABLED=1 rpcd_call call wifi_action)
+assert_eq '{"ok":false,"error":"operation_busy"}' "$busy"
+RPCD_TEST_LIB_DIR=$(dirname "$metadata")
+export RPCD_TEST_LIB_DIR
 
 assert_eq '{"events":[]}' "$(printf '%s\n' '{"limit":20}' | rpcd_call call logs)"
 mkdir -p "$state_dir/logs"
