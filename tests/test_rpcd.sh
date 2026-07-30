@@ -9,6 +9,7 @@ metadata=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/adapt
 work=$(mktemp -d /tmp/zte-test-rpcd.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 status_file=$work/status.json
+state_dir=$work/state
 
 if grep -Fq ':-/usr/lib/zte-usb-wifi-manager}' "$rpcd"; then
     pass
@@ -21,6 +22,8 @@ else
     fail 'rpcd must retain the production snapshot path default'
 fi
 assert_file_contains "$rpcd" 'adapter-zte-u25s-metadata\.sh'
+assert_file_contains "$rpcd" 'actions\.sh'
+assert_file_contains "$rpcd" 'json\.sh'
 if grep -q '/adapter-zte-u25s\.sh' "$rpcd"; then
     fail 'rpcd must not load the HTTP/session adapter stack'
 else
@@ -30,6 +33,7 @@ fi
 rpcd_call() {
     ZTE_USB_WIFI_LIB_DIR=$(dirname "$metadata") \
     ZTE_USB_WIFI_STATUS_FILE=$status_file \
+    ZTE_USB_WIFI_STATE_DIR=$state_dir \
         sh "$rpcd" "$@"
 }
 
@@ -44,8 +48,9 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"capabilities":{}}' "$list_output" \
-    'rpcd list must expose exactly the two read-only methods'
+assert_eq '{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"}}' \
+    "$list_output" \
+    'rpcd list must expose status, capabilities, and operation status'
 
 capabilities=$(rpcd_call call capabilities)
 assert_success assert_json "$capabilities"
@@ -66,6 +71,23 @@ status=$(rpcd_call call status)
 assert_success assert_json "$status"
 assert_eq '{"online":true,"state":"ok","updated":1722345678}' "$status" \
     'rpcd status must return the cached snapshot byte-for-byte'
+
+mkdir -p "$state_dir/actions/pending"
+operation_id=op-1722345678-1234
+operation_record='{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"queued","payload":{"target":"sim1"},"created":1722345678}'
+printf '%s\n' "$operation_record" \
+    >"$state_dir/actions/pending/$operation_id.json"
+operation_status=$(printf '{"operation_id":"%s"}\n' "$operation_id" | rpcd_call \
+    call operation_status)
+assert_success assert_json "$operation_status"
+assert_eq "$operation_record" "$operation_status"
+
+invalid_status=$(printf '%s\n' '{"operation_id":"../bad"}' | rpcd_call \
+    call operation_status)
+assert_eq '{"ok":false,"error":"invalid_operation_id"}' "$invalid_status"
+missing_status=$(printf '%s\n' '{"operation_id":"op-1722345679-1235"}' | rpcd_call \
+    call operation_status)
+assert_eq '{"ok":false,"error":"operation_not_found"}' "$missing_status"
 
 assert_failure rpcd_call call unknown
 assert_failure rpcd_call unknown

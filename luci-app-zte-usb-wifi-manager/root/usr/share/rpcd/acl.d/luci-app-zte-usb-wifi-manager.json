@@ -5,7 +5,8 @@
       "ubus": {
         "zte_usb_wifi": [
           "status",
-          "capabilities"
+          "capabilities",
+          "operation_status"
         ]
       }
     }
