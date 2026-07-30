@@ -15,6 +15,13 @@ config battery 'policy'
 	option enabled '0'
 	option low_percent '70'
 	option high_percent '100'
+	option manual_full '0'
+
+config schedule 'work'
+	option enabled '0'
+	option weekdays '1 2 3 4 5'
+	option departure '18:00'
+	option lead_minutes '90'
 
 config power 'usb'
 	option backend 'unconfigured'

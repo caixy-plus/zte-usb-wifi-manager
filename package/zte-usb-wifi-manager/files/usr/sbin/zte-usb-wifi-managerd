@@ -7,6 +7,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/http.sh
 . /usr/lib/zte-usb-wifi-manager/session.sh
 . /usr/lib/zte-usb-wifi-manager/policy.sh
+. /usr/lib/zte-usb-wifi-manager/schedule.sh
 . /usr/lib/zte-usb-wifi-manager/power-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
 . /usr/lib/zte-usb-wifi-manager/event-log.sh
@@ -36,6 +37,11 @@ load_config() {
 	battery_enabled=''
 	battery_low=''
 	battery_high=''
+	manual_full=''
+	schedule_enabled=''
+	schedule_weekdays=''
+	schedule_departure=''
+	schedule_lead=''
 	power_backend=''
 
 	config_load zte-usb-wifi-manager
@@ -50,6 +56,11 @@ load_config() {
 	config_get battery_enabled policy enabled 0
 	config_get battery_low policy low_percent 70
 	config_get battery_high policy high_percent 100
+	config_get manual_full policy manual_full 0
+	config_get schedule_enabled work enabled 0
+	config_get schedule_weekdays work weekdays '1 2 3 4 5'
+	config_get schedule_departure work departure '18:00'
+	config_get schedule_lead work lead_minutes 90
 	config_get power_backend usb backend unconfigured
 
 	zte_validate_host "$host" || {
@@ -78,10 +89,41 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid battery thresholds'
 		return 1
 	}
+	case $battery_enabled:$manual_full:$schedule_enabled in
+		[01]:[01]:[01]) ;;
+		*)
+			logger -t zte-usb-wifi-manager 'invalid policy flags'
+			return 1
+			;;
+	esac
+	zte_schedule_weekdays_valid "$schedule_weekdays" &&
+		schedule_departure_minutes=$(
+			zte_schedule_time_to_minutes "$schedule_departure"
+		) &&
+		zte_schedule_is_uint "$schedule_lead" &&
+		[ "$schedule_lead" -ge 1 ] &&
+		[ "$schedule_lead" -le "$schedule_departure_minutes" ] || {
+		logger -t zte-usb-wifi-manager 'invalid charging schedule'
+		return 1
+	}
 	zte_power_backend_valid "$power_backend" || {
 		logger -t zte-usb-wifi-manager 'invalid power backend'
 		return 1
 	}
+}
+
+schedule_pre_departure_now() {
+	_zte_schedule_weekday=$(date +%u)
+	_zte_schedule_hour=$(date +%H)
+	_zte_schedule_minute=$(date +%M)
+	_zte_schedule_now=$(
+		zte_schedule_time_to_minutes \
+			"$_zte_schedule_hour:$_zte_schedule_minute"
+	) || return 1
+	zte_schedule_pre_departure \
+		"$schedule_enabled" "$schedule_weekdays" \
+		"$schedule_departure" "$schedule_lead" \
+		"$_zte_schedule_weekday" "$_zte_schedule_now"
 }
 
 init_state() {
@@ -259,8 +301,12 @@ poll_once() {
 			*) current_power=UNKNOWN ;;
 		esac
 		if zte_is_uint "$battery_percent"; then
+			pre_departure=0
+			pre_departure=$(schedule_pre_departure_now) ||
+				pre_departure=0
 			policy_result=$(zte_policy_decide \
-				"$battery_enabled" 0 0 0 "$battery_percent" \
+				"$battery_enabled" 0 "$manual_full" \
+				"$pre_departure" "$battery_percent" \
 				"$battery_low" "$battery_high" "$current_power") ||
 				policy_result=''
 			if [ -n "$policy_result" ]; then

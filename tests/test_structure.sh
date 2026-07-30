@@ -21,6 +21,8 @@ assert_file_contains "$backend/Makefile" \
 assert_file_contains "$backend/Makefile" \
     'rm -rf /var/run/zte-usb-wifi-manager'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "config schedule 'work'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option enabled '0'"
 assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" '^USE_PROCD=1$'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabilities"'
@@ -161,7 +163,7 @@ daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh event-log.sh \
-    actions.sh recovery-inhibit.sh
+    actions.sh recovery-inhibit.sh schedule.sh
 do
     assert_file_contains "$daemon" "$library"
 done
@@ -169,7 +171,7 @@ for function in \
     zte_adapter_fetch zte_failures_next zte_snapshot_compose zte_power_apply \
     zte_event_write zte_action_claim zte_action_finish \
     zte_action_prune_results zte_recovery_inhibit_write \
-    zte_recovery_inhibit_clear
+    zte_recovery_inhibit_clear zte_schedule_pre_departure
 do
     assert_file_contains "$daemon" "$function"
 done
@@ -183,6 +185,7 @@ assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/session.sh" 'g
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh" 'multi_data=1'
 assert_file_contains tests/fixtures/u25s/read_ok.json 'NR5G-SA'
 assert_file_contains Makefile 'tests/test_session.sh'
+assert_file_contains Makefile 'tests/test_schedule.sh'
 assert_file_contains Makefile 'tests/test_adapter.sh'
 assert_file_contains Makefile 'tests/test_u25s_simulator.sh'
 assert_file_contains Makefile 'tests/test_actions.sh'
@@ -270,6 +273,11 @@ failure_threshold=3
 battery_enabled=0
 battery_low=70
 battery_high=100
+manual_full=0
+schedule_enabled=0
+schedule_weekdays='1 2 3 4 5'
+schedule_departure=18:00
+schedule_lead=90
 power_backend=unconfigured
 last_power_action=''
 failures=0
@@ -316,6 +324,7 @@ zte_policy_decide() {
     printf '%s\n' "$8" >"$policy_power_log"
     printf '%s\n' 'DISABLED:KEEP'
 }
+schedule_pre_departure_now() { printf '0\n'; }
 date() { printf '%s\n' 1722345678; }
 write_status() { printf '%s\n' "$1" >>"$status_log"; }
 
@@ -363,6 +372,7 @@ assert_eq "$net" "$network_json"
 . "$lib/validation.sh"
 . "$lib/power-adapter.sh"
 . "$lib/recovery-inhibit.sh"
+. "$lib/schedule.sh"
 eval "$(extract_daemon_function load_config)"
 config_load() { :; }
 # Assignments are read by the eval-defined production load_config function.
@@ -379,6 +389,11 @@ config_get() {
         battery_enabled) battery_enabled=0 ;;
         battery_low) battery_low=70 ;;
         battery_high) battery_high=100 ;;
+        manual_full) manual_full=0 ;;
+        schedule_enabled) schedule_enabled=0 ;;
+        schedule_weekdays) schedule_weekdays='1 2 3 4 5' ;;
+        schedule_departure) schedule_departure=18:00 ;;
+        schedule_lead) schedule_lead=90 ;;
         power_backend) power_backend=$_zte_test_power_backend ;;
     esac
 }

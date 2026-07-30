@@ -264,9 +264,13 @@ function renderSms(status) {
 	]);
 }
 
-function renderSchedule() {
+function renderSchedule(status) {
+	var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
+
 	return panelRoot('schedule', _('充电日程'), [
-		row(_('功能状态'), _('阶段 3 未启用'))
+		row(_('策略状态'), policy.state),
+		row(_('预期供电动作'), policy.power_action),
+		row(_('执行边界'), _('硬件执行保持禁用，等待板级校准'))
 	]);
 }
 
@@ -335,7 +339,7 @@ function renderPanel(tabId, status, capabilities, logsResult) {
 	case 'battery':
 		return renderBattery(status);
 	case 'schedule':
-		return renderSchedule();
+		return renderSchedule(status);
 	case 'device':
 		return renderDevice(status, capabilities);
 	case 'diagnostics':

@@ -389,6 +389,10 @@ const completeStatus = {
 		ipv4: '192.168.0.2',
 		gateway: '192.168.0.1',
 		is_default_route: false
+	},
+	policy: {
+		state: 'PRE_DEPARTURE',
+		power_action: 'ON'
 	}
 };
 
@@ -437,11 +441,14 @@ test('renders the battery panel from normalized battery status', function() {
 	assert.strictEqual(rowValue(tree, '温度级别'), 'normal');
 });
 
-test('marks charging schedules as phase 3 functionality', function() {
+test('renders the calculated charging schedule state', function() {
+	const tree = renderPanel(completeStatus, 'schedule');
 	assert.strictEqual(
-		rowValue(renderPanel(completeStatus, 'schedule'), '功能状态'),
-		'阶段 3 未启用'
+		rowValue(tree, '策略状态'),
+		'PRE_DEPARTURE'
 	);
+	assert.strictEqual(rowValue(tree, '预期供电动作'), 'ON');
+	assert.ok(text(tree).indexOf('硬件执行保持禁用') !== -1);
 });
 
 test('renders device and SIM details from normalized status', function() {

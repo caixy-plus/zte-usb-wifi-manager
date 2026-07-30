@@ -7,6 +7,7 @@ test:
 	for test_file in \
 		tests/test_validation.sh \
 		tests/test_policy.sh \
+		tests/test_schedule.sh \
 		tests/test_json.sh \
 		tests/test_http.sh \
 		tests/test_session.sh \
