@@ -45,6 +45,7 @@ zte_action_init() {
 
 zte_action_has_active() {
 	_zte_action_root=$1
+	[ -d "$_zte_action_root/actions/active" ] && return 0
 	for _zte_action_file in \
 		"$_zte_action_root"/actions/pending/*.json \
 		"$_zte_action_root"/actions/running/*.json
@@ -83,8 +84,17 @@ zte_action_enqueue() {
 	zte_is_uint "$_zte_action_created" || return 1
 	zte_action_init "$_zte_action_root" || return 1
 	zte_action_has_active "$_zte_action_root" && return 1
-	zte_action_get "$_zte_action_root" "$_zte_operation_id" >/dev/null 2>&1 &&
+	_zte_action_slot=$_zte_action_root/actions/active
+	mkdir "$_zte_action_slot" 2>/dev/null || return 1
+	chmod 700 "$_zte_action_slot" || {
+		rmdir "$_zte_action_slot" 2>/dev/null || :
 		return 1
+	}
+	zte_action_get "$_zte_action_root" "$_zte_operation_id" >/dev/null 2>&1 &&
+		{
+			rmdir "$_zte_action_slot" 2>/dev/null || :
+			return 1
+		}
 
 	_zte_action_pending=$_zte_action_root/actions/pending
 	_zte_action_target=$_zte_action_pending/$_zte_operation_id.json
@@ -94,9 +104,20 @@ zte_action_enqueue() {
 	printf '{"operation_id":"%s","type":"%s","state":"queued","payload":%s,"created":%s}\n' \
 		"$_zte_operation_id" "$_zte_action_type" \
 		"$_zte_action_payload" "$_zte_action_created" >"$_zte_action_tmp" ||
+		{
+			rmdir "$_zte_action_slot" 2>/dev/null || :
+			return 1
+		}
+	chmod 600 "$_zte_action_tmp" || {
+		rm -f "$_zte_action_tmp"
+		rmdir "$_zte_action_slot" 2>/dev/null || :
 		return 1
-	chmod 600 "$_zte_action_tmp" || return 1
-	mv "$_zte_action_tmp" "$_zte_action_target"
+	}
+	mv "$_zte_action_tmp" "$_zte_action_target" || {
+		rm -f "$_zte_action_tmp"
+		rmdir "$_zte_action_slot" 2>/dev/null || :
+		return 1
+	}
 }
 
 zte_action_result_state_valid() {
@@ -165,7 +186,8 @@ zte_action_finish() {
 		return 1
 	chmod 600 "$_zte_action_tmp" || return 1
 	mv "$_zte_action_tmp" "$_zte_action_result" || return 1
-	rm -f "$_zte_action_running"
+	rm -f "$_zte_action_running" || return 1
+	rmdir "$_zte_action_root/actions/active" 2>/dev/null || :
 }
 
 zte_action_recover_running() {
@@ -182,6 +204,31 @@ zte_action_recover_running() {
 			"$_zte_action_root" "$_zte_operation_id" failed \
 			daemon_restarted "$_zte_action_updated" || return 1
 	done
+}
+
+zte_action_reconcile_active() {
+	_zte_action_root=$1
+	zte_action_init "$_zte_action_root" || return 1
+	_zte_action_record_found=0
+	for _zte_action_file in \
+		"$_zte_action_root"/actions/pending/*.json \
+		"$_zte_action_root"/actions/running/*.json
+	do
+		if [ -f "$_zte_action_file" ]; then
+			_zte_action_record_found=1
+			break
+		fi
+	done
+
+	_zte_action_slot=$_zte_action_root/actions/active
+	if [ "$_zte_action_record_found" = 1 ]; then
+		if [ ! -d "$_zte_action_slot" ]; then
+			mkdir "$_zte_action_slot" || return 1
+			chmod 700 "$_zte_action_slot" || return 1
+		fi
+	else
+		rmdir "$_zte_action_slot" 2>/dev/null || :
+	fi
 }
 
 zte_action_prune_results() {

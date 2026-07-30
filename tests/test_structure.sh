@@ -1,7 +1,7 @@
 #!/bin/sh
 # Production functions are intentionally extracted and defined through eval
 # below, which ShellCheck 0.9 cannot model.
-# shellcheck disable=SC2218,SC2317
+# shellcheck disable=SC2218,SC2317,SC2329
 set -eu
 
 TEST_NAME=test_structure
@@ -170,7 +170,8 @@ done
 for function in \
     zte_adapter_fetch zte_failures_next zte_snapshot_compose zte_power_apply \
     zte_event_write zte_action_claim zte_action_finish \
-    zte_action_prune_results zte_recovery_inhibit_write \
+    zte_action_prune_results zte_action_reconcile_active \
+    zte_recovery_inhibit_write \
     zte_recovery_inhibit_clear zte_schedule_pre_departure
 do
     assert_file_contains "$daemon" "$function"
@@ -216,6 +217,7 @@ extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
 eval "$(extract_daemon_function poll_once)"
+eval "$(extract_daemon_function calculate_policy)"
 eval "$(extract_daemon_function main)"
 eval "$(extract_daemon_function apply_policy_action)"
 eval "$(extract_daemon_function record_event)"
@@ -354,6 +356,33 @@ $work/real-state|info|state|state_ok|1722345678|524288" \
     "$(cat "$event_call_log")" \
     'daemon must log state transitions without logging every poll'
 
+fail_safe_policy_log=$work/fail-safe-policy
+# Invoked by the eval-defined production calculate_policy function.
+# shellcheck disable=SC2329
+zte_policy_decide() {
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$5" "$8" \
+        >"$fail_safe_policy_log"
+    printf '%s\n' 'FAIL_SAFE_ON:ON'
+}
+battery_enabled=1
+# Read by the eval-defined production calculate_policy function.
+# shellcheck disable=SC2034
+health=fail_safe
+# Read by the eval-defined production calculate_policy function.
+# shellcheck disable=SC2034
+ok=0
+# Read by the eval-defined production calculate_policy function.
+# shellcheck disable=SC2034
+device_json=''
+calculate_policy
+assert_eq '1|1|0|UNKNOWN' "$(cat "$fail_safe_policy_log")"
+# Assigned by the eval-defined production calculate_policy function.
+# shellcheck disable=SC2154
+assert_eq FAIL_SAFE_ON "$policy_state"
+# Assigned by the eval-defined production calculate_policy function.
+# shellcheck disable=SC2154
+assert_eq ON "$power_action"
+
 # Production collect_network passes both configured names to the adapter.
 eval "$(extract_daemon_function collect_network)"
 collect_args=$work/collect-args
@@ -484,6 +513,7 @@ STATE_DIR=$work/real-state
 # shellcheck disable=SC2034
 ACTION_RESULT_MAX_COUNT=50
 process_actions() { :; }
+zte_action_reconcile_active() { :; }
 zte_action_recover_running() { :; }
 prune_call_log=$work/prune-calls
 : >"$prune_call_log"

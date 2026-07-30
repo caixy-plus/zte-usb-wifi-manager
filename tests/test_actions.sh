@@ -111,4 +111,44 @@ assert_success test -e \
     "$prune_state/actions/results/op-1722345717-207.json"
 assert_failure zte_action_prune_results "$prune_state" 0
 
+concurrent_state=$work/concurrent
+success_dir=$work/concurrent-success
+mkdir -p "$success_dir"
+index=0
+while [ "$index" -lt 20 ]; do
+    (
+        concurrent_id=op-$((1722349000 + index))-$((5000 + index))
+        if zte_action_enqueue \
+            "$concurrent_state" "$concurrent_id" set_wifi \
+            '{"enabled":true}' "$((1722349000 + index))"; then
+            : >"$success_dir/$index"
+        fi
+    ) &
+    index=$((index + 1))
+done
+wait
+assert_eq 1 "$(find "$success_dir" -type f | wc -l | tr -d ' ')"
+assert_eq 1 "$(
+    find "$concurrent_state/actions/pending" -type f -name '*.json' |
+        wc -l | tr -d ' '
+)"
+assert_success test -d "$concurrent_state/actions/active"
+concurrent_record=$(zte_action_claim "$concurrent_state")
+concurrent_id=$(zte_json_top_get "$concurrent_record" operation_id)
+assert_success zte_action_finish \
+    "$concurrent_state" "$concurrent_id" failed unsupported 1722349999
+assert_failure test -e "$concurrent_state/actions/active"
+
+reconcile_state=$work/reconcile
+assert_success zte_action_init "$reconcile_state"
+assert_success mkdir "$reconcile_state/actions/active"
+assert_success zte_action_reconcile_active "$reconcile_state"
+assert_failure test -e "$reconcile_state/actions/active"
+assert_success zte_action_enqueue \
+    "$reconcile_state" op-1722350000-6000 set_wifi \
+    '{"enabled":true}' 1722350000
+assert_success rmdir "$reconcile_state/actions/active"
+assert_success zte_action_reconcile_active "$reconcile_state"
+assert_success test -d "$reconcile_state/actions/active"
+
 finish
