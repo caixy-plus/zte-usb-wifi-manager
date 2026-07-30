@@ -54,16 +54,16 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid network device name'
 		return 1
 	}
-	zte_is_uint "$failure_threshold" &&
-		[ "$failure_threshold" -ge 1 ] || {
+	if ! zte_is_uint "$failure_threshold" ||
+		[ "$failure_threshold" -lt 1 ]; then
 		logger -t zte-usb-wifi-manager 'invalid failure threshold'
 		return 1
-	}
-	zte_is_uint "$poll_interval" &&
-		[ "$poll_interval" -ge 10 ] || {
+	fi
+	if ! zte_is_uint "$poll_interval" ||
+		[ "$poll_interval" -lt 10 ]; then
 		logger -t zte-usb-wifi-manager 'invalid poll interval'
 		return 1
-	}
+	fi
 	zte_validate_thresholds "$battery_low" "$battery_high" || {
 		logger -t zte-usb-wifi-manager 'invalid battery thresholds'
 		return 1
