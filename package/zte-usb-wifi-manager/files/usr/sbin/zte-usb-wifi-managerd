@@ -96,16 +96,22 @@ load_config() {
 			return 1
 			;;
 	esac
-	zte_schedule_weekdays_valid "$schedule_weekdays" &&
-		schedule_departure_minutes=$(
-			zte_schedule_time_to_minutes "$schedule_departure"
-		) &&
-		zte_schedule_is_uint "$schedule_lead" &&
-		[ "$schedule_lead" -ge 1 ] &&
-		[ "$schedule_lead" -le "$schedule_departure_minutes" ] || {
+	if ! zte_schedule_weekdays_valid "$schedule_weekdays"; then
+		logger -t zte-usb-wifi-manager 'invalid charging schedule'
+		return 1
+	fi
+	schedule_departure_minutes=$(
+		zte_schedule_time_to_minutes "$schedule_departure"
+	) || {
 		logger -t zte-usb-wifi-manager 'invalid charging schedule'
 		return 1
 	}
+	if ! zte_schedule_is_uint "$schedule_lead" ||
+		[ "$schedule_lead" -lt 1 ] ||
+		[ "$schedule_lead" -gt "$schedule_departure_minutes" ]; then
+		logger -t zte-usb-wifi-manager 'invalid charging schedule'
+		return 1
+	fi
 	zte_power_backend_valid "$power_backend" || {
 		logger -t zte-usb-wifi-manager 'invalid power backend'
 		return 1
