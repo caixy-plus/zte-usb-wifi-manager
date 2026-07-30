@@ -86,6 +86,12 @@ trap cleanup EXIT HUP INT TERM
 start_simulator() {
     stop_simulator
     rm -f "$ready_file" "$request_log"
+    allow_arg=
+    if [ "${2-0}" = 1 ]; then
+        allow_arg=--allow-fixture-writes
+    fi
+    # allow_arg is either empty or one fixed simulator flag.
+    # shellcheck disable=SC2086
     python3 tests/u25s_simulator.py \
         --host 127.0.0.1 \
         --port 0 \
@@ -93,6 +99,7 @@ start_simulator() {
         --ready-file "$ready_file" \
         --request-log "$request_log" \
         --login-secret "$login_secret" \
+        $allow_arg \
         >"$work/server.out" 2>"$work/server.err" &
     simulator_pid=$!
 
@@ -187,6 +194,73 @@ http_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 2 \
 assert_eq 403 "$http_code" 'non-login write requests must be denied'
 assert_eq 1 "$(grep -c '^POST WRITE 403$' "$request_log")" \
     'denied write must be recorded without its request body'
+assert_log_safe
+
+start_simulator normal 1
+action_jar=$work/action.cookies
+assert_success zte_session_login \
+    "$simulator_host" "$login_secret" "$action_jar"
+for fixture_action in \
+    FIXTURE_SWITCH_SIM \
+    FIXTURE_SET_APN \
+    FIXTURE_SET_CONNECTION_MODE \
+    FIXTURE_SET_WIFI \
+    FIXTURE_SET_TRAFFIC_PLAN \
+    FIXTURE_RESET_TRAFFIC \
+    FIXTURE_SEND_SMS \
+    FIXTURE_DELETE_SMS \
+    FIXTURE_MARK_SMS_READ
+do
+    assert_eq '{"result":"0"}' "$(
+        zte_http_post \
+            "http://$simulator_host/goform/goform_set_cmd_process" \
+            "goformId=$fixture_action&fixture_value=verified" \
+            "$action_jar"
+    )"
+    readback=$(zte_http_get \
+        "http://$simulator_host/fixture/action_state" "$action_jar")
+    assert_eq \
+        '{"action":"'"$fixture_action"'","value":"verified"}' \
+        "$readback"
+done
+assert_log_safe
+
+start_simulator write-denied 1
+denied_jar=$work/denied.cookies
+assert_success zte_session_login \
+    "$simulator_host" "$login_secret" "$denied_jar"
+assert_failure zte_http_post \
+    "http://$simulator_host/goform/goform_set_cmd_process" \
+    'goformId=FIXTURE_SET_WIFI&fixture_value=verified' \
+    "$denied_jar" 2>/dev/null
+
+start_simulator write-timeout 1
+write_timeout_jar=$work/write-timeout.cookies
+assert_success zte_session_login \
+    "$simulator_host" "$login_secret" "$write_timeout_jar"
+ZTE_HTTP_TIMEOUT=1
+export ZTE_HTTP_TIMEOUT
+assert_failure zte_http_post \
+    "http://$simulator_host/goform/goform_set_cmd_process" \
+    'goformId=FIXTURE_SET_WIFI&fixture_value=verified' \
+    "$write_timeout_jar" 2>/dev/null
+
+start_simulator write-expire-once 1
+write_expired_jar=$work/write-expired.cookies
+assert_success zte_session_login \
+    "$simulator_host" "$login_secret" "$write_expired_jar"
+assert_failure zte_http_post \
+    "http://$simulator_host/goform/goform_set_cmd_process" \
+    'goformId=FIXTURE_SWITCH_SIM&fixture_value=verified' \
+    "$write_expired_jar" 2>/dev/null
+assert_success zte_session_login \
+    "$simulator_host" "$login_secret" "$write_expired_jar"
+assert_eq '{"result":"0"}' "$(
+    zte_http_post \
+        "http://$simulator_host/goform/goform_set_cmd_process" \
+        'goformId=FIXTURE_SWITCH_SIM&fixture_value=verified' \
+        "$write_expired_jar"
+)"
 assert_log_safe
 
 stop_simulator

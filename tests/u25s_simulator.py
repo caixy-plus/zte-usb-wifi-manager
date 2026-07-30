@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loopback-only simulator for the observed read-only ZTE U25S goform API."""
+"""Loopback-only simulator for observed reads and explicit fixture-only writes."""
 
 import argparse
 import hashlib
@@ -15,7 +15,28 @@ from urllib.parse import parse_qs, urlparse
 CHALLENGE = "fixture-challenge"
 STATUS_PATH = "/goform/goform_get_cmd_process"
 ACTION_PATH = "/goform/goform_set_cmd_process"
-SCENARIOS = ("normal", "expire-once", "missing", "malformed", "timeout")
+SCENARIOS = (
+    "normal",
+    "expire-once",
+    "missing",
+    "malformed",
+    "timeout",
+    "write-denied",
+    "write-timeout",
+    "write-expire-once",
+)
+FIXTURE_STATE_PATH = "/fixture/action_state"
+FIXTURE_ACTIONS = {
+    "FIXTURE_SWITCH_SIM",
+    "FIXTURE_SET_APN",
+    "FIXTURE_SET_CONNECTION_MODE",
+    "FIXTURE_SET_WIFI",
+    "FIXTURE_SET_TRAFFIC_PLAN",
+    "FIXTURE_RESET_TRAFFIC",
+    "FIXTURE_SEND_SMS",
+    "FIXTURE_DELETE_SMS",
+    "FIXTURE_MARK_SMS_READ",
+}
 READ_FIELDS = {
     "mc_modem_main_state",
     "network_type",
@@ -42,7 +63,14 @@ def validate_bind_host(host):
 
 
 class SimulatorState:
-    def __init__(self, scenario, login_secret, fixture_path, request_log):
+    def __init__(
+        self,
+        scenario,
+        login_secret,
+        fixture_path,
+        request_log,
+        allow_fixture_writes=False,
+    ):
         self.scenario = scenario
         self.login_secret = login_secret
         self.fixture = fixture_path.read_text(encoding="utf-8").strip()
@@ -52,6 +80,8 @@ class SimulatorState:
         self.sessions = set()
         self.session_counter = 0
         self.expired_once = False
+        self.allow_fixture_writes = allow_fixture_writes
+        self.last_action = None
 
     def expected_digest(self):
         first = hashlib.sha256(self.login_secret.encode("utf-8")).hexdigest()
@@ -64,15 +94,31 @@ class SimulatorState:
             self.sessions.add(session_id)
             return session_id
 
-    def status_session_state(self, session_id):
+    def session_state(self, session_id, channel):
         with self.lock:
             if session_id not in self.sessions:
                 return "invalid"
-            if self.scenario == "expire-once" and not self.expired_once:
+            expires_here = (
+                self.scenario == "expire-once" and channel == "status"
+            ) or (
+                self.scenario == "write-expire-once" and channel == "write"
+            )
+            if expires_here and not self.expired_once:
                 self.expired_once = True
                 self.sessions.discard(session_id)
                 return "expired"
             return "valid"
+
+    def status_session_state(self, session_id):
+        return self.session_state(session_id, "status")
+
+    def apply_fixture_action(self, action, value):
+        with self.lock:
+            self.last_action = {"action": action, "value": value}
+
+    def fixture_action_state(self):
+        with self.lock:
+            return self.last_action
 
     def record(self, entry):
         with self.lock:
@@ -114,6 +160,22 @@ class U25SHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         request = urlparse(self.path)
+        if request.path == FIXTURE_STATE_PATH:
+            if not self.state.allow_fixture_writes:
+                self.state.record("GET FIXTURE_STATE 404")
+                self.send_payload(404, '{"error":"not_found"}')
+                return
+            if self.state.session_state(self.session_id(), "readback") != "valid":
+                self.state.record("GET FIXTURE_STATE 401")
+                self.send_payload(401, '{"error":"session_expired"}')
+                return
+            current = self.state.fixture_action_state()
+            self.state.record("GET FIXTURE_STATE 200")
+            self.send_payload(
+                200,
+                json.dumps(current or {}, separators=(",", ":")),
+            )
+            return
         if request.path != STATUS_PATH:
             self.state.record("GET UNKNOWN 404")
             self.send_payload(404, '{"error":"not_found"}')
@@ -161,9 +223,30 @@ class U25SHandler(BaseHTTPRequestHandler):
             self.send_payload(404, '{"error":"not_found"}')
             return
 
-        if form.get("goformId", [""])[0] != "LOGIN":
-            self.state.record("POST WRITE 403")
-            self.send_payload(403, '{"result":"denied"}')
+        action = form.get("goformId", [""])[0]
+        if action != "LOGIN":
+            if not self.state.allow_fixture_writes or action not in FIXTURE_ACTIONS:
+                self.state.record("POST WRITE 403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            if self.state.session_state(self.session_id(), "write") != "valid":
+                self.state.record("POST FIXTURE_WRITE 401")
+                self.send_payload(401, '{"result":"session_expired"}')
+                return
+            if self.state.scenario == "write-denied":
+                self.state.record("POST FIXTURE_WRITE 403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            if self.state.scenario == "write-timeout":
+                time.sleep(2)
+            value = form.get("fixture_value", [""])[0]
+            if not value or len(form) != 2:
+                self.state.record("POST FIXTURE_WRITE 400")
+                self.send_payload(400, '{"result":"invalid_fixture_request"}')
+                return
+            self.state.apply_fixture_action(action, value)
+            self.state.record(f"POST {action} 200")
+            self.send_payload(200, '{"result":"0"}')
             return
 
         supplied_digest = form.get("password", [""])[0]
@@ -193,6 +276,7 @@ def parse_args():
     parser.add_argument("--ready-file", type=Path, required=True)
     parser.add_argument("--request-log", type=Path, required=True)
     parser.add_argument("--login-secret", required=True)
+    parser.add_argument("--allow-fixture-writes", action="store_true")
     return parser.parse_args()
 
 
@@ -209,6 +293,7 @@ def main():
         args.login_secret,
         fixture_path,
         args.request_log,
+        args.allow_fixture_writes,
     )
     server = SimulatorServer((host, args.port), U25SHandler)
     server.simulator_state = state
