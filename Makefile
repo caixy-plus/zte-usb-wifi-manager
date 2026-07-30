@@ -16,6 +16,7 @@ test:
 		tests/test_power_adapter.sh \
 		tests/test_event_log.sh \
 		tests/test_recovery_inhibit.sh \
+		tests/test_runtime_stability.sh \
 		tests/test_rpcd.sh \
 		tests/test_snapshot.sh \
 		tests/test_netifd.sh \
