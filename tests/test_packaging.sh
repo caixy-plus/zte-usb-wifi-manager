@@ -155,6 +155,9 @@ printf '%s\n' \
 SCRIPT
         chmod +x "$root/scripts/feeds" "$root/staging_dir/host/bin/apk"
         ;;
+    *' -xOf '*' ./control.tar.gz '*)
+        printf '%s\n' "$2"
+        ;;
     *' -xzOf - ./control '*)
         IFS= read -r package_file
         case $(basename "$package_file") in
@@ -177,7 +180,7 @@ EOF
 cat >"$fake_bin/ar" <<'EOF'
 #!/bin/sh
 set -eu
-printf '%s\n' "$2"
+exit 66
 EOF
 
 cat >"$fake_bin/make" <<'EOF'

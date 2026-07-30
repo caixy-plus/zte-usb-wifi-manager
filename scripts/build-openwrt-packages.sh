@@ -7,6 +7,29 @@ die() {
     exit 1
 }
 
+read_ipk_metadata() {
+    package_file=$1
+    control_archive=$work_dir/ipk-control.tar.gz
+
+    # OpenWrt 24.10 emits gzip-compressed tar IPKs, while older tools and
+    # third-party builders may still emit the traditional ar container.
+    if tar -xOf "$package_file" ./control.tar.gz \
+        >"$control_archive" 2>/dev/null &&
+        tar -xzOf - ./control <"$control_archive" 2>/dev/null; then
+        rm -f "$control_archive"
+        return 0
+    fi
+    if ar p "$package_file" control.tar.gz \
+        >"$control_archive" 2>/dev/null &&
+        tar -xzOf - ./control <"$control_archive" 2>/dev/null; then
+        rm -f "$control_archive"
+        return 0
+    fi
+
+    rm -f "$control_archive"
+    return 1
+}
+
 [ "$#" -eq 2 ] ||
     die 'usage: build-openwrt-packages.sh RELEASE OUTPUT_DIRECTORY'
 
@@ -151,7 +174,8 @@ fi
 
 # Read the architecture from inside the built packages; never trust the
 # filename or the matrix value. APK v3 metadata is dumped with the SDK's own
-# apk tool; IPK control data comes from the ar member control.tar.gz.
+# apk tool; IPK control data supports both OpenWrt's tar wrapper and the
+# traditional ar wrapper.
 case $format in
     apk)
         apk_tool=$sdk_dir/staging_dir/host/bin/apk
@@ -180,11 +204,9 @@ case $format in
             die "$luci_package has unexpected APK metadata"
         ;;
     ipk)
-        backend_metadata=$(ar p "$backend_package" control.tar.gz 2>/dev/null |
-            tar -xzOf - ./control 2>/dev/null) ||
+        backend_metadata=$(read_ipk_metadata "$backend_package") ||
             die "cannot read IPK metadata: $backend_package"
-        luci_metadata=$(ar p "$luci_package" control.tar.gz 2>/dev/null |
-            tar -xzOf - ./control 2>/dev/null) ||
+        luci_metadata=$(read_ipk_metadata "$luci_package") ||
             die "cannot read IPK metadata: $luci_package"
         printf '%s\n' "$backend_metadata" |
             grep -Fqx 'Package: zte-usb-wifi-manager' ||
