@@ -96,14 +96,18 @@ IFS= read -r sdk_dir <"$sdk_list"
         package/luci-app-zte-usb-wifi-manager
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
-        'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' \
+        'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
+    # Resolve the plugin dependencies first so libcurl's nested configuration
+    # and its selectable TLS dependencies exist before they are pinned.
+    make defconfig
+    printf '%s\n' \
         'CONFIG_PACKAGE_libmbedtls=m' \
         'CONFIG_LIBCURL_MBEDTLS=y' >>.config
-    # A fresh SDK does not reliably settle curl's SSL choice default in one
-    # defconfig pass; the pinned symbols above make the TLS backend explicit
-    # and the second pass settles any remaining dependent defaults.
     make defconfig
-    make defconfig
+    grep -Fqx 'CONFIG_PACKAGE_libmbedtls=m' .config ||
+        die 'SDK configuration did not select the libmbedtls package'
+    grep -Fqx 'CONFIG_LIBCURL_MBEDTLS=y' .config ||
+        die 'SDK configuration did not select the libcurl mbedTLS backend'
     make package/zte-usb-wifi-manager/compile V=s
     make package/luci-app-zte-usb-wifi-manager/compile V=s
 )

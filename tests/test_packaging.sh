@@ -161,8 +161,25 @@ cat >"$fake_bin/make" <<'EOF'
 #!/bin/sh
 set -eu
 case " $* " in
+    ' defconfig ')
+        count_file=.fake-defconfig-count
+        count=0
+        [ ! -f "$count_file" ] || count=$(cat "$count_file")
+        count=$((count + 1))
+        printf '%s\n' "$count" >"$count_file"
+        if [ "$count" -eq 1 ]; then
+            grep -v \
+                -e '^CONFIG_PACKAGE_libmbedtls=' \
+                -e '^CONFIG_LIBCURL_MBEDTLS=' \
+                .config >.config.next
+            mv .config.next .config
+            printf '%s\n' 'CONFIG_PACKAGE_libcurl=m' >>.config
+        fi
+        ;;
     *' package/zte-usb-wifi-manager/compile '*)
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
+        grep -Fqx 'CONFIG_LIBCURL_MBEDTLS=y' .config || exit 1
+        grep -Fqx 'CONFIG_PACKAGE_libmbedtls=m' .config || exit 1
         printf 'apk-backend\n' \
             >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r1.apk
         printf 'ipk-backend\n' \
