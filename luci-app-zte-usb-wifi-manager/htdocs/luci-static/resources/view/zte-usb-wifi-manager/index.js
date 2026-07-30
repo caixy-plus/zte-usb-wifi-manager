@@ -247,6 +247,15 @@ function renderBattery(status) {
 	]);
 }
 
+function renderSms(status) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var sms = device.sms && typeof device.sms === 'object' ? device.sms : {};
+
+	return panelRoot('sms', _('短信'), [
+		row(_('短信总数'), sms.total)
+	]);
+}
+
 function renderSchedule() {
 	return panelRoot('schedule', _('充电日程'), [
 		row(_('功能状态'), _('阶段 3 未启用'))
@@ -285,7 +294,7 @@ function renderPanel(tabId, status, capabilities) {
 	case 'traffic':
 		return renderUnavailableModule('traffic', _('流量'));
 	case 'sms':
-		return renderUnavailableModule('sms', _('短信'));
+		return renderSms(status);
 	case 'battery':
 		return renderBattery(status);
 	case 'schedule':

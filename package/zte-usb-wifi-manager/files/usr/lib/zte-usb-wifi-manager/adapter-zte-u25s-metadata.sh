@@ -12,7 +12,7 @@ ZTE_CAP_CELLULAR_WRITE=0
 ZTE_CAP_WIFI_WRITE=0
 ZTE_CAP_SMS_WRITE=0
 
-ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_exist,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level'
+ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_exist,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total'
 
 # These variables are the sourced adapter contract and are consumed by other
 # library files after this metadata file returns.

@@ -31,6 +31,7 @@ READ_FIELDS = {
     "battery_value",
     "battery_pers",
     "battery_temperature_level",
+    "sms_data_total",
 }
 
 

@@ -107,6 +107,18 @@ zte_adapter_normalize() {
 		_zte_percent=null
 	fi
 
+	if zte_json_flat_has "$_zte_raw" sms_data_total; then
+		_zte_sms_total_raw=$(zte_json_flat_get "$_zte_raw" sms_data_total)
+		zte_is_uint "$_zte_sms_total_raw" || return 1
+		case $_zte_sms_total_raw in
+			0|[1-9]|[1-9][0-9]*) ;;
+			*) return 1 ;;
+		esac
+		_zte_sms_total=$_zte_sms_total_raw
+	else
+		_zte_sms_total=null
+	fi
+
 	_zte_missing=''
 	_zte_old_ifs=$IFS
 	IFS=,
@@ -118,7 +130,7 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"model":"%s","modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"sms":{"total":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_MODEL" \
 		"$(zte_json_escape "$_zte_modem_state")" \
 		"$(zte_json_escape "$_zte_net_type")" \
@@ -129,5 +141,6 @@ zte_adapter_normalize() {
 		"$_zte_slot" "$_zte_sim_type" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
 		"$_zte_battery_value" "$_zte_battery_pers" "$_zte_temperature_level" \
+		"$_zte_sms_total" \
 		"$(zte_json_escape "$_zte_missing")"
 }

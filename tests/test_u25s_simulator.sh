@@ -5,6 +5,7 @@ TEST_NAME=test_u25s_simulator
 . ./tests/testlib.sh
 
 lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
+. "$lib/validation.sh"
 . "$lib/json.sh"
 . "$lib/http.sh"
 . "$lib/session.sh"

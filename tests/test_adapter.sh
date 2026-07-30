@@ -38,7 +38,7 @@ raw=$(zte_adapter_fetch 192.168.0.1 secret "$jar")
 assert_eq "$(cat "$fixtures/read_ok.json")" "$raw"
 
 # normalize maps every field
-expected='{"online":true,"model":"U25S","modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"missing":""}'
+expected='{"online":true,"model":"U25S","modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"sms":{"total":3},"missing":""}'
 assert_eq "$expected" "$(zte_adapter_normalize "$raw")"
 assert_success node -e 'JSON.parse(process.argv[1])' "$expected"
 
@@ -70,6 +70,13 @@ do
     assert_failure zte_adapter_normalize "$invalid_response"
     assert_failure fetch_and_normalize
 done
+for invalid_response in \
+    '{"sms_data_total":"-1"}' \
+    '{"sms_data_total":"01"}' \
+    '{"sms_data_total":"unknown"}'
+do
+    assert_failure zte_adapter_normalize "$invalid_response"
+done
 
 # A rejected candidate cannot replace the last trusted device snapshot.
 invalid_response='{"battery_vol_percent":"01"}'
@@ -100,7 +107,11 @@ case $out in
     *) fail "missing battery fields not nulled: $out" ;;
 esac
 case $out in
-    *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level"'*) pass ;;
+    *'"sms":{"total":null}'*) pass ;;
+    *) fail "missing SMS fields not nulled: $out" ;;
+esac
+case $out in
+    *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total"'*) pass ;;
     *) fail "missing list wrong: $out" ;;
 esac
 

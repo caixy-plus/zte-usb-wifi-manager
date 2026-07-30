@@ -374,7 +374,8 @@ const completeStatus = {
 			value: '4050',
 			pers: '82',
 			temperature_level: 'normal'
-		}
+		},
+		sms: { total: 3 }
 	},
 	network: {
 		up: true,
@@ -405,13 +406,19 @@ test('renders the mobile-network panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '默认出口'), '否');
 });
 
-['wifi', 'traffic', 'sms', 'logs'].forEach(function(tabId) {
+['wifi', 'traffic', 'logs'].forEach(function(tabId) {
 	test('renders unavailable data explicitly for ' + tabId, function() {
 		assert.strictEqual(
 			rowValue(renderPanel(completeStatus, tabId), '数据状态'),
 			'当前快照尚未提供此模块数据'
 		);
 	});
+});
+
+test('renders verified SMS metadata without message content', function() {
+	const tree = renderPanel(completeStatus, 'sms');
+	assert.strictEqual(rowValue(tree, '短信总数'), '3');
+	assert.strictEqual(text(tree).indexOf('短信正文'), -1);
 });
 
 test('renders the battery panel from normalized battery status', function() {
