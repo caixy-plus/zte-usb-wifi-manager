@@ -19,12 +19,22 @@
 `tests/` 下的现有套件：validation、policy 状态机、json、http、session、adapter、
 snapshot、netifd、structure。TDD，macOS 与 CI 均可运行。
 
-## L2：U25S API 模拟器
+## L2：U25S API 模拟器（已实现）
 
-当前形态：fixture + 函数级 stub（`zte_http_get`/`zte_http_post` 在测试中被重定义，
-覆盖正常、缺字段、异常 JSON、会话过期）。后续如需更真实的 L2，在电脑上实现假的
-`192.168.0.1` goform 服务：LD 挑战、SHA-256 登录、Cookie 过期、各类异常响应；
-写接口默认拒绝，仅具体用例临时开启。设备适配器测试时只连模拟器，不连真实 U25S。
+`tests/u25s_simulator.py` 使用 Python 标准库在 loopback 随机端口实现已观察到的 goform
+只读协议；`tests/test_u25s_simulator.sh` 通过真实 curl 调用生产 session/adapter 代码，
+不连接真实 U25S。标准 `make test` 已覆盖：
+
+- LD 挑战、双 SHA-256 登录摘要和 Cookie 会话。
+- 正常状态读取与生产 adapter 规范化。
+- Cookie 单次过期、自动重新登录。
+- 已知字段缺失、错误 JSON 和请求超时。
+- 错误摘要登录、未知读取命令和非 LOGIN 写请求拒绝。
+- 非 loopback 监听地址拒绝，失败时不发布 ready file。
+- 请求日志不记录 Cookie、登录材料或摘要。
+
+模拟器只允许绑定字面量 `127.0.0.1`，写接口没有启用开关；未来增加故障场景时
+继续通过显式只读 scenario 扩展，不能提供通用写放行参数。
 
 真实设备响应只采集一次，删除 Cookie、IMEI、IMSI、ICCID、手机号后保存为 fixture，
 之后解析代码改动都用 fixture 回归。
