@@ -23,7 +23,8 @@ function E(tag, attrs, children) {
 
 const rpcBehavior = {
 	status: function() { return Promise.resolve({}); },
-	capabilities: function() { return Promise.resolve({}); }
+	capabilities: function() { return Promise.resolve({}); },
+	logs: function() { return Promise.resolve({ events: [] }); }
 };
 const rpcSpecs = {};
 const pollEntries = [];
@@ -75,7 +76,8 @@ function collectRows(node, rows) {
 function render(status) {
 	return app.render([
 		{ ok: true, value: status },
-		{ ok: true, value: {} }
+		{ ok: true, value: {} },
+		{ ok: true, value: { events: [] } }
 	]);
 }
 
@@ -200,17 +202,21 @@ test('uses a non-label element for row titles', function() {
 test('preserves independent RPC failures for rendering', async function() {
 	rpcBehavior.status = function() { return Promise.reject(new Error('status unavailable')); };
 	rpcBehavior.capabilities = function() { return Promise.resolve({ model: 'U25S' }); };
+	rpcBehavior.logs = function() { return Promise.resolve({ events: [] }); };
 	const data = await app.load();
 	assert.strictEqual(data[0].ok, false);
 	assert.strictEqual(data[1].ok, true);
 	assert.strictEqual(data[1].value.model, 'U25S');
+	assert.strictEqual(data[2].ok, true);
 });
 
 test('declares ubus calls as rejecting and rejects numeric error replies', async function() {
 	assert.strictEqual(rpcSpecs.status.reject, true);
 	assert.strictEqual(rpcSpecs.capabilities.reject, true);
+	assert.strictEqual(rpcSpecs.logs.reject, true);
 	rpcBehavior.status = function() { return Promise.resolve(4); };
 	rpcBehavior.capabilities = function() { return Promise.resolve({}); };
+	rpcBehavior.logs = function() { return Promise.resolve({ events: [] }); };
 	const data = await app.load();
 	assert.strictEqual(data[0].ok, false);
 });
@@ -406,7 +412,7 @@ test('renders the mobile-network panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '默认出口'), '否');
 });
 
-['wifi', 'traffic', 'logs'].forEach(function(tabId) {
+['wifi', 'traffic'].forEach(function(tabId) {
 	test('renders unavailable data explicitly for ' + tabId, function() {
 		assert.strictEqual(
 			rowValue(renderPanel(completeStatus, tabId), '数据状态'),
@@ -451,6 +457,33 @@ test('renders backend diagnostics without inventing data', function() {
 	assert.strictEqual(rowValue(tree, '后端状态'), '正常');
 	assert.strictEqual(rowValue(tree, '失败次数'), '2');
 	assert.strictEqual(rowValue(tree, '缺失字段'), 'station_list');
+});
+
+test('renders bounded event log entries as text', function() {
+	let current = app.render([
+		{ ok: true, value: completeStatus },
+		{ ok: true, value: {} },
+		{ ok: true, value: {
+			events: [
+				{
+					time: 1722345678,
+					level: 'warn',
+					type: 'state',
+					code: 'state_degraded'
+				}
+			]
+		} }
+	]);
+	const parent = {
+		replaceChild: function(next) {
+			current = next;
+			next.parentNode = parent;
+		}
+	};
+	current.parentNode = parent;
+	tabById(current, 'logs').attrs.click();
+	assert.ok(text(current).indexOf('warn · state · state_degraded') !== -1);
+	assert.strictEqual(source.indexOf('innerHTML'), -1);
 });
 
 testChain.then(function() {

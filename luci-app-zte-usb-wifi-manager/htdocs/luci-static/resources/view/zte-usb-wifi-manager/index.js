@@ -19,6 +19,13 @@ var callCapabilities = rpc.declare({
 	reject: true
 });
 
+var callLogs = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'logs',
+	params: [ 'limit' ],
+	reject: true
+});
+
 var tabs = [
 	{ id: 'overview', label: _('总览') },
 	{ id: 'network', label: _('移动网络') },
@@ -167,7 +174,8 @@ function rpcResult(call) {
 function loadData() {
 	return Promise.all([
 		rpcResult(callStatus),
-		rpcResult(callCapabilities)
+		rpcResult(callCapabilities),
+		rpcResult(function() { return callLogs(50); })
 	]);
 }
 
@@ -285,7 +293,36 @@ function renderDiagnostics(status) {
 	]);
 }
 
-function renderPanel(tabId, status, capabilities) {
+function renderLogs(logsResult) {
+	if (!logsResult || !logsResult.ok)
+		return panelRoot('logs', _('日志'), [
+			row(_('数据状态'), _('无法读取事件日志'))
+		]);
+
+	var value = logsResult.value && typeof logsResult.value === 'object'
+		? logsResult.value : {};
+	var events = Array.isArray(value.events) ? value.events : [];
+	if (!events.length)
+		return panelRoot('logs', _('日志'), [
+			row(_('数据状态'), _('暂无事件'))
+		]);
+
+	return panelRoot('logs', _('日志'), events.map(function(event) {
+		event = event && typeof event === 'object' ? event : {};
+		return E('div', { 'class': 'zte-log-entry' }, [
+			E('div', { 'class': 'zte-log-time' }, updatedLabel(event.time)),
+			E('div', { 'class': 'zte-log-message' }, [
+				dash(event.level),
+				' · ',
+				dash(event.type),
+				' · ',
+				dash(event.code)
+			])
+		]);
+	}));
+}
+
+function renderPanel(tabId, status, capabilities, logsResult) {
 	switch (tabId) {
 	case 'network':
 		return renderNetwork(status);
@@ -304,7 +341,7 @@ function renderPanel(tabId, status, capabilities) {
 	case 'diagnostics':
 		return renderDiagnostics(status);
 	case 'logs':
-		return renderUnavailableModule('logs', _('日志'));
+		return renderLogs(logsResult);
 	default:
 		return renderOverview(status, capabilities);
 	}
@@ -319,6 +356,8 @@ function renderStatus(data, selectedTab, onSelect) {
 			typeof statusResult.value === 'object' ? statusResult.value : {};
 		var capabilities = capabilitiesResult.ok && capabilitiesResult.value &&
 			typeof capabilitiesResult.value === 'object' ? capabilitiesResult.value : {};
+		var logsResult = data && data[2] && typeof data[2] === 'object'
+			? data[2] : { ok: false, value: {} };
 		var alerts = [];
 
 		if (!statusResult.ok)
@@ -337,7 +376,7 @@ function renderStatus(data, selectedTab, onSelect) {
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab) {
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
-			renderPanel(selectedTab, status, capabilities),
+			renderPanel(selectedTab, status, capabilities, logsResult),
 			E('div', { 'class': 'alert-message warning' },
 				_('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
 		]);
