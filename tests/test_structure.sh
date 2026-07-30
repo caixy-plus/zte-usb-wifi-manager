@@ -12,10 +12,17 @@ luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=1$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=2$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
+assert_file_contains "$backend/Makefile" \
+    '^  DEPENDS:=.*\+ip([[:space:]]|$)'
+if grep -q '\+ip-tiny\([[:space:]]\|$\)' "$backend/Makefile"; then
+    fail 'backend must depend on the ip virtual package, not conflicting ip-tiny'
+else
+    pass
+fi
 assert_file_contains "$backend/Makefile" \
     '^define Package/zte-usb-wifi-manager/postrm$'
 assert_file_contains "$backend/Makefile" \

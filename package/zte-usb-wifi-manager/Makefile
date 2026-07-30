@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
@@ -12,7 +12,7 @@ define Package/zte-usb-wifi-manager
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=ZTE USB WiFi Manager backend
-  DEPENDS:=+coreutils-stat +curl +ip-tiny +jshn +rpcd +ubus +uci
+  DEPENDS:=+coreutils-stat +curl +ip +jshn +rpcd +ubus +uci
   PKGARCH:=all
 endef
 
