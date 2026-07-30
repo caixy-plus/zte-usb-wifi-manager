@@ -26,12 +26,17 @@ done
 gh run watch "$run_id" --exit-status
 ```
 
-下载 GitHub 生成的完整产物并验证：
+下载 GitHub 生成的完整产物并验证。macOS 主机没有 GNU `sha256sum`，先安装
+coreutils 并选择可用命令：
 
 ```sh
+brew install coreutils   # 提供 gsha256sum；仅需一次
+sha256sum_cmd=sha256sum
+command -v sha256sum >/dev/null 2>&1 || sha256sum_cmd=gsha256sum
+
 artifact_dir=$(mktemp -d)
 gh run download "$run_id" --name openwrt-packages --dir "$artifact_dir"
-(cd "$artifact_dir" && sha256sum -c SHA256SUMS)
+(cd "$artifact_dir" && "$sha256sum_cmd" -c SHA256SUMS)
 ```
 
 目录中必须恰好包含两份 APK、两份 IPK、`SHA256SUMS` 和
@@ -43,7 +48,7 @@ gh run download "$run_id" --name openwrt-packages --dir "$artifact_dir"
 macOS 缺少 QEMU 时安装：
 
 ```sh
-brew install qemu
+brew install qemu coreutils
 ```
 
 为每个版本分别执行以下过程：
@@ -67,7 +72,7 @@ curl -fL --retry 3 --proto '=https' \
 grep -Fqx "$image_sha256 *$image_file" "$vm_dir/sha256sums"
 (
     cd "$vm_dir"
-    printf '%s\n' "$image_sha256 *$image_file" | sha256sum -c -
+    printf '%s\n' "$image_sha256 *$image_file" | "$sha256sum_cmd" -c -
 )
 gzip -dc "$vm_dir/$image_file" >"$vm_dir/base.img"
 qemu-img create -f qcow2 -F raw -b "$vm_dir/base.img" "$vm_dir/overlay.qcow2"
@@ -244,7 +249,7 @@ test ! -e /www/luci-static/resources/view/zte-usb-wifi-manager/index.js
 ```sh
 release_dir=$(mktemp -d)
 gh release download v0.1.0-rc1 --dir "$release_dir"
-(cd "$release_dir" && sha256sum -c SHA256SUMS)
+(cd "$release_dir" && "$sha256sum_cmd" -c SHA256SUMS)
 ```
 
 使用新的 QEMU overlay，按第 3 至第 6 节重新安装 Release 文件。只有这一步成功后，

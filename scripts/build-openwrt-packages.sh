@@ -77,7 +77,13 @@ IFS= read -r sdk_dir <"$sdk_list"
         package/luci-app-zte-usb-wifi-manager
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
-        'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
+        'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' \
+        'CONFIG_PACKAGE_libmbedtls=m' \
+        'CONFIG_LIBCURL_MBEDTLS=y' >>.config
+    # A fresh SDK does not reliably settle curl's SSL choice default in one
+    # defconfig pass; the pinned symbols above make the TLS backend explicit
+    # and the second pass settles any remaining dependent defaults.
+    make defconfig
     make defconfig
     make package/zte-usb-wifi-manager/compile V=s
     make package/luci-app-zte-usb-wifi-manager/compile V=s
@@ -117,6 +123,29 @@ IFS= read -r luci_package <"$luci_list"
 
 [ ! -L "$backend_package" ] && [ ! -L "$luci_package" ] ||
     die 'package outputs must be regular files, not symlinks'
+
+# Read the architecture from inside the built packages; never trust the
+# filename or the matrix value. APK v3 metadata is dumped with the SDK's own
+# apk tool; IPK control data comes from the ar member control.tar.gz.
+case $format in
+    apk)
+        apk_tool=$sdk_dir/staging_dir/host/bin/apk
+        [ -x "$apk_tool" ] || die 'SDK apk host tool is missing'
+        for package_file in "$backend_package" "$luci_package"; do
+            "$apk_tool" adbdump "$package_file" 2>/dev/null |
+                grep -Fqx '  arch: noarch' ||
+                die "$package_file is not an arch:noarch APK"
+        done
+        ;;
+    ipk)
+        for package_file in "$backend_package" "$luci_package"; do
+            ar p "$package_file" control.tar.gz 2>/dev/null |
+                tar -xzOf - ./control 2>/dev/null |
+                grep -Fqx 'Architecture: all' ||
+                die "$package_file is not an Architecture: all IPK"
+        done
+        ;;
+esac
 
 backend_name=$(basename "$backend_package")
 luci_name=$(basename "$luci_package")

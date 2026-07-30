@@ -82,7 +82,8 @@ fi
 package_validation=docs/validation/github-packages-and-qemu.md
 assert_file_contains "$package_validation" '^# GitHub 安装包与 QEMU 验证$'
 assert_file_contains "$package_validation" 'gh workflow run packages\.yml'
-assert_file_contains "$package_validation" 'sha256sum -c SHA256SUMS'
+assert_file_contains "$package_validation" 'sha256sum_cmd'
+assert_file_contains "$package_validation" 'gsha256sum'
 assert_file_contains "$package_validation" 'apk add --allow-untrusted'
 assert_file_contains "$package_validation" 'opkg install'
 assert_file_contains "$package_validation" 'ubus call zte_usb_wifi capabilities'

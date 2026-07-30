@@ -35,6 +35,14 @@ else
 fi
 assert_file_contains "$builder" 'zte-usb-wifi-manager-\*\.apk'
 assert_file_contains "$builder" 'zte-usb-wifi-manager_\*_all\.ipk'
+# Internal architecture must be read from the built packages, not assumed.
+assert_file_contains "$builder" 'adbdump'
+assert_file_contains "$builder" 'Architecture: all'
+# The curl dependency needs an explicit TLS backend: a fresh SDK defconfig
+# does not reliably settle curl's SSL choice default, which breaks the curl
+# compile with "TLS not detected".
+assert_file_contains "$builder" 'CONFIG_PACKAGE_libmbedtls=m'
+assert_file_contains "$builder" 'CONFIG_LIBCURL_MBEDTLS=y'
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
