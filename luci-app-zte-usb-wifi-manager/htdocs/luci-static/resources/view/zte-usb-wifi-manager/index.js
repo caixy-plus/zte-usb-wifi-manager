@@ -125,6 +125,22 @@ function updatedLabel(updated) {
 	return new Date(timestamp * 1000).toLocaleString();
 }
 
+function yesNoLabel(value) {
+	if (value === true)
+		return _('是');
+	if (value === false)
+		return _('否');
+	return null;
+}
+
+function chargingLabel(value) {
+	if (value === true)
+		return _('充电中');
+	if (value === false)
+		return _('未充电');
+	return null;
+}
+
 function rpcResult(call) {
 	var request;
 
@@ -162,6 +178,129 @@ function snapshotIsStale(updated) {
 		Math.floor(Date.now() / 1000) - timestamp > STALE_AFTER_SECONDS;
 }
 
+function panelRoot(tabId, title, children) {
+	return E('div', {
+		'class': 'cbi-section zte-tab-panel',
+		'data-panel': tabId
+	}, [ E('h3', {}, title) ].concat(children));
+}
+
+function renderOverview(status, capabilities) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
+	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
+	var network = status.network && typeof status.network === 'object' ? status.network : {};
+	var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
+	var hasDevice = Object.keys(device).length > 0;
+
+	return panelRoot('overview', _('只读状态总览'), [
+		row(_('设备型号'), device.model || status.model || capabilities.model),
+		row(_('设备在线'), onlineLabel(status)),
+		row(_('后端状态'), stateLabel(status.state, hasDevice)),
+		row(_('网络制式'), cellular.type),
+		row(_('运营商'), cellular.provider),
+		row(_('信号'), signalLabel(cellular)),
+		row(_('电量'), batteryLabel(battery)),
+		row(_('USB 上联'), uplinkLabel(network)),
+		row(_('默认出口'), yesNoLabel(network.is_default_route)),
+		row(_('电池策略'), _('仅监控，不控制供电') +
+			(policy.state ? ' (' + policy.state + ')' : '')),
+		row(_('状态快照时间'), updatedLabel(status.updated))
+	]);
+}
+
+function renderNetwork(status) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
+	var network = status.network && typeof status.network === 'object' ? status.network : {};
+
+	return panelRoot('network', _('移动网络'), [
+		row(_('网络制式'), cellular.type),
+		row(_('运营商'), cellular.provider),
+		row(_('信号'), signalLabel(cellular)),
+		row(_('PPP 状态'), cellular.ppp_status),
+		row(_('USB 上联'), uplinkLabel(network)),
+		row(_('IPv4'), network.ipv4),
+		row(_('网关'), network.gateway),
+		row(_('默认出口'), yesNoLabel(network.is_default_route))
+	]);
+}
+
+function renderUnavailableModule(tabId, title) {
+	return panelRoot(tabId, title, [
+		row(_('数据状态'), _('当前快照尚未提供此模块数据'))
+	]);
+}
+
+function renderBattery(status) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
+
+	return panelRoot('battery', _('电池与供电'), [
+		row(_('电池存在'), yesNoLabel(battery.present)),
+		row(_('电量'), battery.percent === null || battery.percent === undefined ||
+			battery.percent === '' ? null : battery.percent + '%'),
+		row(_('充电状态'), chargingLabel(battery.charging)),
+		row(_('电池值'), battery.value),
+		row(_('电池百分比原值'), battery.pers),
+		row(_('温度级别'), battery.temperature_level)
+	]);
+}
+
+function renderSchedule() {
+	return panelRoot('schedule', _('充电日程'), [
+		row(_('功能状态'), _('阶段 3 未启用'))
+	]);
+}
+
+function renderDevice(status, capabilities) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var sim = device.sim && typeof device.sim === 'object' ? device.sim : {};
+
+	return panelRoot('device', _('设备'), [
+		row(_('设备型号'), device.model || status.model || capabilities.model),
+		row(_('Modem 状态'), device.modem_state),
+		row(_('SIM 类型'), sim.type),
+		row(_('活动卡槽原始值'), sim.active_slot_raw)
+	]);
+}
+
+function renderDiagnostics(status) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var hasDevice = Object.keys(device).length > 0;
+
+	return panelRoot('diagnostics', _('系统与诊断'), [
+		row(_('后端状态'), stateLabel(status.state, hasDevice)),
+		row(_('失败次数'), status.failures),
+		row(_('缺失字段'), device.missing)
+	]);
+}
+
+function renderPanel(tabId, status, capabilities) {
+	switch (tabId) {
+	case 'network':
+		return renderNetwork(status);
+	case 'wifi':
+		return renderUnavailableModule('wifi', _('Wi-Fi 与设备'));
+	case 'traffic':
+		return renderUnavailableModule('traffic', _('流量'));
+	case 'sms':
+		return renderUnavailableModule('sms', _('短信'));
+	case 'battery':
+		return renderBattery(status);
+	case 'schedule':
+		return renderSchedule();
+	case 'device':
+		return renderDevice(status, capabilities);
+	case 'diagnostics':
+		return renderDiagnostics(status);
+	case 'logs':
+		return renderUnavailableModule('logs', _('日志'));
+	default:
+		return renderOverview(status, capabilities);
+	}
+}
+
 function renderStatus(data, selectedTab, onSelect) {
 		var statusResult = data && data[0] && typeof data[0] === 'object'
 			? data[0] : { ok: false, value: {} };
@@ -171,13 +310,6 @@ function renderStatus(data, selectedTab, onSelect) {
 			typeof statusResult.value === 'object' ? statusResult.value : {};
 		var capabilities = capabilitiesResult.ok && capabilitiesResult.value &&
 			typeof capabilitiesResult.value === 'object' ? capabilitiesResult.value : {};
-		var device = status.device && typeof status.device === 'object' ? status.device : {};
-		var hasDevice = status.device && typeof status.device === 'object' &&
-			Object.keys(status.device).length > 0;
-		var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
-		var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
-		var network = status.network && typeof status.network === 'object' ? status.network : {};
-		var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
 		var alerts = [];
 
 		if (!statusResult.ok)
@@ -193,30 +325,12 @@ function renderStatus(data, selectedTab, onSelect) {
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
 			alerts,
-			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab, index) {
+			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab) {
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
-			E('div', {
-				'class': 'cbi-section zte-tab-panel',
-				'data-panel': selectedTab
-			}, [
-				E('h3', {}, _('只读状态总览')),
-				row(_('设备型号'), device.model || status.model || capabilities.model),
-				row(_('设备在线'), onlineLabel(status)),
-				row(_('后端状态'), stateLabel(status.state, hasDevice)),
-				row(_('网络制式'), cellular.type),
-				row(_('运营商'), cellular.provider),
-				row(_('信号'), signalLabel(cellular)),
-				row(_('电量'), batteryLabel(battery)),
-				row(_('USB 上联'), uplinkLabel(network)),
-				row(_('默认出口'), network.is_default_route === true ? _('是') :
-					(network.is_default_route === false ? _('否') : null)),
-				row(_('电池策略'), _('仅监控，不控制供电') +
-					(policy.state ? ' (' + policy.state + ')' : '')),
-				row(_('状态快照时间'), updatedLabel(status.updated)),
-				E('div', { 'class': 'alert-message warning' },
-					_('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
-			])
+			renderPanel(selectedTab, status, capabilities),
+			E('div', { 'class': 'alert-message warning' },
+				_('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
 		]);
 }
 

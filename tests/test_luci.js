@@ -111,6 +111,25 @@ function tabById(tree, tabId) {
 	});
 }
 
+function renderPanel(status, tabId) {
+	let current = render(status);
+	const parent = {
+		replaceChild: function(next) {
+			current = next;
+			next.parentNode = parent;
+		}
+	};
+	current.parentNode = parent;
+	const tab = tabById(current, tabId);
+	assert.ok(tab, 'missing tab: ' + tabId);
+	tab.attrs.click();
+	assert.strictEqual(
+		nodesByClass(current, 'zte-tab-panel')[0].attrs['data-panel'],
+		tabId
+	);
+	return current;
+}
+
 let count = 0;
 let failures = 0;
 let testChain = Promise.resolve();
@@ -326,6 +345,105 @@ test('preserves the selected tab after a poll refresh', async function() {
 		nodesByClass(replacement, 'zte-tab-panel')[0].attrs['data-panel'],
 		'network'
 	);
+});
+
+const completeStatus = {
+	online: true,
+	state: 'ok',
+	failures: 2,
+	updated: Math.floor(Date.now() / 1000),
+	device: {
+		model: 'U25S',
+		modem_state: 'connected',
+		missing: 'station_list',
+		cellular: {
+			type: 'NR5G-SA',
+			provider: '中国移动',
+			signalbar: '4',
+			rsrp: '-68',
+			ppp_status: 'ipv4_ipv6_connected'
+		},
+		sim: {
+			active_slot_raw: '1',
+			type: 'physical'
+		},
+		battery: {
+			present: true,
+			percent: 82,
+			charging: false,
+			value: '4050',
+			pers: '82',
+			temperature_level: 'normal'
+		}
+	},
+	network: {
+		up: true,
+		l3_device: 'eth2',
+		ipv4: '192.168.0.2',
+		gateway: '192.168.0.1',
+		is_default_route: false
+	}
+};
+
+test('renders the overview panel from current status', function() {
+	const tree = renderPanel(completeStatus, 'overview');
+	assert.strictEqual(rowValue(tree, '设备型号'), 'U25S');
+	assert.strictEqual(rowValue(tree, '设备在线'), '在线');
+	assert.strictEqual(rowValue(tree, '后端状态'), '正常');
+	assert.notStrictEqual(rowValue(tree, '状态快照时间'), '—');
+});
+
+test('renders the mobile-network panel from current status', function() {
+	const tree = renderPanel(completeStatus, 'network');
+	assert.strictEqual(rowValue(tree, '网络制式'), 'NR5G-SA');
+	assert.strictEqual(rowValue(tree, '运营商'), '中国移动');
+	assert.strictEqual(rowValue(tree, '信号'), '-68 dBm');
+	assert.strictEqual(rowValue(tree, 'PPP 状态'), 'ipv4_ipv6_connected');
+	assert.strictEqual(rowValue(tree, 'USB 上联'), '已连接 (eth2)');
+	assert.strictEqual(rowValue(tree, 'IPv4'), '192.168.0.2');
+	assert.strictEqual(rowValue(tree, '网关'), '192.168.0.1');
+	assert.strictEqual(rowValue(tree, '默认出口'), '否');
+});
+
+['wifi', 'traffic', 'sms', 'logs'].forEach(function(tabId) {
+	test('renders unavailable data explicitly for ' + tabId, function() {
+		assert.strictEqual(
+			rowValue(renderPanel(completeStatus, tabId), '数据状态'),
+			'当前快照尚未提供此模块数据'
+		);
+	});
+});
+
+test('renders the battery panel from normalized battery status', function() {
+	const tree = renderPanel(completeStatus, 'battery');
+	assert.strictEqual(rowValue(tree, '电池存在'), '是');
+	assert.strictEqual(rowValue(tree, '电量'), '82%');
+	assert.strictEqual(rowValue(tree, '充电状态'), '未充电');
+	assert.strictEqual(rowValue(tree, '电池值'), '4050');
+	assert.strictEqual(rowValue(tree, '电池百分比原值'), '82');
+	assert.strictEqual(rowValue(tree, '温度级别'), 'normal');
+});
+
+test('marks charging schedules as phase 3 functionality', function() {
+	assert.strictEqual(
+		rowValue(renderPanel(completeStatus, 'schedule'), '功能状态'),
+		'阶段 3 未启用'
+	);
+});
+
+test('renders device and SIM details from normalized status', function() {
+	const tree = renderPanel(completeStatus, 'device');
+	assert.strictEqual(rowValue(tree, '设备型号'), 'U25S');
+	assert.strictEqual(rowValue(tree, 'Modem 状态'), 'connected');
+	assert.strictEqual(rowValue(tree, 'SIM 类型'), 'physical');
+	assert.strictEqual(rowValue(tree, '活动卡槽原始值'), '1');
+});
+
+test('renders backend diagnostics without inventing data', function() {
+	const tree = renderPanel(completeStatus, 'diagnostics');
+	assert.strictEqual(rowValue(tree, '后端状态'), '正常');
+	assert.strictEqual(rowValue(tree, '失败次数'), '2');
+	assert.strictEqual(rowValue(tree, '缺失字段'), 'station_list');
 });
 
 testChain.then(function() {
