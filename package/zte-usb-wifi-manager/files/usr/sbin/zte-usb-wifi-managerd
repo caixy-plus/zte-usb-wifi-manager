@@ -8,6 +8,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/session.sh
 . /usr/lib/zte-usb-wifi-manager/policy.sh
 . /usr/lib/zte-usb-wifi-manager/power-adapter.sh
+. /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
 . /usr/lib/zte-usb-wifi-manager/event-log.sh
 . /usr/lib/zte-usb-wifi-manager/actions.sh
 . /usr/lib/zte-usb-wifi-manager/snapshot.sh
@@ -19,6 +20,9 @@ STATE_DIR=/var/run/zte-usb-wifi-manager
 STATUS_FILE=$STATE_DIR/status.json
 COOKIE_FILE=$STATE_DIR/cookies.txt
 EVENT_LOG_MAX_BYTES=524288
+ACTION_RESULT_MAX_COUNT=50
+RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
+RECOVERY_INHIBIT_SECONDS=600
 
 load_config() {
 	# config_get assigns these global variables by the name in its first argument.
@@ -125,11 +129,29 @@ apply_policy_action() {
 		*) return 0 ;;
 	esac
 
+	_zte_power_inhibit_written=0
+	if [ "$power_backend" = mock ] &&
+		[ "$_zte_policy_action" = OFF ]; then
+		_zte_power_now=$(date +%s)
+		_zte_power_expires=$((_zte_power_now + RECOVERY_INHIBIT_SECONDS))
+		zte_recovery_inhibit_write \
+			"$RECOVERY_INHIBIT_FILE" battery_high \
+			"$_zte_power_expires" "$_zte_power_now" || return 1
+		_zte_power_inhibit_written=1
+	fi
+
 	if zte_power_apply \
 		"$power_backend" "$_zte_policy_action" "$_zte_power_reason" \
 		"$STATE_DIR/power-decision.json" >/dev/null; then
 		last_power_action=$_zte_policy_action
+		if [ "$power_backend" = mock ] &&
+			[ "$_zte_policy_action" = ON ]; then
+			zte_recovery_inhibit_clear "$RECOVERY_INHIBIT_FILE" || :
+		fi
 	else
+		if [ "$_zte_power_inhibit_written" = 1 ]; then
+			zte_recovery_inhibit_clear "$RECOVERY_INHIBIT_FILE" || :
+		fi
 		logger -t zte-usb-wifi-manager 'power decision recording failed'
 	fi
 }
@@ -176,6 +198,8 @@ process_actions() {
 	zte_action_finish \
 		"$STATE_DIR" "$_zte_operation_id" failed unsupported \
 		"$_zte_action_time" || return 1
+	zte_action_prune_results \
+		"$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || return 1
 	record_event warn action action_unsupported "$_zte_action_time" || :
 }
 
@@ -263,6 +287,7 @@ main() {
 	last_power_action=''
 	last_logged_state=''
 	zte_action_recover_running "$STATE_DIR" "$(date +%s)" || :
+	zte_action_prune_results "$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || :
 	record_event info service service_started "$(date +%s)" || :
 	while [ "$enabled" = 1 ]; do
 		poll_once

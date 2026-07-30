@@ -149,13 +149,15 @@ daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh event-log.sh \
-    actions.sh
+    actions.sh recovery-inhibit.sh
 do
     assert_file_contains "$daemon" "$library"
 done
 for function in \
     zte_adapter_fetch zte_failures_next zte_snapshot_compose zte_power_apply \
-    zte_event_write zte_action_claim zte_action_finish
+    zte_event_write zte_action_claim zte_action_finish \
+    zte_action_prune_results zte_recovery_inhibit_write \
+    zte_recovery_inhibit_clear
 do
     assert_file_contains "$daemon" "$function"
 done
@@ -347,6 +349,7 @@ assert_eq "$net" "$network_json"
 # Production load_config rejects unsafe names without terminating the shell.
 . "$lib/validation.sh"
 . "$lib/power-adapter.sh"
+. "$lib/recovery-inhibit.sh"
 eval "$(extract_daemon_function load_config)"
 config_load() { :; }
 # Assignments are read by the eval-defined production load_config function.
@@ -406,6 +409,21 @@ assert_eq \
     "dry-run|ON|battery_low|$STATE_DIR/power-decision.json
 dry-run|OFF|battery_high|$STATE_DIR/power-decision.json" \
     "$(cat "$power_call_log")"
+RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+RECOVERY_INHIBIT_SECONDS=600
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_backend=mock
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+last_power_action=''
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_success zte_recovery_inhibit_active \
+    "$RECOVERY_INHIBIT_FILE" 1722346000
+apply_policy_action MAINTAIN_CHARGING ON
+assert_failure test -e "$RECOVERY_INHIBIT_FILE"
 
 sleep_log=$work/sleep
 : >"$sleep_log"
@@ -433,12 +451,21 @@ poll_once() {
 sleep() { printf '%s\n' "$1" >>"$sleep_log"; }
 : >"$event_call_log"
 STATE_DIR=$work/real-state
+# Read by the eval-defined production main function.
+# shellcheck disable=SC2034
+ACTION_RESULT_MAX_COUNT=50
 process_actions() { :; }
 zte_action_recover_running() { :; }
+prune_call_log=$work/prune-calls
+: >"$prune_call_log"
+zte_action_prune_results() {
+    printf '%s|%s\n' "$1" "$2" >>"$prune_call_log"
+}
 main
 assert_eq \
     "$work/real-state|info|service|service_started|1722345678|524288" \
     "$(sed -n '1p' "$event_call_log")"
+assert_eq "$work/real-state|50" "$(cat "$prune_call_log")"
 assert_eq '60
 120
 30' "$(cat "$sleep_log")"
