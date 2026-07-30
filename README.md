@@ -243,6 +243,7 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 
 - [UI 成品设计稿](docs/design/zte-usb-wifi-manager-ui.html)
 - [详细设计文档](docs/design/zte-usb-wifi-manager-design.md)
+- [四阶段交付与 QEMU 验证](docs/validation/2026-07-30-four-stage-delivery.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
 - [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 
