@@ -59,6 +59,10 @@ fi
 
 assert_file_contains docs/design/zte-usb-wifi-manager-ui.html '<title>中兴随身 WiFi 管理</title>'
 assert_file_contains docs/design/zte-usb-wifi-manager-design.md '^# 中兴随身 WiFi 管理工具详细设计文档$'
+assert_file_contains README.md '^## 安装$'
+assert_file_contains README.md 'apk add --allow-untrusted'
+assert_file_contains README.md 'opkg install'
+assert_file_contains README.md '/etc/zte-usb-wifi-manager/credentials'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 for library in json.sh session.sh snapshot.sh netifd-adapter.sh; do

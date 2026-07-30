@@ -29,6 +29,178 @@
 - 中兴设备：U25S / MU5650
 - 当前 USB 网络：`usbwan` / `eth2`
 
+## 安装
+
+> 项目目前是只读开发预览版，尚未发布稳定版本，也尚未完成主路由器实机验收。
+> 建议先在备用 OpenWrt 设备上验证。不要强制安装与固件版本、target 或架构不匹配的包。
+
+### 1. 确认路由器信息
+
+通过 SSH 登录路由器，记录固件版本、target 和架构：
+
+```sh
+ubus call system board
+apk --print-arch 2>/dev/null || opkg print-architecture
+```
+
+安装包必须由与路由器**相同 OpenWrt 版本、target/subtarget 和软件源 ABI**的 SDK
+构建。升级或安装前建议先备份路由器配置。
+
+### 2. 获取安装包
+
+正式发布后，普通用户应从
+[GitHub Releases](https://github.com/caixy-plus/zte-usb-wifi-manager/releases)
+下载两个与路由器匹配的包：
+
+- `zte-usb-wifi-manager`：后端守护进程和 rpcd 接口。
+- `luci-app-zte-usb-wifi-manager`：LuCI 页面、菜单和 ACL。
+
+如果 Releases 页面没有适配当前固件的 `.apk` 或 `.ipk`，不要使用其他固件版本的包；
+请按下方“从源码构建”使用匹配的 OpenWrt SDK。
+
+下载后应按照 Release 附带的 `SHA256SUMS` 校验文件。`--allow-untrusted` 仅用于安装本项目
+官方 Release 或用户自行构建的包，不应对来源不明的 OpenWrt 包使用。
+
+将两个文件上传到路由器 `/tmp`：
+
+```sh
+ROUTER_HOST=192.168.1.1
+scp zte-usb-wifi-manager*.apk luci-app-zte-usb-wifi-manager*.apk \
+    "root@$ROUTER_HOST:/tmp/"
+```
+
+旧版 OpenWrt 使用 `.ipk` 时，将命令中的 `*.apk` 改成 `*.ipk`。
+
+### 3. 安装软件包
+
+OpenWrt 25.12 及以上使用 APK：
+
+```sh
+apk update
+apk add --allow-untrusted \
+    /tmp/zte-usb-wifi-manager*.apk \
+    /tmp/luci-app-zte-usb-wifi-manager*.apk
+```
+
+OpenWrt 24.10 及以下使用 opkg：
+
+```sh
+opkg update
+opkg install \
+    /tmp/zte-usb-wifi-manager_*.ipk \
+    /tmp/luci-app-zte-usb-wifi-manager_*.ipk
+```
+
+包管理器会从当前固件的软件源解析 `curl`、`ip-tiny`、`jshn`、`rpcd`、`ubus`
+和 `uci` 等依赖。不要使用 `--force-depends` 或 `--force-architecture`。
+
+### 4. 配置 U25S 凭据
+
+凭据文件必须由 root 拥有且权限为 `0600`。为避免密码进入 shell 历史，使用编辑器填写：
+
+```sh
+umask 077
+mkdir -p /etc/zte-usb-wifi-manager
+touch /etc/zte-usb-wifi-manager/credentials
+chmod 600 /etc/zte-usb-wifi-manager/credentials
+vi /etc/zte-usb-wifi-manager/credentials
+```
+
+文件只包含一行：
+
+```text
+password=<U25S_WEB_PASSWORD>
+```
+
+如实际连接参数与默认值不同，修改 UCI：
+
+```sh
+uci set zte-usb-wifi-manager.zte.host='192.168.0.1'
+uci set zte-usb-wifi-manager.zte.interface='usbwan'
+uci set zte-usb-wifi-manager.zte.netdev='eth2'
+uci commit zte-usb-wifi-manager
+```
+
+当前版本必须保持只读：
+
+```sh
+uci set zte-usb-wifi-manager.main.write_enabled='0'
+uci set zte-usb-wifi-manager.policy.enabled='0'
+uci commit zte-usb-wifi-manager
+```
+
+### 5. 启动并验证
+
+```sh
+/etc/init.d/zte-usb-wifi-manager enable
+/etc/init.d/zte-usb-wifi-manager restart
+/etc/init.d/zte-usb-wifi-manager status
+
+ubus list zte_usb_wifi
+ubus call zte_usb_wifi capabilities
+ubus call zte_usb_wifi status
+```
+
+然后在 LuCI 打开：**服务 → 中兴随身 WiFi**。
+
+如果状态异常：
+
+```sh
+logread -e zte-usb-wifi-manager
+ls -l /etc/zte-usb-wifi-manager/credentials
+cat /var/run/zte-usb-wifi-manager/status.json
+```
+
+请勿在 Issue 中粘贴密码、Cookie、认证摘要、IMEI、IMSI、ICCID、手机号或短信内容。
+
+### 从源码构建
+
+在 Linux 上下载与目标路由器完全匹配的
+[OpenWrt SDK](https://openwrt.org/docs/guide-developer/toolchain/using_the_sdk)，解压后：
+
+```sh
+git clone https://github.com/caixy-plus/zte-usb-wifi-manager.git \
+    ../zte-usb-wifi-manager
+
+./scripts/feeds update -a
+./scripts/feeds install -a
+
+ln -s "$(realpath ../zte-usb-wifi-manager/package/zte-usb-wifi-manager)" \
+    package/zte-usb-wifi-manager
+ln -s "$(realpath ../zte-usb-wifi-manager/luci-app-zte-usb-wifi-manager)" \
+    package/luci-app-zte-usb-wifi-manager
+
+printf '%s\n' \
+    'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
+    'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
+make defconfig
+
+make package/zte-usb-wifi-manager/compile V=s
+make package/luci-app-zte-usb-wifi-manager/compile V=s
+```
+
+构建结果位于 SDK 的 `bin/packages/` 目录。OpenWrt 25.12 及以上生成 `.apk`，旧版生成
+`.ipk`。编译环境路径中不要包含空格，也不要使用与目标固件不同版本的 SDK。
+
+### 卸载
+
+```sh
+/etc/init.d/zte-usb-wifi-manager stop
+/etc/init.d/zte-usb-wifi-manager disable
+```
+
+OpenWrt 25.12 及以上：
+
+```sh
+apk del luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
+```
+
+OpenWrt 24.10 及以下：
+
+```sh
+opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
+```
+
 ## 仓库结构
 
 ```text
