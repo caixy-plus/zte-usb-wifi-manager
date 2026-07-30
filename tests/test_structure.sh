@@ -8,6 +8,9 @@ backend=package/zte-usb-wifi-manager
 luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
+assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=1$'
+assert_file_contains "$backend/Makefile" '^PKGARCH:=all$'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
 assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" '^USE_PROCD=1$'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
@@ -15,6 +18,9 @@ assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabiliti
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" '^ZTE_CAP_SIM_SWITCH=0$'
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
+assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=1$'
+assert_file_contains "$luci/Makefile" '^LUCI_PKGARCH:=all$'
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'
 
