@@ -17,12 +17,13 @@ test:
 		tests/test_netifd.sh \
 		tests/test_structure.sh \
 		tests/test_sensitive_data.sh \
+		tests/test_packaging.sh \
 		tests/test_ci.sh; do \
 		"$$test_file"; \
 	done
 	@node tests/test_luci.js
 	@set -e; \
-	find package tests -type f \( -name '*.sh' -o -perm -u+x \) -print | \
+	find package scripts tests -type f \( -name '*.sh' -o -perm -u+x \) -print | \
 	while IFS= read -r shell_file; do \
 		sh -n "$$shell_file"; \
 	done
@@ -34,7 +35,7 @@ test:
 lint:
 	@command -v shellcheck >/dev/null 2>&1 || { echo 'shellcheck is required for lint'; exit 1; }
 	@set -e; \
-	find package tests -type f \( -name '*.sh' -o -perm -u+x \) -print | \
+	find package scripts tests -type f \( -name '*.sh' -o -perm -u+x \) -print | \
 	while IFS= read -r shell_file; do \
 		shellcheck -x -e SC1091 "$$shell_file"; \
 	done
