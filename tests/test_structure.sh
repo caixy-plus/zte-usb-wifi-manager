@@ -72,6 +72,12 @@ assert_file_contains README.md '/etc/zte-usb-wifi-manager/credentials'
 assert_file_contains README.md 'OpenWrt 25\.12\.5'
 assert_file_contains README.md 'OpenWrt 24\.10\.7'
 assert_file_contains README.md '等待 QEMU 安装验证'
+if grep -Eq '25\.12 及以上|24\.10 及以下|相同 OpenWrt 版本、target/subtarget' \
+    README.md; then
+    fail 'README must describe only the exact tested release compatibility'
+else
+    pass
+fi
 
 package_validation=docs/validation/github-packages-and-qemu.md
 assert_file_contains "$package_validation" '^# GitHub 安装包与 QEMU 验证$'
@@ -81,6 +87,11 @@ assert_file_contains "$package_validation" 'apk add --allow-untrusted'
 assert_file_contains "$package_validation" 'opkg install'
 assert_file_contains "$package_validation" 'ubus call zte_usb_wifi capabilities'
 assert_file_contains "$package_validation" 'gh release download'
+assert_file_contains "$package_validation" 'ip route replace prohibit'
+assert_file_contains "$package_validation" 'headSha'
+assert_file_contains "$package_validation" 'test -f /usr/share/rpcd/acl\.d/luci-app-zte-usb-wifi-manager\.json'
+assert_file_contains "$package_validation" 'jsonfilter'
+assert_file_contains "$package_validation" 'opkg list-installed'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 for library in json.sh session.sh snapshot.sh netifd-adapter.sh; do

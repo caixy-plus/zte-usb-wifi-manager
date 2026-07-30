@@ -90,8 +90,8 @@ git commit -m "build: add release package metadata"
 Create `tests/test_packaging.sh` using `tests/testlib.sh`. It must assert:
 
 ```sh
-expected_2512='25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst|0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c|openwrt-25.12.5-x86-64-generic-ext4-combined.img.gz|23e2538e8ab0eb52dfed1c65d608ecdb71ffd432dd54885da138ae67cd9e4461'
-expected_2410='24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f'
+expected_2512='25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst|0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c|openwrt-25.12.5-x86-64-generic-ext4-combined.img.gz|23e2538e8ab0eb52dfed1c65d608ecdb71ffd432dd54885da138ae67cd9e4461|e11279b01e7fea7f7d399e25e969d9382be6891071cbc1225804195224b27b52'
+expected_2410='24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f|fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148'
 
 assert_eq "$expected_2512" "$(./scripts/openwrt-release-matrix.sh 25.12.5)"
 assert_eq "$expected_2410" "$(./scripts/openwrt-release-matrix.sh 24.10.7)"
@@ -123,10 +123,10 @@ set -eu
 
 case ${1-} in
     25.12.5)
-        printf '%s\n' '25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst|0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c|openwrt-25.12.5-x86-64-generic-ext4-combined.img.gz|23e2538e8ab0eb52dfed1c65d608ecdb71ffd432dd54885da138ae67cd9e4461'
+        printf '%s\n' '25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst|0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c|openwrt-25.12.5-x86-64-generic-ext4-combined.img.gz|23e2538e8ab0eb52dfed1c65d608ecdb71ffd432dd54885da138ae67cd9e4461|e11279b01e7fea7f7d399e25e969d9382be6891071cbc1225804195224b27b52'
         ;;
     24.10.7)
-        printf '%s\n' '24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f'
+        printf '%s\n' '24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f|fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148'
         ;;
     *)
         printf 'unsupported OpenWrt release: %s\n' "${1-}" >&2
@@ -193,12 +193,13 @@ The executable POSIX script must:
   `https://downloads.openwrt.org/releases/$release/targets/x86/64/$sdk_file`;
 - verify the pinned SHA-256 before extraction;
 - extract into `mktemp -d` and clean it on exit;
-- run `./scripts/feeds update -a` and `./scripts/feeds install -a`;
+- download and verify official `feeds.buildinfo`, copy its immutable commit
+  pins to `feeds.conf`, then run the feed update and install commands;
 - symlink both repository package directories;
 - append both `CONFIG_PACKAGE_...=m` selections and run `make defconfig`;
 - compile both package targets;
-- locate exactly one backend and one LuCI output matching
-  `*"_all.$format"`;
+- locate exactly one backend and one LuCI output using format-aware names:
+  `name-version.apk` for APK and `name_version_all.ipk` for IPK;
 - reject symlinks and copy only regular files to a newly created output
   directory;
 - generate valid `build-manifest.json` with release, format, SDK filename,
@@ -268,16 +269,19 @@ Expected: workflow file assertions fail.
 Create a workflow with:
 
 - global `permissions: contents: read`;
-- triggers `workflow_dispatch` and tag pushes matching `v*`;
+- triggers `workflow_dispatch` and the exact package-matching tag
+  `v0.1.0-rc1`;
 - a `check` job running `make check`;
 - a two-entry build matrix for `25.12.5` and `24.10.7`;
 - Ubuntu package installation for the official OpenWrt SDK build
   prerequisites;
-- `actions/checkout@v4`, `actions/upload-artifact@v4`, and
-  `actions/download-artifact@v4`;
+- checkout, upload-artifact, and download-artifact actions pinned to reviewed
+  full commit SHAs;
 - one artifact per OpenWrt release;
-- an assembly job that permits only the expected two package basenames per
-  format, merges both manifests, and runs `sha256sum` over the four packages;
+- a tested `scripts/assemble-openwrt-packages.js` assembly job that rejects
+  unexpected files and validates release, format, architecture, source commit,
+  SDK/feed provenance, declared filenames, and package hashes before producing
+  the combined manifest and `SHA256SUMS`;
 - a release step guarded by
   `startsWith(github.ref, 'refs/tags/v')`, with job-level
   `permissions: contents: write`, running:

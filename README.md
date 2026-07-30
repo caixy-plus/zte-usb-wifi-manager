@@ -54,8 +54,9 @@ ubus call system board
 apk --print-arch 2>/dev/null || opkg print-architecture
 ```
 
-安装包必须由与路由器**相同 OpenWrt 版本、target/subtarget 和软件源 ABI**的 SDK
-构建。升级或安装前建议先备份路由器配置。
+Release 中的两个包是架构无关包，可用于兼容矩阵中同一 OpenWrt 版本的不同 CPU
+架构；不能跨 OpenWrt 版本或包格式使用。自行构建时仍应使用与路由器相同 OpenWrt
+版本的软件源。升级或安装前建议先备份路由器配置。
 
 ### 2. 获取安装包
 
@@ -84,7 +85,7 @@ scp zte-usb-wifi-manager*.apk luci-app-zte-usb-wifi-manager*.apk \
 
 ### 3. 安装软件包
 
-OpenWrt 25.12 及以上使用 APK：
+OpenWrt 25.12.5 使用 APK：
 
 ```sh
 apk update
@@ -93,7 +94,7 @@ apk add --allow-untrusted \
     /tmp/luci-app-zte-usb-wifi-manager*.apk
 ```
 
-OpenWrt 24.10 及以下使用 opkg：
+OpenWrt 24.10.7 使用 opkg：
 
 ```sh
 opkg update
@@ -190,8 +191,9 @@ make package/zte-usb-wifi-manager/compile V=s
 make package/luci-app-zte-usb-wifi-manager/compile V=s
 ```
 
-构建结果位于 SDK 的 `bin/packages/` 目录。OpenWrt 25.12 及以上生成 `.apk`，旧版生成
-`.ipk`。编译环境路径中不要包含空格，也不要使用与目标固件不同版本的 SDK。
+构建结果位于 SDK 的 `bin/packages/` 目录。OpenWrt 25.12.5 生成 `.apk`，
+OpenWrt 24.10.7 生成 `.ipk`。编译环境路径中不要包含空格，也不要使用与目标固件
+不同版本的 SDK。
 
 ### 卸载
 
@@ -200,13 +202,13 @@ make package/luci-app-zte-usb-wifi-manager/compile V=s
 /etc/init.d/zte-usb-wifi-manager disable
 ```
 
-OpenWrt 25.12 及以上：
+OpenWrt 25.12.5：
 
 ```sh
 apk del luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 ```
 
-OpenWrt 24.10 及以下：
+OpenWrt 24.10.7：
 
 ```sh
 opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager

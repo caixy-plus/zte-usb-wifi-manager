@@ -8,9 +8,21 @@ OpenWrt 虚拟机，不得连接主路由器或真实 U25S。
 从已经包含 `.github/workflows/packages.yml` 的 `main` 分支触发：
 
 ```sh
+commit_sha=$(git rev-parse origin/main)
+started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 gh workflow run packages.yml --ref main
-run_id=$(gh run list --workflow packages.yml --limit 1 \
-    --json databaseId --jq '.[0].databaseId')
+run_id=
+attempt=0
+while [ -z "$run_id" ] && [ "$attempt" -lt 24 ]; do
+    run_id=$(gh run list --workflow packages.yml --event workflow_dispatch \
+        --branch main --commit "$commit_sha" --limit 10 \
+        --json databaseId,createdAt,headSha \
+        --jq ".[] | select(.headSha == \"$commit_sha\" and .createdAt >= \"$started_at\") | .databaseId" \
+        | head -n 1)
+    [ -n "$run_id" ] || sleep 5
+    attempt=$((attempt + 1))
+done
+[ -n "$run_id" ]
 gh run watch "$run_id" --exit-status
 ```
 
@@ -90,13 +102,33 @@ uci -q delete network.lan.dns
 uci add_list network.lan.dns='192.168.1.3'
 uci commit network
 /etc/init.d/network restart
+
+# 保留虚拟网段到 QEMU 网关的直连路由，禁止访问其他私有地址。
+for private_net in \
+    10.0.0.0/8 \
+    100.64.0.0/10 \
+    169.254.0.0/16 \
+    172.16.0.0/12 \
+    192.168.0.0/16; do
+    ip route replace prohibit "$private_net" metric 5
+done
+sysctl -w net.ipv6.conf.all.disable_ipv6=1
+ip route get 192.168.0.1 2>&1 | grep -Eq 'prohibit|unreachable'
+ip route get 10.0.0.1 2>&1 | grep -Eq 'prohibit|unreachable'
 ```
 
-不要桥接物理 LAN。另开终端确认 SSH：
+这组拒绝路由必须在执行 `apk update` 或 `opkg update` 前生效。虚拟网段自身的
+`192.168.1.0/24` 直连路由比拒绝路由更具体，因此仍可访问 QEMU 网关，但其他私网
+目标（包括 U25S 默认地址）无法经用户网络转发。不要桥接物理 LAN。
+
+另开终端断言固件版本：
 
 ```sh
-ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -p "$ssh_port" root@127.0.0.1 cat /etc/openwrt_release
+actual_release=$(ssh \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -p "$ssh_port" root@127.0.0.1 \
+    '. /etc/openwrt_release; printf "%s\n" "$DISTRIB_RELEASE"')
+[ "$actual_release" = "$release" ]
 ```
 
 ## 4. 上传并安装 GitHub 产物
@@ -139,9 +171,18 @@ opkg status luci-app-zte-usb-wifi-manager
 在虚拟机中执行：
 
 ```sh
-stat -c '%a %n' \
-    /etc/init.d/zte-usb-wifi-manager \
-    /usr/libexec/rpcd/zte_usb_wifi
+test -x /etc/init.d/zte-usb-wifi-manager
+test -x /usr/sbin/zte-usb-wifi-managerd
+test -x /usr/libexec/rpcd/zte_usb_wifi
+[ "$(stat -c '%a' /etc/init.d/zte-usb-wifi-manager)" = 755 ]
+[ "$(stat -c '%a' /usr/sbin/zte-usb-wifi-managerd)" = 755 ]
+[ "$(stat -c '%a' /usr/libexec/rpcd/zte_usb_wifi)" = 755 ]
+
+test -f /etc/config/zte-usb-wifi-manager
+test -f /usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json
+test -f /usr/share/rpcd/acl.d/luci-app-zte-usb-wifi-manager.json
+test -f /www/luci-static/resources/view/zte-usb-wifi-manager/index.js
+grep -Fq "option write_enabled '0'" /etc/config/zte-usb-wifi-manager
 
 umask 077
 mkdir -p /etc/zte-usb-wifi-manager
@@ -158,8 +199,13 @@ uci commit zte-usb-wifi-manager
 /etc/init.d/rpcd restart
 
 ubus list zte_usb_wifi
-ubus call zte_usb_wifi capabilities
-ubus call zte_usb_wifi status
+ubus call service list '{"name":"zte-usb-wifi-manager"}' \
+    >/tmp/zte-service.json
+ubus call zte_usb_wifi capabilities >/tmp/zte-capabilities.json
+ubus call zte_usb_wifi status >/tmp/zte-status.json
+jsonfilter -i /tmp/zte-service.json -e '@["zte-usb-wifi-manager"]' >/dev/null
+jsonfilter -i /tmp/zte-capabilities.json -e '@' >/dev/null
+jsonfilter -i /tmp/zte-status.json -e '@' >/dev/null
 ```
 
 两个 ubus 调用必须返回可解析 JSON。由于没有连接 U25S，`status` 可以报告凭据或设备
@@ -183,8 +229,10 @@ OpenWrt 24.10.7：
 /etc/init.d/zte-usb-wifi-manager stop
 /etc/init.d/zte-usb-wifi-manager disable
 opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
-! opkg status zte-usb-wifi-manager
-! opkg status luci-app-zte-usb-wifi-manager
+! opkg list-installed | grep -q '^zte-usb-wifi-manager '
+! opkg list-installed | grep -q '^luci-app-zte-usb-wifi-manager '
+test ! -e /usr/libexec/rpcd/zte_usb_wifi
+test ! -e /www/luci-static/resources/view/zte-usb-wifi-manager/index.js
 ```
 
 最后在虚拟机中执行 `poweroff`，QEMU 退出后删除 `$vm_dir`。

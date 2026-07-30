@@ -74,14 +74,15 @@ known release key from the compatibility matrix and performs these operations:
 2. Download the SDK archive and the official checksum list over HTTPS.
 3. Verify the SDK archive against the checksum published by OpenWrt.
 4. Extract the SDK into a temporary directory.
-5. Initialize and install the SDK feeds.
+5. Download the release's official `feeds.buildinfo`, verify its checksum, and
+   use its immutable feed commit IDs when installing SDK feeds.
 6. Link both project package directories into the SDK.
 7. select both packages as modules and run `make defconfig`.
 8. Compile the backend and LuCI packages.
 9. Copy only the expected project APK or IPK files into a clean output
    directory.
-10. Fail if either package is missing, duplicated, has the wrong format, or is
-    not marked with architecture `all`.
+10. Fail if either package is missing, duplicated, has the wrong format, or has
+    the wrong architecture metadata (`noarch` for APK, `all` for IPK).
 
 The script uses strict shell error handling and never accepts an arbitrary SDK
 URL from an untrusted pull request.
@@ -105,15 +106,17 @@ and a machine-readable build manifest, and uploads the complete bundle.
 For tag builds only, the final job receives `contents: write` permission and
 creates a GitHub prerelease containing:
 
-- `zte-usb-wifi-manager_*_all.apk`
-- `luci-app-zte-usb-wifi-manager_*_all.apk`
+- `zte-usb-wifi-manager-*.apk`
+- `luci-app-zte-usb-wifi-manager-*.apk`
 - `zte-usb-wifi-manager_*_all.ipk`
 - `luci-app-zte-usb-wifi-manager_*_all.ipk`
 - `SHA256SUMS`
 - `build-manifest.json`
 
 The manifest records the project tag, commit SHA, OpenWrt versions, SDK archive
-names, SDK checksums, package formats, and artifact checksums.
+names, SDK and feeds checksums, package formats, package architectures, and
+artifact checksums. The release tag must be exactly `v0.1.0-rc1`, matching the
+package version; other tags cannot publish the fixed release payload.
 
 ## Real Installation Validation
 
@@ -122,8 +125,10 @@ run. Rebuilding locally and installing those local files does not satisfy the
 requirement.
 
 Two official OpenWrt x86_64 disk images run under QEMU on the local development
-machine. QEMU uses user-mode networking and a temporary forwarded SSH port; it
-does not bridge to the LAN and cannot contact the main router or U25S.
+machine. QEMU uses user-mode networking and a temporary forwarded SSH port.
+Before package downloads, explicit reject routes block RFC 1918, carrier-grade
+NAT, and link-local destinations, and IPv6 is disabled. The guest therefore
+retains public package-source access but cannot contact the main router or U25S.
 
 For each supported version, the validation procedure:
 
@@ -186,6 +191,7 @@ identifiers, local network identifiers, and GitHub tokens.
 
 - GitHub Actions use least-privilege permissions: read-only by default and
   `contents: write` only in the tag release job.
+- Third-party GitHub Actions are pinned to reviewed full commit SHAs.
 - SDKs and firmware images come only from `downloads.openwrt.org` and are
   verified using the corresponding official checksum files.
 - Workflow inputs select predefined matrix entries and cannot inject shell

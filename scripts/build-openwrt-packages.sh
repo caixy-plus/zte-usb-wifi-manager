@@ -16,12 +16,14 @@ script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
 
 matrix=$("$script_dir/openwrt-release-matrix.sh" "$requested_release")
-IFS='|' read -r release format sdk_file sdk_sha256 image_file image_sha256 <<EOF
+IFS='|' read -r release format sdk_file sdk_sha256 image_file image_sha256 \
+    feeds_sha256 <<EOF
 $matrix
 EOF
 [ -n "$release" ] && [ -n "$format" ] && [ -n "$sdk_file" ] &&
     [ -n "$sdk_sha256" ] && [ -n "$image_file" ] &&
-    [ -n "$image_sha256" ] || die 'invalid release matrix entry'
+    [ -n "$image_sha256" ] && [ -n "$feeds_sha256" ] ||
+    die 'invalid release matrix entry'
 
 case $output_dir in
     /*) ;;
@@ -39,25 +41,34 @@ base_url="https://downloads.openwrt.org/releases/$release/targets/x86/64"
 curl -fL --retry 3 --proto '=https' \
     "$base_url/sha256sums" -o "$work_dir/sha256sums"
 curl -fL --retry 3 --proto '=https' \
+    "$base_url/feeds.buildinfo" -o "$work_dir/feeds.buildinfo"
+curl -fL --retry 3 --proto '=https' \
     "$base_url/$sdk_file" -o "$work_dir/$sdk_file"
 
 official_entry="$sdk_sha256 *$sdk_file"
 grep -Fqx "$official_entry" "$work_dir/sha256sums" ||
     die 'pinned SDK checksum does not match the official checksum list'
+official_feeds_entry="$feeds_sha256 *feeds.buildinfo"
+grep -Fqx "$official_feeds_entry" "$work_dir/sha256sums" ||
+    die 'pinned feeds checksum does not match the official checksum list'
 (
     cd "$work_dir"
     printf '%s\n' "$official_entry" | sha256sum -c -
+    printf '%s\n' "$official_feeds_entry" | sha256sum -c -
 )
 
 mkdir "$work_dir/sdk"
 tar --zstd -xf "$work_dir/$sdk_file" -C "$work_dir/sdk"
-set -- "$work_dir"/sdk/*
-[ "$#" -eq 1 ] && [ -d "$1" ] ||
-    die 'SDK archive must contain exactly one top-level directory'
-sdk_dir=$1
+sdk_list=$work_dir/sdk-directories
+find "$work_dir/sdk" -mindepth 1 -maxdepth 1 -type d -print >"$sdk_list"
+sdk_count=$(wc -l <"$sdk_list" | tr -d ' ')
+[ "$sdk_count" -eq 1 ] ||
+    die "SDK archive must contain one top-level directory, found $sdk_count"
+IFS= read -r sdk_dir <"$sdk_list"
 
 (
     cd "$sdk_dir"
+    cp "$work_dir/feeds.buildinfo" feeds.conf
     ./scripts/feeds update -a
     ./scripts/feeds install -a
     ln -s "$repo_root/package/zte-usb-wifi-manager" \
@@ -72,9 +83,25 @@ sdk_dir=$1
     make package/luci-app-zte-usb-wifi-manager/compile V=s
 )
 
+case $format in
+    apk)
+        backend_pattern='zte-usb-wifi-manager-*.apk'
+        luci_pattern='luci-app-zte-usb-wifi-manager-*.apk'
+        package_architecture=noarch
+        ;;
+    ipk)
+        backend_pattern='zte-usb-wifi-manager_*_all.ipk'
+        luci_pattern='luci-app-zte-usb-wifi-manager_*_all.ipk'
+        package_architecture=all
+        ;;
+    *)
+        die "unsupported package format in matrix: $format"
+        ;;
+esac
+
 backend_list=$work_dir/backend-packages
 find "$sdk_dir/bin" -type f \
-    -name "zte-usb-wifi-manager_*_all.$format" -print >"$backend_list"
+    -name "$backend_pattern" -print >"$backend_list"
 backend_count=$(wc -l <"$backend_list" | tr -d ' ')
 [ "$backend_count" -eq 1 ] ||
     die "expected one backend .$format package, found $backend_count"
@@ -82,7 +109,7 @@ IFS= read -r backend_package <"$backend_list"
 
 luci_list=$work_dir/luci-packages
 find "$sdk_dir/bin" -type f \
-    -name "luci-app-zte-usb-wifi-manager_*_all.$format" -print >"$luci_list"
+    -name "$luci_pattern" -print >"$luci_list"
 luci_count=$(wc -l <"$luci_list" | tr -d ' ')
 [ "$luci_count" -eq 1 ] ||
     die "expected one LuCI .$format package, found $luci_count"
@@ -101,15 +128,18 @@ luci_sha256=$(sha256sum "$output_dir/$luci_name" | awk '{print $1}')
 commit_sha=$(git -C "$repo_root" rev-parse HEAD)
 
 node - "$output_dir/build-manifest.json" \
-    "$release" "$format" "$sdk_file" "$sdk_sha256" "$commit_sha" \
+    "$release" "$format" "$package_architecture" \
+    "$sdk_file" "$sdk_sha256" "$feeds_sha256" "$commit_sha" \
     "$backend_name" "$backend_sha256" "$luci_name" "$luci_sha256" <<'NODE'
 const fs = require('fs');
 const [
     manifestPath,
     release,
     format,
+    architecture,
     sdkFile,
     sdkSha256,
+    feedsSha256,
     commitSha,
     backendName,
     backendSha256,
@@ -120,10 +150,12 @@ const [
 fs.writeFileSync(manifestPath, JSON.stringify({
     openwrt_release: release,
     package_format: format,
+    package_architecture: architecture,
     sdk: {
         filename: sdkFile,
         sha256: sdkSha256
     },
+    feeds_sha256: feedsSha256,
     source_commit: commitSha,
     packages: [
         { filename: backendName, sha256: backendSha256 },

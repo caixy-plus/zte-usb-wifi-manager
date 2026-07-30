@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - 'v0.1.0-rc1'
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
@@ -38,7 +38,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install OpenWrt SDK prerequisites
         run: |
@@ -52,7 +52,7 @@ jobs:
         run: ./scripts/build-openwrt-packages.sh '${{ matrix.openwrt }}' output
 
       - name: Upload release-specific packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packages-${{ matrix.openwrt }}
           path: output/
@@ -65,52 +65,22 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
       - name: Download release-specific packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: packages-*
           path: incoming
 
       - name: Assemble checksummed package bundle
-        shell: bash
         run: |
-          set -euo pipefail
-          mkdir dist
-          for pattern in \
-            'zte-usb-wifi-manager_*_all.apk' \
-            'luci-app-zte-usb-wifi-manager_*_all.apk' \
-            'zte-usb-wifi-manager_*_all.ipk' \
-            'luci-app-zte-usb-wifi-manager_*_all.ipk'; do
-            mapfile -t matches < <(find incoming -type f -name "$pattern" -print)
-            if [ "${#matches[@]}" -ne 1 ]; then
-              echo "expected one artifact matching $pattern, found ${#matches[@]}" >&2
-              exit 1
-            fi
-            cp "${matches[0]}" dist/
-          done
-          mapfile -t manifests < <(
-            find incoming -type f -name build-manifest.json -print | sort
-          )
-          if [ "${#manifests[@]}" -ne 2 ]; then
-            echo "expected two build manifests, found ${#manifests[@]}" >&2
-            exit 1
-          fi
-          node - "$GITHUB_SHA" "${manifests[@]}" <<'NODE'
-          const fs = require('fs');
-          const [sourceCommit, ...paths] = process.argv.slice(2);
-          const builds = paths.map(path => JSON.parse(fs.readFileSync(path, 'utf8')));
-          fs.writeFileSync('dist/build-manifest.json', JSON.stringify({
-            source_commit: sourceCommit,
-            builds
-          }, null, 2) + '\n');
-          NODE
-          (
-            cd dist
-            sha256sum ./*.apk ./*.ipk build-manifest.json >SHA256SUMS
-          )
+          node scripts/assemble-openwrt-packages.js \
+            incoming dist "$GITHUB_SHA" "$GITHUB_REF_NAME"
 
       - name: Upload complete package bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: openwrt-packages
           path: dist/
@@ -127,7 +97,7 @@ jobs:
 
     steps:
       - name: Download complete package bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: openwrt-packages
           path: dist
