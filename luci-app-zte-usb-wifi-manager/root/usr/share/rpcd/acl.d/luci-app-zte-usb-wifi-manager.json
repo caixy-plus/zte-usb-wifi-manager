@@ -9,6 +9,16 @@
           "operation_status"
         ]
       }
+    },
+    "write": {
+      "ubus": {
+        "zte_usb_wifi": [
+          "cellular_action",
+          "wifi_action",
+          "traffic_action",
+          "sms_action"
+        ]
+      }
     }
   }
 }

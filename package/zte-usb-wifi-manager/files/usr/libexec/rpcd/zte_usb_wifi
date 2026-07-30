@@ -12,7 +12,7 @@ STATE_DIR=${ZTE_USB_WIFI_STATE_DIR:-/var/run/zte-usb-wifi-manager}
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"}}'
+		'{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
 }
 
 get_status() {
@@ -40,6 +40,46 @@ get_operation_status() {
 	fi
 }
 
+action_matches_method() {
+	case $1:$2 in
+		cellular_action:switch_sim|\
+cellular_action:set_apn|\
+cellular_action:set_connection_mode|\
+wifi_action:set_wifi|\
+traffic_action:set_traffic_plan|\
+traffic_action:reset_traffic|\
+sms_action:send_sms|\
+sms_action:delete_sms|\
+sms_action:mark_sms_read)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+handle_action() {
+	_zte_method=$1
+	_zte_request='{}'
+	IFS= read -r _zte_request || :
+	if ! zte_json_is_flat_object "$_zte_request"; then
+		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
+		return
+	fi
+	_zte_action=$(zte_json_flat_get "$_zte_request" action)
+	if ! zte_action_type_valid "$_zte_action" ||
+		! action_matches_method "$_zte_method" "$_zte_action"; then
+		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
+		return
+	fi
+	if ! zte_adapter_action_supported "$_zte_action"; then
+		printf '%s\n' '{"ok":false,"error":"unsupported"}'
+		return
+	fi
+	printf '%s\n' '{"ok":false,"error":"write_not_enabled"}'
+}
+
 case ${1-} in
 	list)
 		list_methods
@@ -49,6 +89,9 @@ case ${1-} in
 			status) get_status ;;
 			capabilities) zte_adapter_capabilities_json ;;
 			operation_status) get_operation_status ;;
+			cellular_action|wifi_action|traffic_action|sms_action)
+				handle_action "$2"
+				;;
 			*) exit 1 ;;
 		esac
 		;;

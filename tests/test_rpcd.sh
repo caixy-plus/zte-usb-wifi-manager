@@ -48,14 +48,14 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"}}' \
+assert_eq '{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, capabilities, and operation status'
 
 capabilities=$(rpcd_call call capabilities)
 assert_success assert_json "$capabilities"
 assert_eq \
-    '{"adapter":"zte_u25s","model":"U25S","read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"sms_write":false}' \
+    '{"adapter":"zte_u25s","model":"U25S","read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}' \
     "$capabilities" \
     'rpcd capabilities must come from static adapter metadata'
 
@@ -88,6 +88,38 @@ assert_eq '{"ok":false,"error":"invalid_operation_id"}' "$invalid_status"
 missing_status=$(printf '%s\n' '{"operation_id":"op-1722345679-1235"}' | rpcd_call \
     call operation_status)
 assert_eq '{"ok":false,"error":"operation_not_found"}' "$missing_status"
+mkdir -p "$state_dir/actions/results"
+mv "$state_dir/actions/pending/$operation_id.json" \
+    "$state_dir/actions/results/$operation_id.json"
+
+for method_action in \
+    cellular_action:switch_sim \
+    cellular_action:set_apn \
+    cellular_action:set_connection_mode \
+    wifi_action:set_wifi \
+    traffic_action:set_traffic_plan \
+    traffic_action:reset_traffic \
+    sms_action:send_sms \
+    sms_action:delete_sms \
+    sms_action:mark_sms_read
+do
+    method=${method_action%%:*}
+    action=${method_action#*:}
+    reply=$(printf '{"action":"%s"}\n' "$action" | rpcd_call call "$method")
+    assert_eq '{"ok":false,"error":"unsupported"}' "$reply"
+done
+invalid_action=$(printf '%s\n' '{"action":"reboot_device"}' | rpcd_call \
+    call cellular_action)
+assert_eq '{"ok":false,"error":"invalid_action"}' "$invalid_action"
+wrong_method=$(printf '%s\n' '{"action":"send_sms"}' | rpcd_call \
+    call wifi_action)
+assert_eq '{"ok":false,"error":"invalid_action"}' "$wrong_method"
+if find "$state_dir/actions/pending" -type f -name '*.json' 2>/dev/null |
+    grep -q .; then
+    fail 'unsupported actions must not create queue files'
+else
+    pass
+fi
 
 assert_failure rpcd_call call unknown
 assert_failure rpcd_call unknown

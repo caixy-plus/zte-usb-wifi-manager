@@ -10,6 +10,7 @@ ZTE_ADAPTER_MODEL=U25S
 ZTE_CAP_SIM_SWITCH=0
 ZTE_CAP_CELLULAR_WRITE=0
 ZTE_CAP_WIFI_WRITE=0
+ZTE_CAP_TRAFFIC_WRITE=0
 ZTE_CAP_SMS_WRITE=0
 
 ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_exist,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total'
@@ -18,11 +19,23 @@ ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_prov
 # library files after this metadata file returns.
 : "$ZTE_ADAPTER_ID" "$ZTE_ADAPTER_MODEL" "$ZTE_CAP_SIM_SWITCH"
 : "$ZTE_CAP_CELLULAR_WRITE" "$ZTE_CAP_WIFI_WRITE" "$ZTE_CAP_SMS_WRITE"
+: "$ZTE_CAP_TRAFFIC_WRITE"
 : "$ZTE_READ_FIELDS"
 
 zte_adapter_capabilities_json() {
 	printf '%s\n' \
-		'{"adapter":"zte_u25s","model":"U25S","read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"sms_write":false}'
+		'{"adapter":"zte_u25s","model":"U25S","read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}'
+}
+
+zte_adapter_action_supported() {
+	case ${1-} in
+		switch_sim) [ "$ZTE_CAP_SIM_SWITCH" = 1 ] ;;
+		set_apn|set_connection_mode) [ "$ZTE_CAP_CELLULAR_WRITE" = 1 ] ;;
+		set_wifi) [ "$ZTE_CAP_WIFI_WRITE" = 1 ] ;;
+		set_traffic_plan|reset_traffic) [ "$ZTE_CAP_TRAFFIC_WRITE" = 1 ] ;;
+		send_sms|delete_sms|mark_sms_read) [ "$ZTE_CAP_SMS_WRITE" = 1 ] ;;
+		*) return 1 ;;
+	esac
 }
 
 zte_adapter_framework_status_json() {

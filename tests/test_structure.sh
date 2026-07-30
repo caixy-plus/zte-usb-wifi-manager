@@ -39,12 +39,16 @@ assert_success node -e '
 const fs = require("fs");
 const acl = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const read = acl["luci-app-zte-usb-wifi-manager"].read;
+const write = acl["luci-app-zte-usb-wifi-manager"].write;
 if (JSON.stringify(Object.keys(read)) !== JSON.stringify(["ubus"]))
     process.exit(1);
 if (JSON.stringify(Object.keys(read.ubus)) !== JSON.stringify(["zte_usb_wifi"]))
     process.exit(1);
 if (JSON.stringify(read.ubus.zte_usb_wifi) !==
     JSON.stringify(["status", "capabilities", "operation_status"]))
+    process.exit(1);
+if (JSON.stringify(write.ubus.zte_usb_wifi) !==
+    JSON.stringify(["cellular_action", "wifi_action", "traffic_action", "sms_action"]))
     process.exit(1);
 ' "$acl"
 
