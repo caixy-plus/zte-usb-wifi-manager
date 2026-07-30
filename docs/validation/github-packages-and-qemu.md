@@ -210,6 +210,7 @@ uci commit zte-usb-wifi-manager
 /etc/init.d/zte-usb-wifi-manager restart
 /etc/init.d/zte-usb-wifi-manager status
 /etc/init.d/rpcd restart
+sleep 2
 
 ubus list zte_usb_wifi
 ubus call service list '{"name":"zte-usb-wifi-manager"}' \

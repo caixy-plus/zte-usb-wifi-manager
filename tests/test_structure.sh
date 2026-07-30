@@ -77,6 +77,13 @@ assert_file_contains README.md '/etc/zte-usb-wifi-manager/credentials'
 assert_file_contains README.md 'OpenWrt 25\.12\.5'
 assert_file_contains README.md 'OpenWrt 24\.10\.7'
 assert_file_contains README.md '等待 QEMU 安装验证'
+assert_file_contains README.md 'coreutils-stat'
+assert_file_contains README.md '\./scripts/feeds install -p luci luci-base'
+if grep -Fq './scripts/feeds install -a' README.md; then
+    fail 'README source build must not install every feed package'
+else
+    pass
+fi
 if grep -Eq '25\.12 及以上|24\.10 及以下|相同 OpenWrt 版本、target/subtarget' \
     README.md; then
     fail 'README must describe only the exact tested release compatibility'
@@ -98,6 +105,23 @@ assert_file_contains "$package_validation" 'headSha'
 assert_file_contains "$package_validation" 'test -f /usr/share/rpcd/acl\.d/luci-app-zte-usb-wifi-manager\.json'
 assert_file_contains "$package_validation" 'jsonfilter'
 assert_file_contains "$package_validation" 'opkg list-installed'
+assert_file_contains "$package_validation" '^sleep 2$'
+
+build_evidence=docs/validation/2026-07-30-github-actions-build.md
+assert_file_contains "$build_evidence" '^# GitHub Actions 构建验证（2026-07-30）$'
+assert_file_contains "$build_evidence" '30532144723'
+assert_file_contains "$build_evidence" '2edfbbe8b1a7c6b0ce314c2f946ecf81304e73ed'
+assert_file_contains "$build_evidence" 'OpenWrt 25\.12\.5.*PASS'
+assert_file_contains "$build_evidence" 'OpenWrt 24\.10\.7.*PASS'
+assert_file_contains "$build_evidence" 'sha256sum -c SHA256SUMS.*PASS'
+
+qemu_evidence=docs/validation/2026-07-30-qemu-installation.md
+assert_file_contains "$qemu_evidence" '^# QEMU 安装验证（2026-07-30）$'
+assert_file_contains "$qemu_evidence" 'OpenWrt 25\.12\.5.*PASS'
+assert_file_contains "$qemu_evidence" 'OpenWrt 24\.10\.7.*PASS'
+assert_file_contains "$qemu_evidence" 'coreutils-stat'
+assert_file_contains "$qemu_evidence" 'validation=PASS'
+assert_file_contains "$qemu_evidence" 'uninstall=PASS'
 
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'

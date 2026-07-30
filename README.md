@@ -103,8 +103,9 @@ opkg install \
     /tmp/luci-app-zte-usb-wifi-manager_*.ipk
 ```
 
-包管理器会从当前固件的软件源解析 `curl`、`ip-tiny`、`jshn`、`rpcd`、`ubus`
-和 `uci` 等依赖。不要使用 `--force-depends` 或 `--force-architecture`。
+包管理器会从当前固件的软件源解析 `coreutils-stat`、`curl`、`ip-tiny`、`jshn`、
+`rpcd`、`ubus` 和 `uci` 等依赖。不要使用 `--force-depends` 或
+`--force-architecture`。
 
 ### 4. 配置 U25S 凭据
 
@@ -175,7 +176,7 @@ git clone https://github.com/caixy-plus/zte-usb-wifi-manager.git \
     ../zte-usb-wifi-manager
 
 ./scripts/feeds update -a
-./scripts/feeds install -a
+./scripts/feeds install -p luci luci-base
 
 ln -s "$(realpath ../zte-usb-wifi-manager/package/zte-usb-wifi-manager)" \
     package/zte-usb-wifi-manager
@@ -193,7 +194,8 @@ make package/luci-app-zte-usb-wifi-manager/compile V=s
 
 构建结果位于 SDK 的 `bin/packages/` 目录。OpenWrt 25.12.5 生成 `.apk`，
 OpenWrt 24.10.7 生成 `.ipk`。编译环境路径中不要包含空格，也不要使用与目标固件
-不同版本的 SDK。
+不同版本的 SDK。这里只安装构建 LuCI 所需的 feed 元数据；运行时依赖由目标固件
+的软件包管理器从对应版本的官方签名软件源解析。
 
 ### 卸载
 
