@@ -16,10 +16,10 @@ assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=2$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
-assert_file_contains "$backend/Makefile" \
-    '^  DEPENDS:=.*\+ip([[:space:]]|$)'
-if grep -q '\+ip-tiny\([[:space:]]\|$\)' "$backend/Makefile"; then
-    fail 'backend must depend on the ip virtual package, not conflicting ip-tiny'
+assert_file_contains "$backend/Makefile" '^  EXTRA_DEPENDS:=ip$'
+if grep -q '\+ip\(-tiny\|-full\)\{0,1\}\([[:space:]]\|$\)' \
+    "$backend/Makefile"; then
+    fail 'backend must express ip as a runtime virtual dependency'
 else
     pass
 fi
