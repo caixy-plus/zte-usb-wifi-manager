@@ -192,6 +192,7 @@ assert_file_contains Makefile 'tests/test_actions.sh'
 assert_file_contains Makefile 'tests/test_power_adapter.sh'
 assert_file_contains Makefile 'tests/test_event_log.sh'
 assert_file_contains Makefile 'tests/test_recovery_inhibit.sh'
+assert_file_contains Makefile 'tests/test_recovery_guard.sh'
 assert_file_contains Makefile 'tests/test_runtime_stability.sh'
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/actions.sh" \

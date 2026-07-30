@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+ZTE_RECOVERY_LIB_DIR=${ZTE_RECOVERY_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+ZTE_RECOVERY_INHIBIT_FILE=${ZTE_RECOVERY_INHIBIT_FILE:-/var/run/zte-usb-wifi-manager/inhibit-recovery}
+
+. "$ZTE_RECOVERY_LIB_DIR/validation.sh"
+. "$ZTE_RECOVERY_LIB_DIR/json.sh"
+. "$ZTE_RECOVERY_LIB_DIR/recovery-inhibit.sh"
+
+if [ ! -e "$ZTE_RECOVERY_INHIBIT_FILE" ]; then
+	exit 0
+fi
+
+_zte_recovery_now=$(date +%s)
+if zte_recovery_inhibit_active \
+	"$ZTE_RECOVERY_INHIBIT_FILE" "$_zte_recovery_now"; then
+	exit 1
+fi
+
+zte_recovery_inhibit_clear "$ZTE_RECOVERY_INHIBIT_FILE"
+exit 0
