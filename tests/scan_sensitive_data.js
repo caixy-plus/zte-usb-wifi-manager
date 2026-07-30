@@ -42,6 +42,35 @@ function anonymousId(pathBuffer) {
     return crypto.createHash('sha256').update(pathBuffer).digest('hex').slice(0, 12);
 }
 
+function readRegularFile(pathBuffer) {
+    let metadata;
+    try {
+        metadata = fs.lstatSync(pathBuffer);
+    } catch (error) {
+        if (error.code === 'ENOENT')
+            return null;
+        throw new Error(`could not inspect tracked file ${anonymousId(pathBuffer)}`);
+    }
+    if (!metadata.isFile())
+        return null;
+
+    let descriptor;
+    try {
+        descriptor = fs.openSync(
+            pathBuffer,
+            fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+        );
+        if (!fs.fstatSync(descriptor).isFile())
+            return null;
+        return fs.readFileSync(descriptor);
+    } catch {
+        throw new Error(`could not read tracked file ${anonymousId(pathBuffer)}`);
+    } finally {
+        if (descriptor !== undefined)
+            fs.closeSync(descriptor);
+    }
+}
+
 function isPlaceholder(line) {
     return /<[A-Za-z0-9_ -]+>/.test(line) ||
         /\$\{[A-Za-z0-9_]+\}/.test(line) ||
@@ -88,12 +117,9 @@ function main() {
     const findings = [];
 
     for (const pathBuffer of trackedPaths()) {
-        let content;
-        try {
-            content = fs.readFileSync(pathBuffer);
-        } catch {
-            throw new Error(`could not read tracked file ${anonymousId(pathBuffer)}`);
-        }
+        const content = readRegularFile(pathBuffer);
+        if (content === null)
+            continue;
         if (content.includes(0))
             continue;
 

@@ -8,6 +8,8 @@ scanner=$(pwd)/tests/scan_sensitive_data.sh
 work=/tmp/zte-test-sensitive.$$
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work/bad" "$work/clean"
+printf 'password=%s\n' 'outside-untracked-secret-value' >"$work/outside-secret.txt"
+mkdir -p "$work/outside-secret-directory"
 
 init_repo() {
     (
@@ -51,6 +53,8 @@ init_repo "$work/bad"
     newline_name=$(printf 'secret-filename\npart.txt')
     printf 'Cookie: newline=%s\n' 'newline-cookie-value' >"$newline_name"
     printf '\000password=binary-secret-value\n' >binary.dat
+    ln -s "$work/outside-secret.txt" outside-file-link
+    ln -s "$work/outside-secret-directory" outside-directory-link
     git add .
 )
 
@@ -90,6 +94,12 @@ for finding in \
         *) fail "missing sanitized finding: $finding" ;;
     esac
 done
+for symlink in outside-file-link outside-directory-link; do
+    case $bad_output in
+        *"$(file_id "$symlink"):"*) fail 'scanner must skip tracked symlinks' ;;
+        *) pass ;;
+    esac
+done
 case $bad_output in
     *"$(file_id binary.dat):"*) fail 'scanner must skip tracked binary files' ;;
     *) pass ;;
@@ -104,6 +114,7 @@ fi
 for secret_fragment in \
     real-auth-value real-cookie-value literal-password-value \
     literal-json-secret-value unicode-secret-value newline-cookie-value \
+    outside-untracked-secret-value outside-secret-directory \
     13812345678 123456789012345 8986001234567890123 \
     '敏感.txt' secret-filename; do
     case $bad_output in
