@@ -12,4 +12,15 @@ assert_eq "$expected_2410" "$(./scripts/openwrt-release-matrix.sh 24.10.7)"
 assert_failure ./scripts/openwrt-release-matrix.sh 23.05.6 >/dev/null 2>&1
 assert_failure ./scripts/openwrt-release-matrix.sh '25.12.5;id' >/dev/null 2>&1
 
+builder=scripts/build-openwrt-packages.sh
+assert_file_contains "$builder" 'openwrt-release-matrix\.sh'
+assert_file_contains "$builder" 'downloads\.openwrt\.org/releases/'
+assert_file_contains "$builder" 'sha256sums'
+assert_file_contains "$builder" 'sha256sum.*-c'
+assert_file_contains "$builder" 'package/zte-usb-wifi-manager/compile'
+assert_file_contains "$builder" 'package/luci-app-zte-usb-wifi-manager/compile'
+assert_file_contains "$builder" 'build-manifest\.json'
+assert_failure ./scripts/build-openwrt-packages.sh 23.05.6 \
+    /tmp/zte-invalid-output >/dev/null 2>&1
+
 finish
