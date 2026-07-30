@@ -5,6 +5,7 @@
 
 var POLL_INTERVAL_SECONDS = 30;
 var STALE_AFTER_SECONDS = 360;
+var activeTab = 'overview';
 
 var callStatus = rpc.declare({
 	object: 'zte_usb_wifi',
@@ -31,11 +32,14 @@ var tabs = [
 	{ id: 'logs', label: _('日志') }
 ];
 
-function renderTab(tab, active) {
+function renderTab(tab, active, onSelect) {
 	return E('button', {
 		'class': 'cbi-button zte-tab' + (active ? ' cbi-button-positive' : ''),
 		'data-tab': tab.id,
-		'disabled': active ? '' : null
+		'aria-selected': active ? 'true' : 'false',
+		'click': function() {
+			onSelect(tab.id);
+		}
 	}, tab.label);
 }
 
@@ -158,7 +162,7 @@ function snapshotIsStale(updated) {
 		Math.floor(Date.now() / 1000) - timestamp > STALE_AFTER_SECONDS;
 }
 
-function renderStatus(data) {
+function renderStatus(data, selectedTab, onSelect) {
 		var statusResult = data && data[0] && typeof data[0] === 'object'
 			? data[0] : { ok: false, value: {} };
 		var capabilitiesResult = data && data[1] && typeof data[1] === 'object'
@@ -190,9 +194,12 @@ function renderStatus(data) {
 			E('h2', {}, _('中兴随身 WiFi 管理')),
 			alerts,
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab, index) {
-				return renderTab(tab, index === 0);
+				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
-			E('div', { 'class': 'cbi-section' }, [
+			E('div', {
+				'class': 'cbi-section zte-tab-panel',
+				'data-panel': selectedTab
+			}, [
 				E('h3', {}, _('只读状态总览')),
 				row(_('设备型号'), device.model || status.model || capabilities.model),
 				row(_('设备在线'), onlineLabel(status)),
@@ -217,15 +224,27 @@ return view.extend({
 	load: loadData,
 
 	render: function(data) {
-		var root = renderStatus(data);
+		var currentData = data;
+		var root;
+
+		function replace(next) {
+			if (root && root.parentNode)
+				root.parentNode.replaceChild(next, root);
+			root = next;
+			return root;
+		}
+
+		function selectTab(tabId) {
+			activeTab = tabId;
+			replace(renderStatus(currentData, activeTab, selectTab));
+		}
+
+		root = renderStatus(currentData, activeTab, selectTab);
 
 		poll.add(function() {
 			return loadData().then(function(nextData) {
-				var replacement = renderStatus(nextData);
-
-				if (root.parentNode)
-					root.parentNode.replaceChild(replacement, root);
-				root = replacement;
+				currentData = nextData;
+				replace(renderStatus(currentData, activeTab, selectTab));
 			});
 		}, POLL_INTERVAL_SECONDS);
 

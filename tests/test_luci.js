@@ -99,6 +99,18 @@ function collectByClass(node, className, matches) {
 	collectByClass(node.children, className, matches);
 }
 
+function nodesByClass(tree, className) {
+	const matches = [];
+	collectByClass(tree, className, matches);
+	return matches;
+}
+
+function tabById(tree, tabId) {
+	return nodesByClass(tree, 'zte-tab').find(function(tab) {
+		return tab.attrs['data-tab'] === tabId;
+	});
+}
+
 let count = 0;
 let failures = 0;
 let testChain = Promise.resolve();
@@ -233,6 +245,87 @@ test('warns when an otherwise-ok snapshot has stopped updating', function() {
 	assert.ok(alerts.some(function(alert) {
 		return text(alert).indexOf('状态快照长时间未更新') !== -1;
 	}));
+});
+
+test('renders ten tabs and switches to the mobile-network panel', function() {
+	const tree = render({
+		online: true,
+		device: {
+			modem_state: 'connected',
+			cellular: {
+				type: 'NR5G-SA',
+				provider: '中国移动',
+				signalbar: '4',
+				rsrp: '-68',
+				ppp_status: 'ipv4_ipv6_connected'
+			}
+		},
+		network: {
+			up: true,
+			l3_device: 'eth2',
+			ipv4: '192.168.0.2',
+			gateway: '192.168.0.1',
+			is_default_route: false
+		}
+	});
+	assert.strictEqual(nodesByClass(tree, 'zte-tab').length, 10);
+	assert.strictEqual(nodesByClass(tree, 'zte-tab-panel').length, 1);
+	assert.strictEqual(
+		nodesByClass(tree, 'zte-tab-panel')[0].attrs['data-panel'],
+		'overview'
+	);
+
+	let replacement = null;
+	const parent = {
+		replaceChild: function(next, previous) {
+			assert.strictEqual(previous, tree);
+			replacement = next;
+			next.parentNode = parent;
+		}
+	};
+	tree.parentNode = parent;
+
+	const networkTab = tabById(tree, 'network');
+	assert.ok(networkTab);
+	assert.strictEqual(typeof networkTab.attrs.click, 'function');
+	networkTab.attrs.click();
+	assert.ok(replacement);
+	assert.strictEqual(
+		nodesByClass(replacement, 'zte-tab-panel')[0].attrs['data-panel'],
+		'network'
+	);
+});
+
+test('preserves the selected tab after a poll refresh', async function() {
+	pollEntries.length = 0;
+	rpcBehavior.status = function() {
+		return Promise.resolve({
+			online: true,
+			device: { cellular: { type: 'LTE' } }
+		});
+	};
+	rpcBehavior.capabilities = function() { return Promise.resolve({}); };
+
+	const tree = render({ online: false });
+	assert.strictEqual(
+		nodesByClass(tree, 'zte-tab-panel')[0].attrs['data-panel'],
+		'network'
+	);
+
+	let replacement = null;
+	const parent = {
+		replaceChild: function(next) {
+			replacement = next;
+			next.parentNode = parent;
+		}
+	};
+	tree.parentNode = parent;
+	await pollEntries[0].callback();
+	assert.ok(replacement);
+	assert.strictEqual(
+		nodesByClass(replacement, 'zte-tab-panel')[0].attrs['data-panel'],
+		'network'
+	);
 });
 
 testChain.then(function() {
