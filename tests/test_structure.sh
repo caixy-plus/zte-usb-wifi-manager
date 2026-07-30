@@ -174,6 +174,7 @@ assert_file_contains Makefile 'tests/test_u25s_simulator.sh'
 assert_file_contains Makefile 'tests/test_actions.sh'
 assert_file_contains Makefile 'tests/test_power_adapter.sh'
 assert_file_contains Makefile 'tests/test_event_log.sh'
+assert_file_contains Makefile 'tests/test_recovery_inhibit.sh'
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/actions.sh" \
     '^zte_action_enqueue\(\) \{$'
@@ -183,6 +184,9 @@ assert_file_contains \
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/event-log.sh" \
     '^zte_event_write\(\) \{$'
+assert_file_contains \
+    "$backend/files/usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh" \
+    '^zte_recovery_inhibit_write\(\) \{$'
 assert_file_contains docs/design/testing-strategy.md '^## L2：U25S API 模拟器（已实现）$'
 
 # Execute the daemon orchestration functions with side-effect-free stubs.
