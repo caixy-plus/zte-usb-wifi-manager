@@ -40,8 +40,14 @@ backend r9 在拼接 `LD` 前先把第一轮 SHA-256 摘要转成大写，第二
 - `test_u25s_simulator`：56 assertions PASS；
 - `make check`：PASS。
 
-## 待补实机证据
+## 实机结果
 
-r9 必须使用 GitHub 真实 SDK 制品重新安装到 OpenWrt 25.12.5，然后只执行一次
-`zte-u25s-sim-calibrate probe`。只有认证成功并返回完整 readiness 字段，才能把
-登录摘要校准标记为实机通过。真实 SIM 切换仍只能在备用 U25S 上执行。
+r9 已使用 GitHub run `30617784653` 的真实 OpenWrt 25.12.5 SDK 制品正式升级
+到 Cudy TR3000。升级后守护进程通过相同的 `session.sh` 持续读取设备成功，LuCI
+显示设备在线且后端正常，说明摘要修复已进入真实运行路径。
+
+严格只执行的一次独立 `zte-u25s-sim-calibrate probe` 仍返回
+`authentication_failed`。结合守护进程同时读取成功，后续定位到 probe 与轮询
+可能争用目标固件的全局 `LD` 挑战；该问题由 r10 会话锁继续验证。详见
+[r10 会话锁验证](2026-07-31-r10-session-lock.md)。真实 SIM 切换仍只能在备用
+U25S 上执行。

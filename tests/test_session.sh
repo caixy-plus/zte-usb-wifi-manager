@@ -13,6 +13,15 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 
 work=/tmp/zte-test-session.$$
 mkdir -p "$work"
+assert_eq /var/run/zte-usb-wifi-manager-session.lock \
+    "$ZTE_SESSION_LOCK_FILE" \
+    'default session lock must not depend on the daemon runtime directory'
+assert_success test -d "${ZTE_SESSION_LOCK_FILE%/*}"
+ZTE_SESSION_LOCK_FILE=$work/login.lock
+ZTE_SESSION_LOCK_ATTEMPTS=1
+ZTE_SESSION_LOCK_INTERVAL=0
+export ZTE_SESSION_LOCK_FILE ZTE_SESSION_LOCK_ATTEMPTS
+export ZTE_SESSION_LOCK_INTERVAL
 
 assert_eq 'ecd71870d1963316a97e3ac3408c9835ad8cf0f3c1bc703527c30265534f75ae' \
     "$(zte_sha256_hex test123)"
@@ -26,10 +35,17 @@ assert_eq 'BB0BCCC1797AF4B9132536CAE0CD0E4E580DC4D043F386F848C79C4A559CD83A' \
 post_log=$work/post-body
 # Injected into zte_session_login from the sourced production library.
 # shellcheck disable=SC2329
-zte_http_get() { printf '%s\n' '{"LD":"LD-abc123"}'; }
+zte_http_get() {
+    [ -f "$ZTE_SESSION_LOCK_FILE" ] || return 1
+    printf '%s\n' '{"LD":"LD-abc123"}'
+}
 # Injected into zte_session_login from the sourced production library.
 # shellcheck disable=SC2329
-zte_http_post() { printf '%s' "$2" >"$post_log"; printf '%s\n' '{"result":"0"}'; }
+zte_http_post() {
+    [ -f "$ZTE_SESSION_LOCK_FILE" ] || return 1
+    printf '%s' "$2" >"$post_log"
+    printf '%s\n' '{"result":"0"}'
+}
 _zte_digest=unchanged-digest
 _zte_step1=unchanged-step1
 _zte_step2=unchanged-step2
@@ -41,6 +57,162 @@ assert_eq unchanged-digest "$_zte_digest"
 assert_eq unchanged-step1 "$_zte_step1"
 assert_eq unchanged-step2 "$_zte_step2"
 assert_eq unchanged-hash "$_zte_hash"
+if [ -e "$ZTE_SESSION_LOCK_FILE" ]; then
+    fail 'successful login must release the shared session lock'
+else
+    pass
+fi
+
+# Neither a live nor dead owner can be displaced without an atomic
+# compare-and-swap primitive. Dead locks fail closed instead of risking two
+# simultaneous owners.
+printf '%s\n' "$$" >"$ZTE_SESSION_LOCK_FILE"
+chmod 600 "$ZTE_SESSION_LOCK_FILE"
+assert_failure zte_session_login 192.168.0.1 test123 "$work/cookies"
+assert_eq "$$" "$(cat "$ZTE_SESSION_LOCK_FILE")"
+rm -f "$ZTE_SESSION_LOCK_FILE"
+
+printf '%s\n' 2147483647 >"$ZTE_SESSION_LOCK_FILE"
+chmod 600 "$ZTE_SESSION_LOCK_FILE"
+assert_failure zte_session_login 192.168.0.1 test123 "$work/cookies"
+assert_eq 2147483647 "$(cat "$ZTE_SESSION_LOCK_FILE")"
+rm -f "$ZTE_SESSION_LOCK_FILE"
+
+# A missing custom lock parent fails closed without creating an unowned tree.
+saved_lock_file=$ZTE_SESSION_LOCK_FILE
+ZTE_SESSION_LOCK_FILE=$work/missing-parent/login.lock
+assert_failure zte_session_login 192.168.0.1 test123 "$work/cookies"
+if [ -e "$work/missing-parent" ]; then
+    fail 'session login must not create an unverified lock parent'
+else
+    pass
+fi
+ZTE_SESSION_LOCK_FILE=$saved_lock_file
+
+# Two actual shell processes must never overlap their LD -> LOGIN exchanges.
+concurrent_helper=$work/concurrent-login
+cat >"$concurrent_helper" <<'EOF'
+#!/bin/sh
+set -eu
+lib=$1
+ZTE_SESSION_LOCK_FILE=$2
+event_log=$3
+release_gate=$4
+role=$5
+ZTE_SESSION_LOCK_ATTEMPTS=5
+ZTE_SESSION_LOCK_INTERVAL=1
+case $role in
+    stale-*) ZTE_SESSION_LOCK_ATTEMPTS=1 ;;
+esac
+export ZTE_SESSION_LOCK_FILE ZTE_SESSION_LOCK_ATTEMPTS
+export ZTE_SESSION_LOCK_INTERVAL
+. "$lib/json.sh"
+. "$lib/session.sh"
+zte_http_get() {
+    printf '%s:get\n' "$role" >>"$event_log"
+    if [ "$role" = first ]; then
+        while [ ! -e "$release_gate" ]; do
+            sleep 0.05
+        done
+    elif [ "$role" = signal ]; then
+        while [ ! -e "$release_gate" ]; do
+            sleep 0.05
+        done
+    fi
+    printf '%s\n' '{"LD":"LD-abc123"}'
+}
+zte_http_post() {
+    printf '%s:post\n' "$role" >>"$event_log"
+    printf '%s\n' '{"result":"0"}'
+}
+zte_session_login 192.168.0.1 test123 "$role.cookies"
+EOF
+chmod +x "$concurrent_helper"
+concurrent_log=$work/concurrent-events
+release_gate=$work/release-first
+: >"$concurrent_log"
+"$concurrent_helper" "$lib" "$ZTE_SESSION_LOCK_FILE" \
+    "$concurrent_log" "$release_gate" first &
+first_pid=$!
+concurrent_attempt=0
+while ! grep -Fqx 'first:get' "$concurrent_log"; do
+    concurrent_attempt=$((concurrent_attempt + 1))
+    [ "$concurrent_attempt" -lt 100 ] || break
+    sleep 0.02
+done
+assert_eq first:get "$(cat "$concurrent_log")"
+"$concurrent_helper" "$lib" "$ZTE_SESSION_LOCK_FILE" \
+    "$concurrent_log" "$release_gate" second &
+second_pid=$!
+sleep 0.1
+assert_eq first:get "$(cat "$concurrent_log")"
+: >"$release_gate"
+assert_success wait "$first_pid"
+assert_success wait "$second_pid"
+assert_eq 'first:get
+first:post
+second:get
+second:post' "$(cat "$concurrent_log")"
+if [ -e "$ZTE_SESSION_LOCK_FILE" ]; then
+    fail 'concurrent logins must release the shared session lock'
+else
+    pass
+fi
+
+# Two contenders observing the same dead PID must both fail closed and leave
+# that exact lock in place; neither may enter the HTTP exchange.
+: >"$concurrent_log"
+printf '%s\n' 2147483647 >"$ZTE_SESSION_LOCK_FILE"
+chmod 600 "$ZTE_SESSION_LOCK_FILE"
+"$concurrent_helper" "$lib" "$ZTE_SESSION_LOCK_FILE" \
+    "$concurrent_log" "$release_gate" stale-one &
+stale_one_pid=$!
+"$concurrent_helper" "$lib" "$ZTE_SESSION_LOCK_FILE" \
+    "$concurrent_log" "$release_gate" stale-two &
+stale_two_pid=$!
+if wait "$stale_one_pid"; then
+    fail 'first stale-lock contender must fail closed'
+else
+    pass
+fi
+if wait "$stale_two_pid"; then
+    fail 'second stale-lock contender must fail closed'
+else
+    pass
+fi
+assert_eq '' "$(cat "$concurrent_log")"
+assert_eq 2147483647 "$(cat "$ZTE_SESSION_LOCK_FILE")"
+rm -f "$ZTE_SESSION_LOCK_FILE"
+
+# TERM inside the LD request must run the login subshell cleanup trap.
+: >"$concurrent_log"
+rm -f "$release_gate"
+"$concurrent_helper" "$lib" "$ZTE_SESSION_LOCK_FILE" \
+    "$concurrent_log" "$release_gate" signal &
+signal_pid=$!
+signal_attempt=0
+while ! grep -Fqx 'signal:get' "$concurrent_log"; do
+    signal_attempt=$((signal_attempt + 1))
+    [ "$signal_attempt" -lt 100 ] || break
+    sleep 0.02
+done
+signal_child=$(ps -eo pid=,ppid= |
+    awk -v parent="$signal_pid" '$2 == parent { print $1; exit }')
+case $signal_child in
+    ''|*[!0-9]*) fail 'could not identify the login lock holder' ;;
+    *) assert_success kill -TERM "$signal_child" ;;
+esac
+: >"$release_gate"
+if wait "$signal_pid"; then
+    fail 'interrupted login must fail'
+else
+    pass
+fi
+if [ -e "$ZTE_SESSION_LOCK_FILE" ]; then
+    fail 'interrupted login must release the shared session lock'
+else
+    pass
+fi
 
 # non-zero login result is rejected
 # Injected into zte_session_login from the sourced production library.

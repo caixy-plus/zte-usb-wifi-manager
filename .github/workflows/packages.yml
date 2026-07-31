@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v0.1.0-rc1-r9'
+      - 'v0.1.0-rc1-r10'
 
 permissions:
   contents: read
@@ -108,7 +108,7 @@ jobs:
         run: |
           printf '%s\n' \
             'Safety-gated developer preview for OpenWrt 25.12.5 and 24.10.7.' \
-            'Backend r9 fixes U25S login by uppercasing the first-round SHA-256 hex before appending LD; production device writes and USB power remain calibration-gated.' \
+            'Backend r10 serializes the U25S global LD-to-LOGIN challenge across the daemon, calibration tools and action executors; production device writes and USB power remain calibration-gated.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md

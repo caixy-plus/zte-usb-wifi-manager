@@ -65,6 +65,8 @@ else
 fi
 
 work=$(mktemp -d /tmp/zte-test-u25s-simulator.XXXXXX)
+ZTE_SESSION_LOCK_FILE=$work/session-login.lock
+export ZTE_SESSION_LOCK_FILE
 simulator_pid=
 ready_file=$work/ready
 request_log=$work/requests

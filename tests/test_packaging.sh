@@ -35,9 +35,9 @@ else
     pass
 fi
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r9\\.apk"
+    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r10\\.apk"
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r9_all\\.ipk"
+    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r10_all\\.ipk"
 backend_package_definition="$work/backend-package-definition"
 sed -n '/^define Package\/zte-usb-wifi-manager$/,/^endef$/p' \
     package/zte-usb-wifi-manager/Makefile >"$backend_package_definition"
@@ -351,7 +351,7 @@ case $(basename "$package_file") in
         ;;
     *)
         package_name=zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r9
+        package_version=0.1.0_rc1-r10
         ;;
 esac
 [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] || package_name=wrong-package
@@ -374,7 +374,7 @@ SCRIPT
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r9
+                package_version=0.1.0_rc1-r10
                 ;;
         esac
         [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] ||
@@ -406,9 +406,9 @@ case " $* " in
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
         [ ! -e package/feeds/packages/curl ] || exit 1
         printf 'apk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r9.apk
+            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r10.apk
         printf 'ipk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r9_all.ipk
+            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r10_all.ipk
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
@@ -461,9 +461,9 @@ assert_failure env PATH="$fake_bin:$PATH" \
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
-printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r9.apk"
+printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r10.apk"
 printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r3.apk"
-printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r9_all.ipk"
+printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r10_all.ipk"
 printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
@@ -537,14 +537,14 @@ if (manifest.project_ref !== "main" || manifest.project_tag !== null ||
 ' "$work/dist" "$source_sha"
 
 assert_success node scripts/assemble-openwrt-packages.js \
-    "$work/incoming" "$work/dist-r9-tag" "$source_sha" v0.1.0-rc1-r9
+    "$work/incoming" "$work/dist-r10-tag" "$source_sha" v0.1.0-rc1-r10
 assert_success node -e '
 const fs = require("fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1]));
-if (manifest.project_ref !== "v0.1.0-rc1-r9" ||
-    manifest.project_tag !== "v0.1.0-rc1-r9")
+if (manifest.project_ref !== "v0.1.0-rc1-r10" ||
+    manifest.project_tag !== "v0.1.0-rc1-r10")
     process.exit(1);
-' "$work/dist-r9-tag/build-manifest.json"
+' "$work/dist-r10-tag/build-manifest.json"
 assert_failure node scripts/assemble-openwrt-packages.js \
     "$work/incoming" "$work/dist-old-tag" "$source_sha" v0.1.0-rc1 \
     >/dev/null 2>&1
@@ -556,7 +556,7 @@ assert_failure node scripts/assemble-openwrt-packages.js \
 
 rm "$work/incoming/packages-25.12.5/unexpected.txt"
 cp -R "$work/incoming" "$work/wrong-version-incoming"
-mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r9.apk" \
+mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r10.apk" \
     "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-9.9.9-r1.apk"
 node - "$work/wrong-version-incoming/packages-25.12.5/build-manifest.json" <<'NODE'
 const fs = require('fs');
@@ -583,21 +583,21 @@ assert_file_contains "$workflow" 'scripts/build-openwrt-packages\.sh'
 assert_file_contains "$workflow" 'SHA256SUMS'
 assert_file_contains "$workflow" 'gh release create'
 assert_file_contains "$workflow" '\-\-prerelease'
-assert_file_contains "$workflow" "      - 'v0\\.1\\.0-rc1-r9'"
+assert_file_contains "$workflow" "      - 'v0\\.1\\.0-rc1-r10'"
 if grep -Fqx "      - 'v0.1.0-rc1'" "$workflow"; then
-    fail 'r9 workflow must not publish the historical release tag'
+    fail 'r10 workflow must not publish the historical release tag'
 else
     pass
 fi
 if grep -Fiq 'read-only developer preview' "$workflow"; then
-    fail 'r9 release notes must not claim the package is read-only'
+    fail 'r10 release notes must not claim the package is read-only'
 else
     pass
 fi
-assert_file_contains "$workflow" 'Backend r9'
-assert_file_contains "$workflow" 'first-round SHA-256 hex'
-if grep -Fq 'Backend r8' "$workflow"; then
-    fail 'r9 workflow must not retain stale r8 release notes'
+assert_file_contains "$workflow" 'Backend r10'
+assert_file_contains "$workflow" 'global LD-to-LOGIN challenge'
+if grep -Eq 'Backend r[89]([^0-9]|$)' "$workflow"; then
+    fail 'r10 workflow must not retain stale r8 or r9 release notes'
 else
     pass
 fi
@@ -606,8 +606,8 @@ assert_file_contains "$workflow" '11d5960a326750d5838078e36cf38b85af677262'
 assert_file_contains "$workflow" 'ea165f8d65b6e75b540449e92b4886f43607fa02'
 assert_file_contains "$workflow" 'd3f86a106a0bac45b974a628896c90dbdf5c8093'
 assert_file_contains docs/validation/github-packages-and-qemu.md \
-    'gh release download v0\.1\.0-rc1-r9'
-assert_file_contains README.md 'v0\.1\.0-rc1-r9'
+    'gh release download v0\.1\.0-rc1-r10'
+assert_file_contains README.md 'v0\.1\.0-rc1-r10'
 
 if grep -Eq 'pull_request:|--force-depends|--force-architecture' \
     "$workflow" 2>/dev/null; then
