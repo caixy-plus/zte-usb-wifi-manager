@@ -195,24 +195,14 @@ zte_action_claim "$state_dir" >/dev/null
 assert_success zte_action_finish \
     "$state_dir" "$sim_queued_id" failed test_complete 1722345680
 
-write_disabled=$(printf '%s\n' '{"action":"set_wifi"}' |
-    ZTE_TEST_WRITE_ENABLED=0 rpcd_call call wifi_action)
-assert_eq '{"ok":false,"error":"write_not_enabled"}' "$write_disabled"
-queued=$(printf '%s\n' '{"action":"set_wifi"}' |
-    ZTE_TEST_WRITE_ENABLED=1 rpcd_call call wifi_action)
-assert_success assert_json "$queued"
-case $queued in
-    '{"ok":true,"operation_id":"op-'*',"state":"queued"}') pass ;;
-    *) fail "supported write did not return a queued operation: $queued" ;;
-esac
-queued_id=$(zte_json_flat_get "$queued" operation_id)
-assert_success zte_operation_id_valid "$queued_id"
-assert_success test -f "$state_dir/actions/pending/$queued_id.json"
-assert_eq 600 \
-    "$(test_file_mode "$state_dir/actions/pending/$queued_id.json")"
-busy=$(printf '%s\n' '{"action":"set_wifi"}' |
-    ZTE_TEST_WRITE_ENABLED=1 rpcd_call call wifi_action)
-assert_eq '{"ok":false,"error":"operation_busy"}' "$busy"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"set_wifi"}' |
+        ZTE_TEST_WRITE_ENABLED=0 rpcd_call call wifi_action
+)"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"set_wifi"}' |
+        ZTE_TEST_WRITE_ENABLED=1 rpcd_call call wifi_action
+)"
 RPCD_TEST_LIB_DIR=$(dirname "$metadata")
 export RPCD_TEST_LIB_DIR
 

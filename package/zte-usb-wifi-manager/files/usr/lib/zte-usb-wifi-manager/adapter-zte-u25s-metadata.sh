@@ -30,14 +30,27 @@ zte_adapter_login_required() {
 	[ "$ZTE_LOGIN_REQUIRED" = 1 ]
 }
 
+zte_adapter_capability_bool() {
+	if [ "${1-}" = 1 ]; then
+		printf '%s' true
+	else
+		printf '%s' false
+	fi
+}
+
 zte_adapter_capabilities_json() {
 	if zte_adapter_login_required; then
 		_zte_metadata_login_required=true
 	else
 		_zte_metadata_login_required=false
 	fi
-	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}\n' \
-		"$_zte_metadata_login_required"
+	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s}\n' \
+		"$_zte_metadata_login_required" \
+		"$(zte_adapter_capability_bool "$ZTE_CAP_SIM_SWITCH")" \
+		"$(zte_adapter_capability_bool "$ZTE_CAP_CELLULAR_WRITE")" \
+		"$(zte_adapter_capability_bool "$ZTE_CAP_WIFI_WRITE")" \
+		"$(zte_adapter_capability_bool "$ZTE_CAP_TRAFFIC_WRITE")" \
+		"$(zte_adapter_capability_bool "$ZTE_CAP_SMS_WRITE")"
 }
 
 zte_adapter_action_supported() {
@@ -64,7 +77,7 @@ zte_adapter_action_payload_valid() {
 				*) return 1 ;;
 			esac
 			;;
-		*) return 0 ;;
+		*) return 1 ;;
 	esac
 }
 

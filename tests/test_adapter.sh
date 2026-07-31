@@ -1,7 +1,7 @@
 #!/bin/sh
 # HTTP stubs are invoked from production functions loaded with source, which
 # ShellCheck 0.9 cannot trace across files.
-# shellcheck disable=SC2317,SC2329
+# shellcheck disable=SC2034,SC2317,SC2329
 set -eu
 TEST_NAME=test_adapter
 . ./tests/testlib.sh
@@ -29,6 +29,20 @@ assert_eq true "$(
         node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).login_required)))'
 )"
 ZTE_LOGIN_REQUIRED=0
+
+# Capability JSON and action gates must use the same compile-time flags.
+ZTE_CAP_SIM_SWITCH=1
+assert_eq true "$(
+    zte_adapter_capabilities_json |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))'
+)"
+assert_success zte_adapter_action_supported switch_sim
+ZTE_CAP_SIM_SWITCH=0
+assert_eq false "$(
+    zte_adapter_capabilities_json |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))'
+)"
+assert_failure zte_adapter_action_supported switch_sim
 
 fixtures=./tests/fixtures/u25s
 work=/tmp/zte-test-adapter.$$
@@ -247,6 +261,17 @@ assert_eq 0 "$(zte_adapter_sim_card_index physical)"
 assert_failure zte_adapter_sim_card_index ''
 assert_failure zte_adapter_sim_card_index sim4
 assert_failure zte_adapter_sim_card_index 0
+
+# Enumerated but unimplemented actions are strict default-deny. Enabling a
+# capability flag alone must never make an unvalidated payload queueable.
+for unregistered_action in \
+    set_apn set_connection_mode set_wifi set_traffic_plan reset_traffic \
+    send_sms delete_sms mark_sms_read
+do
+    assert_failure zte_adapter_action_payload_valid \
+        "$unregistered_action" '{}'
+done
+assert_failure zte_adapter_action_payload_valid unknown '{}'
 
 # The calibrated request shape must contain only the verified goform id and
 # card_index mapping. A response other than the observed success token fails.
