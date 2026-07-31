@@ -7,6 +7,12 @@ ZTE_POWER_RESTORE_CONTROL_PATH=${ZTE_POWER_RESTORE_CONTROL_PATH:-}
 ZTE_POWER_RESTORE_STATE_DIR=${ZTE_POWER_RESTORE_STATE_DIR:-/var/run/zte-usb-wifi-manager}
 ZTE_POWER_RESTORE_INHIBIT_FILE=${ZTE_POWER_RESTORE_INHIBIT_FILE:-$ZTE_POWER_RESTORE_STATE_DIR/inhibit-recovery}
 ZTE_POWER_RESTORE_RECOVERY_SERVICE=${ZTE_POWER_RESTORE_RECOVERY_SERVICE:-/etc/init.d/zte-usb-recover}
+ZTE_POWER_RESTORE_COORDINATOR_CLAIM=${ZTE_POWER_RESTORE_COORDINATOR_CLAIM:-0}
+
+case $ZTE_POWER_RESTORE_COORDINATOR_CLAIM in
+	0|1) ;;
+	*) exit 1 ;;
+esac
 
 . "$ZTE_POWER_RESTORE_LIB_DIR/validation.sh"
 . "$ZTE_POWER_RESTORE_LIB_DIR/json.sh"
@@ -17,11 +23,19 @@ ZTE_POWER_RESTORE_RECOVERY_SERVICE=${ZTE_POWER_RESTORE_RECOVERY_SERVICE:-/etc/in
 
 _zte_restore_transition=0
 _zte_restore_power_required=0
+_zte_restore_power_confirmed=0
 _zte_restore_board=''
 
 if zte_power_transition_active "$ZTE_POWER_RESTORE_STATE_DIR"; then
 	_zte_restore_transition=1
-	_zte_restore_power_required=1
+	if [ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" = 1 ]; then
+		trap 'zte_power_transition_release \
+"$ZTE_POWER_RESTORE_STATE_DIR" >/dev/null 2>&1 || :' 0
+	else
+		_zte_restore_power_required=1
+	fi
+elif [ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" = 1 ]; then
+	exit 1
 fi
 
 if [ -z "$ZTE_POWER_RESTORE_CONTROL_PATH" ]; then
@@ -32,7 +46,8 @@ if [ -z "$ZTE_POWER_RESTORE_CONTROL_PATH" ]; then
 		ZTE_POWER_RESTORE_CONTROL_PATH=$(
 			zte_power_default_control_path "$_zte_restore_board"
 		) || exit 1
-	elif [ "$_zte_restore_transition" = 1 ]; then
+	elif [ "$_zte_restore_transition" = 1 ] &&
+		[ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" != 1 ]; then
 		exit 1
 	fi
 fi
@@ -53,10 +68,27 @@ if [ -n "$ZTE_POWER_RESTORE_CONTROL_PATH" ] &&
 		0|1) ;;
 		*) exit 1 ;;
 	esac
-	[ "$_zte_restore_supply" = "$_zte_restore_value" ] ||
+	if [ "$_zte_restore_value" = 1 ] &&
+		[ "$_zte_restore_supply" = 1 ]; then
+		_zte_restore_power_confirmed=1
+	else
 		_zte_restore_power_required=1
-elif [ "$_zte_restore_transition" = 1 ]; then
+	fi
+elif [ "$_zte_restore_transition" = 1 ] &&
+	[ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" != 1 ]; then
 	exit 1
+fi
+
+if [ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" = 1 ] &&
+	[ "$_zte_restore_power_required" = 1 ] &&
+	[ ! -e "$ZTE_POWER_RESTORE_INHIBIT_FILE" ] &&
+	[ ! -L "$ZTE_POWER_RESTORE_INHIBIT_FILE" ]; then
+	# Persist recovery responsibility before changing power. This valid but
+	# already-expired ownership marker makes the next coordinator poll retry
+	# immediately if power restore or recovery restart fails in this process.
+	zte_recovery_inhibit_write \
+		"$ZTE_POWER_RESTORE_INHIBIT_FILE" manual_power_off 1 0 true ||
+		exit 1
 fi
 
 if [ "$_zte_restore_power_required" = 1 ]; then
@@ -72,17 +104,20 @@ if [ "$_zte_restore_power_required" = 1 ]; then
 		exit 1
 	[ "$(zte_power_supply_read "$ZTE_POWER_RESTORE_CONTROL_PATH")" = 1 ] ||
 		exit 1
+	_zte_restore_power_confirmed=1
 fi
 
-if [ -e "$ZTE_POWER_RESTORE_INHIBIT_FILE" ]; then
+if [ -e "$ZTE_POWER_RESTORE_INHIBIT_FILE" ] ||
+	[ -L "$ZTE_POWER_RESTORE_INHIBIT_FILE" ]; then
 	if ! zte_recovery_finish_on \
 		"$ZTE_POWER_RESTORE_INHIBIT_FILE" \
 		"$ZTE_POWER_RESTORE_RECOVERY_SERVICE"; then
 		# A missing/corrupt marker cannot prove the previous service state.
-		# During an owned or visibly powered-off transition, prefer restoring
-		# recovery over leaving the modem unprotected.
-		if [ "$_zte_restore_transition" != 1 ] &&
-			[ "$_zte_restore_power_required" != 1 ]; then
+		# During an owned transition or after power is confirmed ON, prefer
+		# restoring recovery over leaving the modem unprotected.
+		if { [ "$_zte_restore_transition" != 1 ] ||
+			[ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" = 1 ]; } &&
+			[ "$_zte_restore_power_confirmed" != 1 ]; then
 			exit 1
 		fi
 		zte_recovery_service_available \
@@ -95,6 +130,8 @@ if [ -e "$ZTE_POWER_RESTORE_INHIBIT_FILE" ]; then
 			"$ZTE_POWER_RESTORE_INHIBIT_FILE" || exit 1
 	fi
 elif [ "$_zte_restore_transition" = 1 ] &&
+	{ [ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" != 1 ] ||
+		[ "$_zte_restore_power_required" = 1 ]; } &&
 	! zte_recovery_service_running \
 		"$ZTE_POWER_RESTORE_RECOVERY_SERVICE"; then
 	zte_recovery_service_control \
@@ -105,4 +142,5 @@ fi
 
 if [ "$_zte_restore_transition" = 1 ]; then
 	zte_power_transition_release "$ZTE_POWER_RESTORE_STATE_DIR" || exit 1
+	[ "$ZTE_POWER_RESTORE_COORDINATOR_CLAIM" != 1 ] || trap - 0
 fi

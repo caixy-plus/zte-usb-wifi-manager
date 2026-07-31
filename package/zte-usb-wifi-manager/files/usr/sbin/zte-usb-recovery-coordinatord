@@ -39,7 +39,10 @@ zte_recovery_coordinator_once() {
 		"$ZTE_RECOVERY_COORDINATOR_STATE_DIR"; then
 		# No marker is the brief safe window between claiming the transition
 		# lock and writing ownership. Never race the manager in that window.
-		[ -e "$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" ] || return 0
+		if [ ! -e "$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" ] &&
+			[ ! -L "$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" ]; then
+			return 0
+		fi
 		if zte_recovery_inhibit_active \
 			"$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" \
 			"$_zte_recovery_coordinator_now"; then
@@ -49,10 +52,16 @@ zte_recovery_coordinator_once() {
 		"$ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER"
 		return
 	fi
-	zte_recovery_reconcile \
+	if zte_recovery_inhibit_active \
 		"$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" \
-		"$_zte_recovery_coordinator_now" \
-		"$ZTE_RECOVERY_COORDINATOR_SERVICE"
+		"$_zte_recovery_coordinator_now"; then
+		return 0
+	fi
+	[ -x "$ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER" ] || return 1
+	zte_power_transition_claim "$ZTE_RECOVERY_COORDINATOR_STATE_DIR" ||
+		return 1
+	ZTE_POWER_RESTORE_COORDINATOR_CLAIM=1 \
+		"$ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER"
 }
 
 zte_recovery_coordinator_write_pid() {
