@@ -82,15 +82,15 @@ assert_eq '{"online":true,"state":"ok","updated":1722345678}' "$status" \
     'rpcd status must return the cached snapshot byte-for-byte'
 
 assert_eq '{"configured":false}' "$(rpcd_call call credential_status)"
-credential_reply=$(printf '%s\n' '{"password":"local test value"}' |
+credential_reply=$(printf '%s\n' '{"password":"PLACEHOLDER"}' |
     rpcd_call call set_credentials)
 assert_eq '{"ok":true,"configured":true}' "$credential_reply"
 case $credential_reply in
-    *'local test value'*) fail 'credential RPC echoed the submitted password' ;;
+    *PLACEHOLDER*) fail 'credential RPC echoed the submitted password' ;;
     *) pass ;;
 esac
 assert_eq 600 "$(test_file_mode "$credential_file")"
-assert_eq 'password=local test value' "$(cat "$credential_file")"
+assert_eq 'password=PLACEHOLDER' "$(cat "$credential_file")"
 assert_eq '{"configured":true}' "$(rpcd_call call credential_status)"
 assert_eq '{"ok":false,"error":"invalid_password"}' \
     "$(printf '%s\n' '{"password":""}' | rpcd_call call set_credentials)"

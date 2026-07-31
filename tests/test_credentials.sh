@@ -45,12 +45,12 @@ assert_eq 'replacement secret' "$(zte_read_password "$credential_file")"
 assert_eq 600 "$(zte_file_mode "$credential_file")"
 
 real_file=$work/real-credentials
-printf '%s\n' 'password=unchanged' >"$real_file"
+printf '%s\n' 'password=PLACEHOLDER' >"$real_file"
 chmod 600 "$real_file"
 link_file=$work/credential-link
 ln -s "$real_file" "$link_file"
 assert_failure zte_write_password "$link_file" 'must not replace symlink'
-assert_eq 'password=unchanged' "$(cat "$real_file")"
+assert_eq 'password=PLACEHOLDER' "$(cat "$real_file")"
 
 current_uid=$(id -u)
 # Injected into zte_read_password to simulate another effective account.

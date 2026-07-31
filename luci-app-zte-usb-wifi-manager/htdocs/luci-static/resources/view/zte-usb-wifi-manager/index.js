@@ -473,11 +473,11 @@ return view.extend({
 		}
 
 		function saveCredentials(passwordInput) {
-			var password = passwordInput && typeof passwordInput.value === 'string'
+			var credentialValue = passwordInput && typeof passwordInput.value === 'string'
 				? passwordInput.value : '';
 			if (passwordInput)
 				passwordInput.value = '';
-			if (!password) {
+			if (!credentialValue) {
 				credentialNotice = {
 					level: 'error',
 					message: _('请输入 U25S 管理密码。')
@@ -486,8 +486,8 @@ return view.extend({
 				return Promise.resolve();
 			}
 
-			return Promise.resolve(callSetCredentials(password)).then(function(reply) {
-				password = '';
+			return Promise.resolve(callSetCredentials(credentialValue)).then(function(reply) {
+				credentialValue = '';
 				if (!reply || reply.ok !== true) {
 					credentialNotice = {
 						level: 'error',
@@ -506,7 +506,7 @@ return view.extend({
 				};
 				replace(renderCurrent());
 			}, function() {
-				password = '';
+				credentialValue = '';
 				credentialNotice = {
 					level: 'error',
 					message: _('密码保存失败，请检查 rpcd 服务和权限。')
