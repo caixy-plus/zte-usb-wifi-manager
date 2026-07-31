@@ -1,5 +1,21 @@
 #!/bin/sh
 
+zte_netifd_route_uses_device() {
+    _zte_route_host=$(zte_host_ipv4 "$1") || return 1
+    _zte_route_device=$2
+    _zte_route_result=$(ip -4 route get "$_zte_route_host" 2>/dev/null) ||
+        return 1
+    _zte_route_previous=''
+    for _zte_route_token in $_zte_route_result; do
+        if [ "$_zte_route_previous" = dev ]; then
+            [ "$_zte_route_token" = "$_zte_route_device" ]
+            return
+        fi
+        _zte_route_previous=$_zte_route_token
+    done
+    return 1
+}
+
 zte_netifd_json() {
     case ${1:-0} in
         1) _zte_up=true ;;

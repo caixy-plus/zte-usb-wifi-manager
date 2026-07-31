@@ -55,6 +55,12 @@ cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/validation.
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/http.sh "$lib/"
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh "$lib/"
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/action-executor.sh "$lib/"
+cat >"$lib/netifd-adapter.sh" <<'EOF'
+zte_netifd_route_uses_device() {
+    [ "${ZTE_TEST_ROUTE_MATCH:-1}" = 1 ] &&
+        [ "$1" = 192.168.0.1 ] && [ "$2" = eth2 ]
+}
+EOF
 cat >"$lib/session.sh" <<'EOF'
 zte_session_login() {
     printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$ZTE_TEST_LOGIN_LOG"
@@ -165,6 +171,7 @@ chmod 600 "$credential_file"
 ZTE_SIM_CALIBRATION_LIB_DIR=$lib
 ZTE_SIM_CALIBRATION_CREDENTIAL_FILE=$credential_file
 ZTE_SIM_CALIBRATION_HOST=192.168.0.1
+ZTE_SIM_CALIBRATION_NETDEV=eth2
 ZTE_SIM_CALIBRATION_COOKIE_FILE=$cookie_file
 ZTE_SIM_CALIBRATION_STATE_DIR=$state/calibration-state
 ZTE_SIM_CALIBRATION_LOCK_DIR=$state/calibration-lock
@@ -191,6 +198,7 @@ ZTE_TEST_POWER_LOSS_TARGET=
 export ZTE_SIM_CALIBRATION_LIB_DIR
 export ZTE_SIM_CALIBRATION_CREDENTIAL_FILE
 export ZTE_SIM_CALIBRATION_HOST
+export ZTE_SIM_CALIBRATION_NETDEV
 export ZTE_SIM_CALIBRATION_COOKIE_FILE
 export ZTE_SIM_CALIBRATION_STATE_DIR
 export ZTE_SIM_CALIBRATION_LOCK_DIR
@@ -420,6 +428,13 @@ assert_eq \
 
 # The target firmware advertises HAS_LOGIN:false. Its readiness probe must use
 # the anonymous status path without requiring a credential or calling LOGIN.
+ZTE_TEST_ROUTE_MATCH=0
+export ZTE_TEST_ROUTE_MATCH
+assert_probe_failure device_route_mismatch \
+    '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'
+ZTE_TEST_ROUTE_MATCH=1
+export ZTE_TEST_ROUTE_MATCH
+
 ZTE_LOGIN_REQUIRED=0
 rm "$credential_file"
 : >"$fetch_log"
@@ -939,6 +954,8 @@ assert_failure test -d "$ZTE_SIM_CALIBRATION_STATE_DIR"
 assert_failure test -d "$ZTE_SIM_CALIBRATION_LOCK_DIR"
 
 prepare_recovery_state null true
+ZTE_TEST_ROUTE_MATCH=0
+export ZTE_TEST_ROUTE_MATCH
 recover_status=0
 recover_result=$(zte_sim_calibration_main recover) || recover_status=$?
 assert_eq 0 "$recover_status"
@@ -947,6 +964,22 @@ assert_eq \
     "$recover_result"
 assert_eq '' "$(cat "$switch_log")"
 assert_eq start "$(cat "$manager_log")"
+ZTE_TEST_ROUTE_MATCH=1
+export ZTE_TEST_ROUTE_MATCH
+
+prepare_recovery_state physical true
+ZTE_TEST_ROUTE_MATCH=0
+export ZTE_TEST_ROUTE_MATCH
+recover_status=0
+recover_result=$(zte_sim_calibration_main recover) || recover_status=$?
+assert_failure test "$recover_status" -eq 0
+assert_eq device_route_mismatch "$recover_result"
+assert_eq stopped "$(cat "$manager_state")"
+assert_eq '' "$(cat "$manager_log")"
+assert_success test -d "$ZTE_SIM_CALIBRATION_STATE_DIR"
+assert_success test -d "$ZTE_SIM_CALIBRATION_LOCK_DIR"
+ZTE_TEST_ROUTE_MATCH=1
+export ZTE_TEST_ROUTE_MATCH
 
 prepare_recovery_state sim3 false
 recover_status=0

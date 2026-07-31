@@ -4,6 +4,7 @@ set -eu
 TEST_NAME=netifd
 . ./tests/testlib.sh
 . ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/json.sh
+. ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/validation.sh
 . ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
 
 actual=$(zte_netifd_json 1 eth2 192.168.0.2 192.168.0.1 1)
@@ -58,6 +59,12 @@ ip() {
         regex_neighbor:'route show default')
             printf '%s\n' 'default via 192.0.2.1 dev eth0x1 proto static'
             ;;
+        route_match:'-4 route get 192.168.0.1')
+            printf '%s\n' '192.168.0.1 dev eth2 src 192.168.0.2'
+            ;;
+        route_wrong:'-4 route get 192.168.0.1')
+            printf '%s\n' '192.168.0.1 dev wan src 192.168.1.2'
+            ;;
         *)
             return 1
             ;;
@@ -69,6 +76,14 @@ _zte_test_ip_calls=$(mktemp /tmp/zte-test-netifd-ip.XXXXXX)
 trap 'rm -f "$_zte_test_ip_calls"' EXIT HUP INT TERM
 _zte_test_ip_mode=none
 _zte_test_ubus_mode=status
+_zte_test_ip_mode=route_match
+assert_success zte_netifd_route_uses_device 192.168.0.1 eth2
+_zte_test_ip_mode=route_match
+assert_success zte_netifd_route_uses_device 192.168.0.1:8080 eth2
+_zte_test_ip_mode=route_wrong
+assert_failure zte_netifd_route_uses_device 192.168.0.1 eth2
+assert_failure zte_netifd_route_uses_device zte.local eth2
+_zte_test_ip_mode=none
 actual=$(zte_netifd_collect wwan eth9)
 assert_eq \
     '{"up":true,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":false}' \

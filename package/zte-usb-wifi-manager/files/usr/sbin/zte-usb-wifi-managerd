@@ -107,6 +107,8 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid network device name'
 		return 1
 	}
+	ZTE_HTTP_INTERFACE=$netdev
+	export ZTE_HTTP_INTERFACE
 	if ! zte_is_uint "$failure_threshold" ||
 		[ "$failure_threshold" -lt 1 ]; then
 		logger -t zte-usb-wifi-manager 'invalid failure threshold'

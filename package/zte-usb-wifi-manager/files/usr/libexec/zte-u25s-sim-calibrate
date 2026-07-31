@@ -8,7 +8,8 @@ fi
 
 ZTE_SIM_CALIBRATION_LIB_DIR=${ZTE_SIM_CALIBRATION_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 ZTE_SIM_CALIBRATION_CREDENTIAL_FILE=${ZTE_SIM_CALIBRATION_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/credentials}
-ZTE_SIM_CALIBRATION_HOST=${ZTE_SIM_CALIBRATION_HOST:-192.168.0.1}
+ZTE_SIM_CALIBRATION_HOST=${ZTE_SIM_CALIBRATION_HOST:-}
+ZTE_SIM_CALIBRATION_NETDEV=${ZTE_SIM_CALIBRATION_NETDEV:-}
 ZTE_SIM_CALIBRATION_COOKIE_FILE=${ZTE_SIM_CALIBRATION_COOKIE_FILE:-/var/run/zte-usb-wifi-manager/sim-calibration.cookies}
 ZTE_SIM_CALIBRATION_STATE_DIR=${ZTE_SIM_CALIBRATION_STATE_DIR:-/etc/zte-usb-wifi-manager/sim-calibration}
 ZTE_SIM_CALIBRATION_LOCK_DIR=${ZTE_SIM_CALIBRATION_LOCK_DIR:-/etc/zte-usb-wifi-manager/sim-calibration.lock}
@@ -25,6 +26,7 @@ ZTE_SIM_CALIBRATION_STOP_INTERVAL=${ZTE_SIM_CALIBRATION_STOP_INTERVAL:-1}
 . "$ZTE_SIM_CALIBRATION_LIB_DIR/adapter-zte-u25s-metadata.sh"
 . "$ZTE_SIM_CALIBRATION_LIB_DIR/adapter-zte-u25s.sh"
 . "$ZTE_SIM_CALIBRATION_LIB_DIR/action-executor.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/netifd-adapter.sh"
 
 zte_sim_calibration_active_target() {
 	case ${1-} in
@@ -44,7 +46,7 @@ zte_sim_calibration_require_root() {
 zte_sim_calibration_probe_fail() {
 	_zte_sim_calibration_probe_code=$1
 	case $_zte_sim_calibration_probe_code in
-		not_root|invalid_host|credentials_unavailable|authentication_failed|device_fetch_failed|invalid_device_response|missing_field|invalid_active_slot|modem_not_connected|network_unregistered|ppp_not_ready) ;;
+		not_root|invalid_host|invalid_netdev|device_route_mismatch|credentials_unavailable|authentication_failed|device_fetch_failed|invalid_device_response|missing_field|invalid_active_slot|modem_not_connected|network_unregistered|ppp_not_ready) ;;
 		*) _zte_sim_calibration_probe_code=probe_failed ;;
 	esac
 	printf \
@@ -166,6 +168,11 @@ zte_sim_calibration_probe() {
 		zte_sim_calibration_probe_fail not_root
 	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" ||
 		zte_sim_calibration_probe_fail invalid_host
+	zte_validate_netdev "$ZTE_SIM_CALIBRATION_NETDEV" ||
+		zte_sim_calibration_probe_fail invalid_netdev
+	zte_netifd_route_uses_device \
+		"$ZTE_SIM_CALIBRATION_HOST" "$ZTE_SIM_CALIBRATION_NETDEV" ||
+		zte_sim_calibration_probe_fail device_route_mismatch
 	_zte_sim_calibration_password=$(
 		zte_sim_calibration_password
 	) || zte_sim_calibration_probe_fail credentials_unavailable
@@ -556,6 +563,12 @@ zte_sim_calibration_recover_owned_state() {
 	}
 	_zte_sim_calibration_recovery_original=$_zte_sim_calibration_loaded_original
 	_zte_sim_calibration_recovery_manager=$_zte_sim_calibration_loaded_manager
+	if [ "$_zte_sim_calibration_recovery_original" != null ] &&
+		! zte_netifd_route_uses_device \
+			"$ZTE_SIM_CALIBRATION_HOST" "$ZTE_SIM_CALIBRATION_NETDEV"; then
+		printf '%s\n' device_route_mismatch
+		return 1
+	fi
 	_zte_sim_calibration_recovery_claim=$ZTE_SIM_CALIBRATION_LOCK_DIR/recovery-active
 	[ "$(zte_sim_calibration_dir_entry_count \
 		"$ZTE_SIM_CALIBRATION_LOCK_DIR")" = 0 ] || {
@@ -669,6 +682,7 @@ zte_sim_calibration_finalize_owned_state() {
 zte_sim_calibration_recover() {
 	zte_sim_calibration_require_root || return 1
 	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" || return 1
+	zte_validate_netdev "$ZTE_SIM_CALIBRATION_NETDEV" || return 1
 	[ -x "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" ] || return 1
 	zte_sim_calibration_stop_settings_valid || return 1
 	zte_sim_calibration_recover_owned_state
@@ -684,6 +698,9 @@ zte_sim_calibration_execute() {
 	zte_sim_calibration_target_valid \
 		"$_zte_sim_calibration_requested" || return 2
 	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" || return 1
+	zte_validate_netdev "$ZTE_SIM_CALIBRATION_NETDEV" || return 1
+	zte_netifd_route_uses_device \
+		"$ZTE_SIM_CALIBRATION_HOST" "$ZTE_SIM_CALIBRATION_NETDEV" || return 1
 	[ -x "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" ] || return 1
 	zte_sim_calibration_stop_settings_valid || return 1
 	_zte_sim_calibration_password=$(
@@ -809,6 +826,20 @@ zte_sim_calibration_execute() {
 }
 
 zte_sim_calibration_main() {
+	if [ -z "$ZTE_SIM_CALIBRATION_HOST" ]; then
+		ZTE_SIM_CALIBRATION_HOST=$(
+			uci -q get zte-usb-wifi-manager.zte.host 2>/dev/null ||
+				printf '%s\n' 192.168.0.1
+		)
+	fi
+	if [ -z "$ZTE_SIM_CALIBRATION_NETDEV" ]; then
+		ZTE_SIM_CALIBRATION_NETDEV=$(
+			uci -q get zte-usb-wifi-manager.zte.netdev 2>/dev/null ||
+				printf '%s\n' eth2
+		)
+	fi
+	ZTE_HTTP_INTERFACE=$ZTE_SIM_CALIBRATION_NETDEV
+	export ZTE_HTTP_INTERFACE
 	case ${1-} in
 		probe)
 			[ "$#" -eq 1 ] || return 2

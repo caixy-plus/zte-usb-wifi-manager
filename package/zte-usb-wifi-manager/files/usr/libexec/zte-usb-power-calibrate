@@ -17,11 +17,13 @@ ZTE_CALIBRATION_STOP_INTERVAL=${ZTE_CALIBRATION_STOP_INTERVAL:-1}
 . "$ZTE_CALIBRATION_LIB_DIR/power-adapter.sh"
 . "$ZTE_CALIBRATION_LIB_DIR/recovery-inhibit.sh"
 . "$ZTE_CALIBRATION_LIB_DIR/recovery-adapter.sh"
+. "$ZTE_CALIBRATION_LIB_DIR/netifd-adapter.sh"
 
 zte_calibration_device_reachable() {
 	_zte_calibration_response=$(
 		curl --noproxy '*' -fsS \
 			--connect-timeout 3 --max-time 5 \
+			--interface "$ZTE_CALIBRATION_NETDEV" \
 			"http://$ZTE_CALIBRATION_DEVICE_HOST/goform/goform_get_cmd_process?cmd=modem_main_state"
 	) || return 1
 	case $_zte_calibration_response in
@@ -33,7 +35,7 @@ zte_calibration_device_reachable() {
 zte_calibration_probe_fail() {
 	_zte_calibration_probe_code=$1
 	case $_zte_calibration_probe_code in
-		board_file_unreadable|board_read_failed|unsupported_board|invalid_control_path|power_read_failed|invalid_power_value|supply_read_failed|supply_state_mismatch|recovery_service_unavailable|device_unreachable) ;;
+		board_file_unreadable|board_read_failed|unsupported_board|invalid_control_path|power_read_failed|invalid_power_value|supply_read_failed|supply_state_mismatch|recovery_service_unavailable|device_route_mismatch|device_unreachable) ;;
 		*) _zte_calibration_probe_code=probe_failed ;;
 	esac
 	printf \
@@ -80,6 +82,9 @@ zte_calibration_probe() {
 	else
 		_zte_calibration_netdev_present=false
 	fi
+	zte_netifd_route_uses_device \
+		"$ZTE_CALIBRATION_DEVICE_HOST" "$ZTE_CALIBRATION_NETDEV" ||
+		zte_calibration_probe_fail device_route_mismatch
 	zte_calibration_device_reachable ||
 		zte_calibration_probe_fail device_unreachable
 	printf \
@@ -304,6 +309,7 @@ _zte_calibration_netdev=$(
 		printf '%s\n' eth2
 )
 zte_validate_netdev "$_zte_calibration_netdev" || exit 1
+ZTE_CALIBRATION_NETDEV=$_zte_calibration_netdev
 ZTE_CALIBRATION_DEVICE_HOST=$(
 	uci -q get zte-usb-wifi-manager.zte.host 2>/dev/null ||
 		printf '%s\n' 192.168.0.1

@@ -14,7 +14,12 @@ assert_failure zte_validate_thresholds 70 101
 assert_failure zte_validate_thresholds text 100
 
 assert_success zte_validate_host 192.168.0.1
-assert_success zte_validate_host zte.local
+assert_success zte_validate_host 192.168.0.1:8080
+assert_failure zte_validate_host zte.local
+assert_failure zte_validate_host 256.168.0.1
+assert_failure zte_validate_host 192.168.0
+assert_failure zte_validate_host 192.168.0.1:
+assert_failure zte_validate_host 192.168.0.1:65536
 assert_failure zte_validate_host ''
 assert_failure zte_validate_host '192.168.0.1;reboot'
 assert_failure zte_validate_host 'http://192.168.0.1/'

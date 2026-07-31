@@ -96,6 +96,12 @@ zte_recovery_finish_on() {
     [ "${ZTE_TEST_FAIL_RECOVERY_FINISH:-0}" = 0 ]
 }
 EOF
+cat >"$lib/netifd-adapter.sh" <<'EOF'
+zte_netifd_route_uses_device() {
+    [ "${ZTE_TEST_ROUTE_MATCH:-1}" = 1 ] &&
+        [ "$1" = 192.168.0.1 ] && [ "$2" = eth2 ]
+}
+EOF
 cat >"$bin/sleep" <<'EOF'
 #!/bin/sh
 if [ "${ZTE_TEST_SIGNAL_ON_SLEEP:-0}" = 1 ]; then
@@ -118,6 +124,10 @@ EOF
 cat >"$bin/curl" <<'EOF'
 #!/bin/sh
 [ "${ZTE_TEST_CURL_FAIL:-0}" = 0 ] || exit 1
+case " $* " in
+    *' --interface eth2 '*) ;;
+    *) exit 1 ;;
+esac
 printf '%s\n' '{"modem_main_state":"modem_init_complete"}'
 EOF
 cat >"$bin/manager-service" <<'EOF'
@@ -221,6 +231,12 @@ ZTE_TEST_CURL_FAIL=1
 export ZTE_TEST_CURL_FAIL
 assert_power_probe_failure device_unreachable
 ZTE_TEST_CURL_FAIL=0
+
+ZTE_TEST_ROUTE_MATCH=0
+export ZTE_TEST_ROUTE_MATCH
+assert_power_probe_failure device_route_mismatch
+ZTE_TEST_ROUTE_MATCH=1
+export ZTE_TEST_ROUTE_MATCH
 
 assert_failure calibration_call execute WRONG_ACK >/dev/null 2>&1
 assert_eq 1 "$(cat "$state/power")"

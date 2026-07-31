@@ -86,6 +86,14 @@ fi
 assert_eq 0 "$(wc -c <"$ZTE_TEST_CURL_STDIN" | tr -d ' ')" \
     'GET stdin was not empty'
 
+ZTE_HTTP_INTERFACE=eth2
+export ZTE_HTTP_INTERFACE
+assert_eq 'GET response body' "$(zte_http_get "$get_url" "$cookie_jar")"
+assert_eq 1 "$(grep -c '^--interface$' "$ZTE_TEST_CURL_ARGV")"
+assert_eq eth2 "$(awk 'previous == "--interface" { print; exit }
+    { previous=$0 }' "$ZTE_TEST_CURL_ARGV")"
+unset ZTE_HTTP_INTERFACE
+
 post_url='http://192.168.0.1/goform/goform_set_cmd_process'
 form_body='goformId=LOGIN&password=3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078 digest value&token=a=b
 line=two&tail=END!'
