@@ -242,6 +242,19 @@ manager-start" \
 assert_failure test -e "$state/runtime/inhibit-recovery"
 assert_failure test -d "$state/lock"
 
+# Calibration preserves an intentionally stopped manager across success.
+printf '%s\n' stopped >"$state/manager-state"
+: >"$state/service-calls"
+execute_result=$(calibration_call execute I_AM_ON_SPARE_HARDWARE)
+assert_eq \
+    '{"ok":true,"mode":"execute","board":"cudy,tr3000-v1","off_readback":true,"netdev_disappeared":true,"on_readback":true,"netdev_restored":true,"device_reachable":true}' \
+    "$execute_result"
+assert_eq stopped "$(cat "$state/manager-state")"
+assert_eq "stop
+start" "$(cat "$state/service-calls")"
+assert_failure test -e "$state/runtime/manager-was-running"
+printf '%s\n' running >"$state/manager-state"
+
 # Any failure after claiming the calibration lock must restore power, restart
 # the manager, clear recovery ownership, and release the lock.
 : >"$state/service-calls"
@@ -348,6 +361,61 @@ manager-start" \
     "$(cat "$state/service-calls")"
 assert_failure test -e "$state/runtime/inhibit-recovery"
 assert_failure test -d "$state/lock"
+
+# Cross-process recover also preserves an originally stopped manager.
+printf '%s\n' stopped >"$state/manager-state"
+: >"$state/service-calls"
+assert_failure env ZTE_TEST_FAIL_POWER_ACTION=ON \
+    ZTE_CALIBRATION_LIB_DIR="$lib" \
+    ZTE_CALIBRATION_BOARD_FILE="$state/board" \
+    ZTE_CALIBRATION_CONTROL_PATH="$state/power" \
+    ZTE_CALIBRATION_NETDEV_PATH="$state/netdev" \
+    ZTE_CALIBRATION_STATE_DIR="$state/runtime" \
+    ZTE_CALIBRATION_LOCK_DIR="$state/lock" \
+    ZTE_CALIBRATION_MANAGER_SERVICE="$bin/manager-service" \
+    ZTE_CALIBRATION_RECOVERY_SERVICE=/etc/init.d/zte-usb-recover \
+    ZTE_CALIBRATION_OUTAGE_SECONDS=0 \
+    ZTE_CALIBRATION_WAIT_ATTEMPTS=2 \
+    ZTE_TEST_SERVICE_CALLS="$state/service-calls" \
+    PATH="$bin:$PATH" \
+    sh "$tool" execute I_AM_ON_SPARE_HARDWARE
+assert_eq 0 "$(cat "$state/runtime/manager-was-running")"
+assert_eq 600 "$(test_file_mode "$state/runtime/manager-was-running")"
+recover_result=$(calibration_call recover)
+assert_eq \
+    '{"ok":true,"mode":"recover","power":1,"services_restored":true}' \
+    "$recover_result"
+assert_eq stopped "$(cat "$state/manager-state")"
+assert_eq "stop
+start" "$(cat "$state/service-calls")"
+assert_failure test -e "$state/runtime/manager-was-running"
+assert_failure test -d "$state/lock"
+printf '%s\n' running >"$state/manager-state"
+
+# Legacy missing state and corrupt state both fail safe to the old behavior:
+# restore power/recovery and start the manager rather than strand a lock.
+for legacy_state in missing corrupt; do
+    printf '%s\n' stopped >"$state/manager-state"
+    printf '0\n' >"$state/power"
+    rmdir "$state/netdev" 2>/dev/null || :
+    mkdir -p "$state/runtime" "$state/lock"
+    : >"$state/runtime/inhibit-recovery"
+    if [ "$legacy_state" = corrupt ]; then
+        printf '%s\n' invalid >"$state/runtime/manager-was-running"
+    else
+        rm -f "$state/runtime/manager-was-running"
+    fi
+    : >"$state/service-calls"
+    legacy_result=$(calibration_call recover)
+    assert_eq \
+        '{"ok":true,"mode":"recover","power":1,"services_restored":true}' \
+        "$legacy_result"
+    assert_eq running "$(cat "$state/manager-state")"
+    assert_eq "start
+manager-start" "$(cat "$state/service-calls")"
+    assert_failure test -d "$state/lock"
+    assert_failure test -e "$state/runtime/manager-was-running"
+done
 
 : >"$state/service-calls"
 assert_failure env ZTE_TEST_SIGNAL_ON_SLEEP=1 \

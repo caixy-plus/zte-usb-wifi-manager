@@ -91,6 +91,21 @@ zte_calibration_probe() {
 _zte_calibration_lock_held=0
 _zte_calibration_manager_stopped=0
 _zte_calibration_recovery_prepared=0
+ZTE_CALIBRATION_MANAGER_STATE_FILE=$ZTE_CALIBRATION_STATE_DIR/manager-was-running
+
+zte_calibration_write_manager_state() {
+	_zte_calibration_state_value=$1
+	case $_zte_calibration_state_value in
+		0|1) ;;
+		*) return 1 ;;
+	esac
+	_zte_calibration_state_tmp=$ZTE_CALIBRATION_MANAGER_STATE_FILE.tmp.$$
+	umask 077
+	printf '%s\n' "$_zte_calibration_state_value" \
+		>"$_zte_calibration_state_tmp" || return 1
+	chmod 600 "$_zte_calibration_state_tmp" || return 1
+	mv "$_zte_calibration_state_tmp" "$ZTE_CALIBRATION_MANAGER_STATE_FILE"
+}
 
 zte_calibration_wait_manager_stopped() {
 	_zte_calibration_stop_attempt=1
@@ -133,6 +148,7 @@ zte_calibration_cleanup() {
 		_zte_calibration_manager_stopped=0
 	fi
 	if [ "$_zte_calibration_lock_held" = 1 ]; then
+		rm -f "$ZTE_CALIBRATION_MANAGER_STATE_FILE" || return 1
 		if ! rmdir "$ZTE_CALIBRATION_LOCK_DIR" 2>/dev/null; then
 			return 1
 		fi
@@ -175,9 +191,17 @@ zte_calibration_execute() {
 	trap zte_calibration_on_exit EXIT
 	trap 'exit 130' HUP INT TERM
 
-	_zte_calibration_manager_stopped=1
-	"$ZTE_CALIBRATION_MANAGER_SERVICE" stop || return 1
-	zte_calibration_wait_manager_stopped || return 1
+	_zte_calibration_manager_was_running=0
+	if "$ZTE_CALIBRATION_MANAGER_SERVICE" running >/dev/null 2>&1; then
+		_zte_calibration_manager_was_running=1
+	fi
+	zte_calibration_write_manager_state \
+		"$_zte_calibration_manager_was_running" || return 1
+	if [ "$_zte_calibration_manager_was_running" = 1 ]; then
+		_zte_calibration_manager_stopped=1
+		"$ZTE_CALIBRATION_MANAGER_SERVICE" stop || return 1
+		zte_calibration_wait_manager_stopped || return 1
+	fi
 	_zte_calibration_now=$(date +%s)
 	_zte_calibration_expires=$((_zte_calibration_now + 300))
 	_zte_calibration_recovery_prepared=1
@@ -216,9 +240,12 @@ zte_calibration_execute() {
 	done
 	[ "$_zte_calibration_restored" = 1 ] || return 1
 
-	ZTE_POWER_CALIBRATION_BYPASS_LOCK=1 \
-		"$ZTE_CALIBRATION_MANAGER_SERVICE" start || return 1
-	_zte_calibration_manager_stopped=0
+	if [ "$_zte_calibration_manager_stopped" = 1 ]; then
+		ZTE_POWER_CALIBRATION_BYPASS_LOCK=1 \
+			"$ZTE_CALIBRATION_MANAGER_SERVICE" start || return 1
+		_zte_calibration_manager_stopped=0
+	fi
+	rm -f "$ZTE_CALIBRATION_MANAGER_STATE_FILE" || return 1
 	rmdir "$ZTE_CALIBRATION_LOCK_DIR" || return 1
 	_zte_calibration_lock_held=0
 	printf \
@@ -250,7 +277,19 @@ zte_calibration_recover() {
 	fi
 
 	_zte_calibration_lock_held=1
-	_zte_calibration_manager_stopped=1
+	# Legacy transactions predate this state file. Unknown or corrupt state
+	# therefore follows the old fail-safe behavior: restore the manager.
+	_zte_calibration_manager_was_running=1
+	if [ -s "$ZTE_CALIBRATION_MANAGER_STATE_FILE" ]; then
+		_zte_calibration_manager_was_running=$(
+			cat "$ZTE_CALIBRATION_MANAGER_STATE_FILE"
+		) || _zte_calibration_manager_was_running=1
+		case $_zte_calibration_manager_was_running in
+			0|1) ;;
+			*) _zte_calibration_manager_was_running=1 ;;
+		esac
+	fi
+	_zte_calibration_manager_stopped=$_zte_calibration_manager_was_running
 	trap zte_calibration_on_exit EXIT
 	trap 'exit 130' HUP INT TERM
 	zte_calibration_cleanup || return 1
