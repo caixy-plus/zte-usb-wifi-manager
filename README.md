@@ -32,6 +32,8 @@
 - 已加入加速稳定性测试和脱敏 72 小时采样/验证工具，覆盖日志轮转、动作结果限额、
   权限、临时文件、RSS、文件句柄、状态新鲜度与恢复互锁；
   真实 72 小时与硬件在环运行仍待备用设备完成。
+- 独立 Ubuntu CI 已加入真实 Linux network namespace + veth 的 L4 门禁，验证
+  `eth2` / `wan` 默认路由切换、U25S 管理地址连通性及 `eth2` 重建恢复。
 - 所有生产设备写能力保持关闭，默认 `write_enabled=0`。
 - SIM 切换仍需在备用 U25S 上完成真实切卡与恢复验收后才会开放。
 
@@ -53,16 +55,17 @@
 > TR3000 USB 供电和 72 小时稳定性验收。建议先在备用 OpenWrt 设备上验证。
 > 不要强制安装与固件版本、target 或架构不匹配的包。
 
-当前自动构建兼容矩阵：
+当前构建与验证证据：
 
-| OpenWrt | 包格式 | 验证状态 |
-|---|---|---|
-| OpenWrt 25.12.5 | `.apk` | QEMU 安装验证通过 |
-| OpenWrt 24.10.7 | `.ipk` | QEMU 安装验证通过 |
+| OpenWrt | 包格式 | 当前 r14 | 历史 QEMU 记录 |
+|---|---|---|---|
+| OpenWrt 25.12.5 | `.apk` | SDK 构建与目标实机只读验证通过 | backend r8 / LuCI r3 通过 |
+| OpenWrt 24.10.7 | `.ipk` | SDK 构建通过；未做 r14 实机验证 | backend r8 / LuCI r3 通过 |
 
 backend r8 / LuCI r3 的本地检查、GitHub 双版本真实 SDK 构建、官方 OpenWrt
-双版本 QEMU 安装/卸载验证，以及 OpenWrt 25.12.5 Cudy TR3000 实机正式升级和
-只读 probe 均已完成。进度见
+双版本 QEMU 安装/卸载验证，以及当时的 OpenWrt 25.12.5 Cudy TR3000 实机升级和
+只读 probe 均已完成。该 QEMU 记录只证明 r8 / r3，不代表当前 r14 已完成 QEMU。
+进度见
 [验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
@@ -88,8 +91,9 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 [r14 电池充电枚举校准](docs/validation/2026-07-31-r14-battery-charging.md)。
 
 backend r14 的预发布入口预留为 `v0.1.0-rc1-r14`；只有维护者显式创建并推送该
-tag 时才会触发 prerelease 工作流。当前 SDK/QEMU 验证通过不代表该 tag 已发布，
-也不代表真实设备写接口、USB 供电或 72 小时稳定性验收已经完成。
+tag 时才会触发 prerelease 工作流。当前 r14 的双 SDK 构建和目标实机只读验证
+不代表 r14 QEMU 已通过，也不代表该 tag 已发布、真实设备写接口、USB 供电或
+72 小时稳定性验收已经完成。
 
 两个包均为纯脚本和静态资源，发布时标记为 `all` 架构。这里的 `all` 只表示不受
 CPU 架构限制，不表示可以跨 OpenWrt 软件包格式或发行系列安装。未列出的 OpenWrt

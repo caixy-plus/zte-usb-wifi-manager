@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: test lint check
+.PHONY: test test-l4 lint check
 
 test:
 	@set -e; \
@@ -49,6 +49,13 @@ test:
 		luci-app-zte-usb-wifi-manager/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json \
 		luci-app-zte-usb-wifi-manager/root/usr/share/rpcd/acl.d/luci-app-zte-usb-wifi-manager.json
 	@tests/scan_sensitive_data.sh
+
+test-l4:
+	@[ "$$(uname -s)" = Linux ] || { echo 'test-l4 requires Linux'; exit 1; }
+	@[ "$$(id -u)" -eq 0 ] || { echo 'test-l4 requires root (run: sudo make test-l4)'; exit 1; }
+	@command -v ip >/dev/null 2>&1 || { echo 'test-l4 requires ip from iproute2'; exit 1; }
+	@command -v ping >/dev/null 2>&1 || { echo 'test-l4 requires ping from iputils'; exit 1; }
+	@tests/test_netns_route_switch.sh
 
 lint:
 	@command -v shellcheck >/dev/null 2>&1 || { echo 'shellcheck is required for lint'; exit 1; }

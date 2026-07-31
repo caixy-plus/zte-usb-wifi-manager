@@ -9,8 +9,8 @@
 |---|---|---|---|
 | L1 | macOS / GitHub CI | 策略、校验、状态机、日志、安全扫描 | 否 |
 | L2 | ZTE API 模拟器 | 登录、状态读取、超时、异常响应、会话过期 | 否 |
-| L3 | OpenWrt x86_64 QEMU | APK 安装、procd、rpcd、ubus、UCI、LuCI | 否 |
-| L4 | Linux 网络仿真 | 模拟 `usbwan`、`eth2`、DHCP、默认路由切换 | 否 |
+| L3 | OpenWrt SDK / x86_64 QEMU | SDK 构建；按版本留存 QEMU 安装与服务集成证据 | 否 |
+| L4 | Linux network namespace | 真实内核路由、`eth2` 重建与默认路由切换门禁 | 否 |
 | L5 | 备用硬件台架 | 真实 U25S、USB 断电、重新枚举、蜂窝恢复 | 使用备用设备 |
 | L6 | 主路由器灰度 | 只读、影子模式、最终验收 | 最后才使用 |
 
@@ -39,26 +39,31 @@ snapshot、netifd、structure。TDD，macOS 与 CI 均可运行。
 真实设备响应只采集一次，删除 Cookie、IMEI、IMSI、ICCID、手机号后保存为 fixture，
 之后解析代码改动都用 fixture 回归。
 
-## L3：QEMU OpenWrt
+## L3：OpenWrt SDK 与 QEMU
 
-OpenWrt x86_64 虚拟机验证：APK 安装/升级/卸载、procd 拉起守护进程、rpcd/ubus 对象
-与 ACL、UCI 配置与重启恢复、LuCI 菜单页面、守护进程崩溃/配置损坏/磁盘不足行为、
-卸载后服务停止与运行状态清理。Docker 可作为更快的 Shell/依赖兼容测试，但 procd、
-ubus、LuCI 验证必须用 QEMU。
+当前 backend r14 已完成 OpenWrt 25.12.5 APK 与 24.10.7 IPK 的真实 SDK 构建，
+并完成目标 TR3000 / U25S 的只读实机状态校准。仓库已有的双版本 QEMU 安装、
+procd、rpcd/ubus、升级与卸载通过记录对应历史 backend r8 / LuCI r3；它不能作为
+r14 QEMU 已通过的证据。后续每个需要声明 QEMU 兼容性的版本，都要用该版本制品重新
+执行并单独留档。Docker 可作为更快的 Shell/依赖兼容测试，但不能替代 QEMU 中的
+procd、ubus 和 LuCI 集成验证。
 
-## L4：Linux 网络仿真
+## L4：Linux 网络仿真（已实现自动门禁）
 
-CI 中用 network namespace + veth 模拟：
+独立 Ubuntu CI job 以 root 运行 `make test-l4`，用真实系统 `ip`、network namespace
+和 veth 模拟：
 
 ```text
-OpenWrt namespace
-├── usbwan / eth2 → 模拟 U25S
-├── wan           → 模拟有线宽带
-└── lan           → 模拟局域网客户端
+manager namespace
+├── eth2 → u25s namespace
+└── wan  → wan namespace
 ```
 
-覆盖：只有 usbwan；只有物理 WAN；WAN 为默认出口但 U25S 仍可管理；DHCP 超时；
-eth2 消失后重现；默认路由切换；U25S 可管理但不能上网；代理不可用不影响插件状态机。
+当前自动门禁调用生产 `json.sh` 和 `netifd-adapter.sh`，只替代 OpenWrt 专属的
+`ubus` / `jsonfilter`。它验证 `eth2` 为默认路由时门禁为 true、切换默认路由到
+`wan` 后门禁为 false 且 U25S 管理地址仍可达，以及删除并重建 `eth2` 后状态恢复。
+DHCP 超时、U25S 无公网和代理故障等更高层场景仍是后续覆盖项。该测试是 Linux-only，
+不加入兼容 macOS 的普通 `make test`。
 
 ## L5：备用硬件台架
 
