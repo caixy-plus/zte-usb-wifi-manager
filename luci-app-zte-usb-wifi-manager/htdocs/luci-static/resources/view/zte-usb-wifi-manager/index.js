@@ -26,6 +26,19 @@ var callLogs = rpc.declare({
 	reject: true
 });
 
+var callCredentialStatus = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'credential_status',
+	reject: true
+});
+
+var callSetCredentials = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'set_credentials',
+	params: [ 'password' ],
+	reject: true
+});
+
 var tabs = [
 	{ id: 'overview', label: _('总览') },
 	{ id: 'network', label: _('移动网络') },
@@ -175,7 +188,8 @@ function loadData() {
 	return Promise.all([
 		rpcResult(callStatus),
 		rpcResult(callCapabilities),
-		rpcResult(function() { return callLogs(50); })
+		rpcResult(function() { return callLogs(50); }),
+		rpcResult(callCredentialStatus)
 	]);
 }
 
@@ -191,6 +205,45 @@ function panelRoot(tabId, title, children) {
 		'class': 'cbi-section zte-tab-panel',
 		'data-panel': tabId
 	}, [ E('h3', {}, title) ].concat(children));
+}
+
+function renderCredentialEntry(credentialsResult, onSave, notice) {
+	var value = credentialsResult && credentialsResult.ok &&
+		credentialsResult.value && typeof credentialsResult.value === 'object'
+		? credentialsResult.value : {};
+	var passwordInput = E('input', {
+		'type': 'password',
+		'class': 'cbi-input-password',
+		'placeholder': _('U25S 管理密码'),
+		'autocomplete': 'new-password'
+	});
+	var children = [
+		row(_('凭据状态'), value.configured === true
+			? _('管理密码已保存') : _('未保存管理密码')),
+		E('div', { 'class': 'cbi-value' }, [
+			E('div', { 'class': 'cbi-value-title' }, _('U25S 管理登录')),
+			E('div', { 'class': 'cbi-value-field' }, [
+				passwordInput,
+				E('button', {
+					'class': 'cbi-button cbi-button-apply',
+					'type': 'button',
+					'click': function() {
+						return onSave(passwordInput);
+					}
+				}, _('保存密码'))
+			])
+		]),
+		E('div', { 'class': 'cbi-value-description' },
+			_('密码仅写入路由器的 root 0600 文件；页面不会读取或保存密码副本。'))
+	];
+
+	if (notice)
+		children.push(E('div', {
+			'class': 'alert-message ' + notice.level
+		}, notice.message));
+
+	return E('div', { 'class': 'cbi-section zte-credential-entry' },
+		[ E('h3', {}, _('设备登录')) ].concat(children));
 }
 
 function renderOverview(status, capabilities) {
@@ -351,7 +404,7 @@ function renderPanel(tabId, status, capabilities, logsResult) {
 	}
 }
 
-function renderStatus(data, selectedTab, onSelect) {
+function renderStatus(data, selectedTab, onSelect, onCredentialSave, credentialNotice) {
 		var statusResult = data && data[0] && typeof data[0] === 'object'
 			? data[0] : { ok: false, value: {} };
 		var capabilitiesResult = data && data[1] && typeof data[1] === 'object'
@@ -362,6 +415,8 @@ function renderStatus(data, selectedTab, onSelect) {
 			typeof capabilitiesResult.value === 'object' ? capabilitiesResult.value : {};
 		var logsResult = data && data[2] && typeof data[2] === 'object'
 			? data[2] : { ok: false, value: {} };
+		var credentialsResult = data && data[3] && typeof data[3] === 'object'
+			? data[3] : { ok: false, value: {} };
 		var alerts = [];
 
 		if (!statusResult.ok)
@@ -377,6 +432,7 @@ function renderStatus(data, selectedTab, onSelect) {
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
 			alerts,
+			renderCredentialEntry(credentialsResult, onCredentialSave, credentialNotice),
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab) {
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
@@ -391,7 +447,18 @@ return view.extend({
 
 	render: function(data) {
 		var currentData = data;
+		var credentialNotice = null;
 		var root;
+
+		function renderCurrent() {
+			return renderStatus(
+				currentData,
+				activeTab,
+				selectTab,
+				saveCredentials,
+				credentialNotice
+			);
+		}
 
 		function replace(next) {
 			if (root && root.parentNode)
@@ -402,15 +469,58 @@ return view.extend({
 
 		function selectTab(tabId) {
 			activeTab = tabId;
-			replace(renderStatus(currentData, activeTab, selectTab));
+			replace(renderCurrent());
 		}
 
-		root = renderStatus(currentData, activeTab, selectTab);
+		function saveCredentials(passwordInput) {
+			var password = passwordInput && typeof passwordInput.value === 'string'
+				? passwordInput.value : '';
+			if (passwordInput)
+				passwordInput.value = '';
+			if (!password) {
+				credentialNotice = {
+					level: 'error',
+					message: _('请输入 U25S 管理密码。')
+				};
+				replace(renderCurrent());
+				return Promise.resolve();
+			}
+
+			return Promise.resolve(callSetCredentials(password)).then(function(reply) {
+				password = '';
+				if (!reply || reply.ok !== true) {
+					credentialNotice = {
+						level: 'error',
+						message: _('密码保存失败，请检查后端日志。')
+					};
+					replace(renderCurrent());
+					return;
+				}
+				currentData[3] = {
+					ok: true,
+					value: { configured: true }
+				};
+				credentialNotice = {
+					level: 'success',
+					message: _('密码已保存，等待设备需要认证时使用。')
+				};
+				replace(renderCurrent());
+			}, function() {
+				password = '';
+				credentialNotice = {
+					level: 'error',
+					message: _('密码保存失败，请检查 rpcd 服务和权限。')
+				};
+				replace(renderCurrent());
+			});
+		}
+
+		root = renderCurrent();
 
 		poll.add(function() {
 			return loadData().then(function(nextData) {
 				currentData = nextData;
-				replace(renderStatus(currentData, activeTab, selectTab));
+				replace(renderCurrent());
 			});
 		}, POLL_INTERVAL_SECONDS);
 

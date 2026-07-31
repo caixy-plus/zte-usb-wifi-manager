@@ -24,7 +24,9 @@ function E(tag, attrs, children) {
 const rpcBehavior = {
 	status: function() { return Promise.resolve({}); },
 	capabilities: function() { return Promise.resolve({}); },
-	logs: function() { return Promise.resolve({ events: [] }); }
+	logs: function() { return Promise.resolve({ events: [] }); },
+	credential_status: function() { return Promise.resolve({ configured: false }); },
+	set_credentials: function() { return Promise.resolve({ ok: true, configured: true }); }
 };
 const rpcSpecs = {};
 const pollEntries = [];
@@ -33,7 +35,9 @@ const app = new Function('view', 'rpc', 'poll', '_', 'E', 'L', source)(
 	{ extend: function(spec) { return spec; } },
 	{ declare: function(spec) {
 		rpcSpecs[spec.method] = spec;
-		return function() { return rpcBehavior[spec.method](); };
+		return function() {
+			return rpcBehavior[spec.method].apply(null, arguments);
+		};
 	} },
 	{ add: function(callback, interval) {
 		pollEntries.push({ callback: callback, interval: interval });
@@ -77,7 +81,8 @@ function render(status) {
 	return app.render([
 		{ ok: true, value: status },
 		{ ok: true, value: {} },
-		{ ok: true, value: { events: [] } }
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: false } }
 	]);
 }
 
@@ -104,6 +109,24 @@ function collectByClass(node, className, matches) {
 function nodesByClass(tree, className) {
 	const matches = [];
 	collectByClass(tree, className, matches);
+	return matches;
+}
+
+function collectByTag(node, tagName, matches) {
+	if (!node || typeof node !== 'object')
+		return;
+	if (Array.isArray(node)) {
+		node.forEach(function(child) { collectByTag(child, tagName, matches); });
+		return;
+	}
+	if (node.tag === tagName)
+		matches.push(node);
+	collectByTag(node.children, tagName, matches);
+}
+
+function nodesByTag(tree, tagName) {
+	const matches = [];
+	collectByTag(tree, tagName, matches);
 	return matches;
 }
 
@@ -214,11 +237,61 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	assert.strictEqual(rpcSpecs.status.reject, true);
 	assert.strictEqual(rpcSpecs.capabilities.reject, true);
 	assert.strictEqual(rpcSpecs.logs.reject, true);
+	assert.strictEqual(rpcSpecs.credential_status.reject, true);
+	assert.strictEqual(rpcSpecs.set_credentials.reject, true);
+	assert.deepStrictEqual(rpcSpecs.set_credentials.params, [ 'password' ]);
 	rpcBehavior.status = function() { return Promise.resolve(4); };
 	rpcBehavior.capabilities = function() { return Promise.resolve({}); };
 	rpcBehavior.logs = function() { return Promise.resolve({ events: [] }); };
 	const data = await app.load();
 	assert.strictEqual(data[0].ok, false);
+});
+
+test('renders a write-only U25S password entry and credential state', function() {
+	const tree = render({ state: 'ok' });
+	const passwordInput = nodesByTag(tree, 'input').find(function(input) {
+		return input.attrs.type === 'password';
+	});
+	assert.ok(passwordInput, 'missing password input');
+	assert.strictEqual(passwordInput.attrs.autocomplete, 'new-password');
+	assert.ok(text(tree).indexOf('未保存管理密码') !== -1);
+	assert.strictEqual(source.indexOf('localStorage'), -1);
+	assert.strictEqual(source.indexOf('sessionStorage'), -1);
+});
+
+test('submits and clears the password without claiming authentication', async function() {
+	let submittedPassword = null;
+	rpcBehavior.set_credentials = function(password) {
+		submittedPassword = password;
+		return Promise.resolve({ ok: true, configured: true });
+	};
+	let current = app.render([
+		{ ok: true, value: { state: 'ok' } },
+		{ ok: true, value: {} },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: false } }
+	]);
+	const parent = {
+		replaceChild: function(next) {
+			current = next;
+			next.parentNode = parent;
+		}
+	};
+	current.parentNode = parent;
+	const passwordInput = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'password';
+	});
+	const saveButton = nodesByTag(current, 'button').find(function(button) {
+		return text(button) === '保存密码';
+	});
+	assert.ok(passwordInput);
+	assert.ok(saveButton);
+	passwordInput.value = 'temporary browser value';
+	await saveButton.attrs.click();
+	assert.strictEqual(submittedPassword, 'temporary browser value');
+	assert.strictEqual(passwordInput.value, '');
+	assert.ok(text(current).indexOf('密码已保存，等待设备需要认证时使用') !== -1);
+	assert.strictEqual(text(current).indexOf('登录成功'), -1);
 });
 
 test('shows a visible backend error instead of an empty dashboard', function() {
