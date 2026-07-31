@@ -54,9 +54,11 @@ IFS='|' read -r package_version backend_release luci_release _project_tag \
     _release_channel <<EOF
 $release_metadata
 EOF
-[ -n "$package_version" ] && [ -n "$backend_release" ] &&
-    [ -n "$luci_release" ] && [ -n "$_project_tag" ] &&
-    [ -n "$_release_channel" ] || die 'invalid project release metadata'
+if [ -z "$package_version" ] || [ -z "$backend_release" ] ||
+    [ -z "$luci_release" ] || [ -z "$_project_tag" ] ||
+    [ -z "$_release_channel" ]; then
+    die 'invalid project release metadata'
+fi
 backend_version=$package_version-r$backend_release
 luci_version=$package_version-r$luci_release
 
