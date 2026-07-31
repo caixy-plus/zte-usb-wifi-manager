@@ -23,11 +23,13 @@ One-directional data flow; each layer only talks to the next:
    policy monitoring, and atomically writes the composed snapshot to
    `/var/run/zte-usb-wifi-manager/status.json`. Consecutive failures trigger
    polling backoff while the last trusted device state is retained.
-2. `usr/libexec/rpcd/zte_usb_wifi` exposes exactly two ubus methods, `status`
-   and `capabilities`. It serves the cached snapshot and never touches the
-   device itself.
-3. The LuCI view (`view/zte-usb-wifi-manager/index.js`) calls those ubus
-   methods only. The ACL grants only those two ubus reads.
+2. `usr/libexec/rpcd/zte_usb_wifi` serves the cached status/capabilities,
+   credential state, bounded event logs, operation status, and validated
+   action enqueue methods. It never contacts the device or executes a device
+   write synchronously; queued actions are consumed by the daemon.
+3. The LuCI view (`view/zte-usb-wifi-manager/index.js`) calls rpcd/ubus only.
+   Its ACL separates status/log/operation reads from credential and action
+   writes. Password values are write-only and never returned to the browser.
 
 Static ZTE U25S identity and capability flags are isolated in
 `adapter-zte-u25s-metadata.sh`; HTTP API details and field normalization remain
@@ -40,6 +42,10 @@ sourced by the daemon and directly unit-tested.
 
 Capability gating is code, not UI: uncalibrated device features must return
 `unsupported` from the adapter (`ZTE_CAP_*=0`), never merely be hidden in LuCI.
+Every device write additionally requires the global write flag and its own
+per-action UCI flag at both rpcd enqueue time and daemon execution time.
+Hardware xHCI power-off operations revalidate the live USB topology before
+each controller unbind and fail closed when another USB device shares it.
 
 ## Layout
 
