@@ -58,6 +58,9 @@
 | OpenWrt 25.12.5 | `.apk` | QEMU 安装验证通过 |
 | OpenWrt 24.10.7 | `.ipk` | QEMU 安装验证通过 |
 
+当前 backend r5 / LuCI r3 的真实 SDK 构建、运行中重装和卸载证据见
+[验证记录](docs/validation/2026-07-31-r5-r3-qemu.md)。
+
 两个包均为纯脚本和静态资源，发布时标记为 `all` 架构。这里的 `all` 只表示不受
 CPU 架构限制，不表示可以跨 OpenWrt 软件包格式或发行系列安装。未列出的 OpenWrt
 版本目前不受支持，请勿强制安装。
