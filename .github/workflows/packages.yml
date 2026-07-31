@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v0.1.0-rc1-r14'
+      - 'v*'
 
 permissions:
   contents: read
@@ -102,19 +102,27 @@ jobs:
           name: openwrt-packages
           path: dist
 
-      - name: Create GitHub prerelease
+      - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          release_args=
+          release_summary='Stable release for OpenWrt 25.12.5 and 24.10.7.'
+          case "$GITHUB_REF_NAME" in
+            *-rc*)
+              release_args=--prerelease
+              release_summary='Safety-gated developer preview for OpenWrt 25.12.5 and 24.10.7.'
+              ;;
+          esac
           printf '%s\n' \
-            'Safety-gated developer preview for OpenWrt 25.12.5 and 24.10.7.' \
-            'Backend r14 accepts the target U25S modem_init_complete ready state and its battery_charging=2 full-battery enum while preserving the HAS_LOGIN:false anonymous-auth contract, bounded readback, and calibration gates; production device writes and USB power remain calibration-gated.' \
+            "$release_summary" \
+            'Includes capability-gated SIM controls plus effective power execution status, readback, recovery coordination, and truthful decision audit records; uncalibrated production writes remain locked.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --prerelease \
+            $release_args \
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md

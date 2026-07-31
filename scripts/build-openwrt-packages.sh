@@ -42,10 +42,23 @@ build_inputs_status=$(git -C "$repo_root" status --porcelain \
     --untracked-files=all -- \
     scripts/build-openwrt-packages.sh \
     scripts/openwrt-release-matrix.sh \
+    scripts/project-release-metadata.js \
     package/zte-usb-wifi-manager \
     luci-app-zte-usb-wifi-manager)
 [ -z "$build_inputs_status" ] ||
     die 'build inputs differ from HEAD; commit or restore them first'
+
+release_metadata=$(node "$script_dir/project-release-metadata.js" "$repo_root") ||
+    die 'cannot read project release metadata'
+IFS='|' read -r package_version backend_release luci_release _project_tag \
+    _release_channel <<EOF
+$release_metadata
+EOF
+[ -n "$package_version" ] && [ -n "$backend_release" ] &&
+    [ -n "$luci_release" ] && [ -n "$_project_tag" ] &&
+    [ -n "$_release_channel" ] || die 'invalid project release metadata'
+backend_version=$package_version-r$backend_release
+luci_version=$package_version-r$luci_release
 
 matrix=$("$script_dir/openwrt-release-matrix.sh" "$requested_release")
 IFS='|' read -r release format sdk_file sdk_sha256 image_file image_sha256 \
@@ -138,13 +151,13 @@ IFS= read -r sdk_dir <"$sdk_list"
 
 case $format in
     apk)
-        backend_pattern='zte-usb-wifi-manager-0.1.0_rc1-r14.apk'
-        luci_pattern='luci-app-zte-usb-wifi-manager-0.1.0_rc1-r3.apk'
+        backend_pattern=zte-usb-wifi-manager-$backend_version.apk
+        luci_pattern=luci-app-zte-usb-wifi-manager-$luci_version.apk
         package_architecture=noarch
         ;;
     ipk)
-        backend_pattern='zte-usb-wifi-manager_0.1.0_rc1-r14_all.ipk'
-        luci_pattern='luci-app-zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk'
+        backend_pattern=zte-usb-wifi-manager_${backend_version}_all.ipk
+        luci_pattern=luci-app-zte-usb-wifi-manager_${luci_version}_all.ipk
         package_architecture=all
         ;;
     *)
@@ -188,7 +201,7 @@ case $format in
             grep -Fqx '  name: zte-usb-wifi-manager' ||
             die "$backend_package has unexpected APK metadata"
         printf '%s\n' "$backend_metadata" |
-            grep -Fqx '  version: 0.1.0_rc1-r14' ||
+            grep -Fqx "  version: $backend_version" ||
             die "$backend_package has unexpected APK metadata"
         printf '%s\n' "$backend_metadata" |
             grep -Fqx '  arch: noarch' ||
@@ -197,7 +210,7 @@ case $format in
             grep -Fqx '  name: luci-app-zte-usb-wifi-manager' ||
             die "$luci_package has unexpected APK metadata"
         printf '%s\n' "$luci_metadata" |
-            grep -Fqx '  version: 0.1.0_rc1-r3' ||
+            grep -Fqx "  version: $luci_version" ||
             die "$luci_package has unexpected APK metadata"
         printf '%s\n' "$luci_metadata" |
             grep -Fqx '  arch: noarch' ||
@@ -212,7 +225,7 @@ case $format in
             grep -Fqx 'Package: zte-usb-wifi-manager' ||
             die "$backend_package has unexpected IPK metadata"
         printf '%s\n' "$backend_metadata" |
-            grep -Fqx 'Version: 0.1.0_rc1-r14' ||
+            grep -Fqx "Version: $backend_version" ||
             die "$backend_package has unexpected IPK metadata"
         printf '%s\n' "$backend_metadata" |
             grep -Fqx 'Architecture: all' ||
@@ -221,7 +234,7 @@ case $format in
             grep -Fqx 'Package: luci-app-zte-usb-wifi-manager' ||
             die "$luci_package has unexpected IPK metadata"
         printf '%s\n' "$luci_metadata" |
-            grep -Fqx 'Version: 0.1.0_rc1-r3' ||
+            grep -Fqx "Version: $luci_version" ||
             die "$luci_package has unexpected IPK metadata"
         printf '%s\n' "$luci_metadata" |
             grep -Fqx 'Architecture: all' ||

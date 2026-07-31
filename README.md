@@ -57,14 +57,14 @@
 
 当前构建与验证证据：
 
-| OpenWrt | 包格式 | 当前 r14 | 历史 QEMU 记录 |
+| OpenWrt | 包格式 | 当前 r15 / LuCI r4 | 历史 QEMU 记录 |
 |---|---|---|---|
-| OpenWrt 25.12.5 | `.apk` | SDK 构建与目标实机只读验证通过 | backend r8 / LuCI r3 通过 |
-| OpenWrt 24.10.7 | `.ipk` | SDK 构建通过；未做 r14 实机验证 | backend r8 / LuCI r3 通过 |
+| OpenWrt 25.12.5 | `.apk` | 本地检查通过；等待本版本 SDK/QEMU 复验 | backend r8 / LuCI r3 通过 |
+| OpenWrt 24.10.7 | `.ipk` | 本地检查通过；等待本版本 SDK/QEMU 复验 | backend r8 / LuCI r3 通过 |
 
 backend r8 / LuCI r3 的本地检查、GitHub 双版本真实 SDK 构建、官方 OpenWrt
 双版本 QEMU 安装/卸载验证，以及当时的 OpenWrt 25.12.5 Cudy TR3000 实机升级和
-只读 probe 均已完成。该 QEMU 记录只证明 r8 / r3，不代表当前 r14 已完成 QEMU。
+只读 probe 均已完成。该 QEMU 记录只证明 r8 / r3，不代表当前 r15 / LuCI r4 已完成 QEMU。
 进度见
 [验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
@@ -90,10 +90,10 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 满电枚举修复与实机状态恢复见
 [r14 电池充电枚举校准](docs/validation/2026-07-31-r14-battery-charging.md)。
 
-backend r14 的预发布入口预留为 `v0.1.0-rc1-r14`；只有维护者显式创建并推送该
-tag 时才会触发 prerelease 工作流。当前 r14 的双 SDK 构建和目标实机只读验证
-不代表 r14 QEMU 已通过，也不代表该 tag 已发布、真实设备写接口、USB 供电或
-72 小时稳定性验收已经完成。
+当前源码的预发布入口为 `v0.1.0-rc1-r15`；只有维护者显式创建并推送与包元数据
+匹配的 tag 才会发布。带 `-rc` 的 tag 自动创建 prerelease，稳定版 tag 创建普通
+Release。当前 r15 / LuCI r4 尚待双 SDK 与 QEMU 复验，也不代表真实设备写接口、
+USB 供电或 72 小时稳定性验收已经完成。
 
 两个包均为纯脚本和静态资源，发布时标记为 `all` 架构。这里的 `all` 只表示不受
 CPU 架构限制，不表示可以跨 OpenWrt 软件包格式或发行系列安装。未列出的 OpenWrt

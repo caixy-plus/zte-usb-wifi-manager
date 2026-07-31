@@ -4,6 +4,16 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { loadReleaseMetadata } = require('./project-release-metadata.js');
+
+const projectRelease = loadReleaseMetadata(path.resolve(__dirname, '..'));
+
+function escapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const backendVersionPattern = escapeRegex(projectRelease.backendVersion);
+const luciVersionPattern = escapeRegex(projectRelease.luciVersion);
 
 const expectedBuilds = {
     '25.12.5': {
@@ -16,8 +26,10 @@ const expectedBuilds = {
             '0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c',
         feedsSha256:
             'e11279b01e7fea7f7d399e25e969d9382be6891071cbc1225804195224b27b52',
-        backend: /^zte-usb-wifi-manager-0\.1\.0_rc1-r14\.apk$/,
-        luci: /^luci-app-zte-usb-wifi-manager-0\.1\.0_rc1-r3\.apk$/
+        backend: new RegExp(
+            `^zte-usb-wifi-manager-${backendVersionPattern}\\.apk$`),
+        luci: new RegExp(
+            `^luci-app-zte-usb-wifi-manager-${luciVersionPattern}\\.apk$`)
     },
     '24.10.7': {
         directory: 'packages-24.10.7',
@@ -29,8 +41,10 @@ const expectedBuilds = {
             '996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb',
         feedsSha256:
             'fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148',
-        backend: /^zte-usb-wifi-manager_0\.1\.0_rc1-r14_all\.ipk$/,
-        luci: /^luci-app-zte-usb-wifi-manager_0\.1\.0_rc1-r3_all\.ipk$/
+        backend: new RegExp(
+            `^zte-usb-wifi-manager_${backendVersionPattern}_all\\.ipk$`),
+        luci: new RegExp(
+            `^luci-app-zte-usb-wifi-manager_${luciVersionPattern}_all\\.ipk$`)
     }
 };
 
@@ -107,7 +121,7 @@ function main() {
         die('source commit must be a full 40-character Git SHA');
     if (!/^[A-Za-z0-9._/-]+$/.test(projectRef))
         die('project ref contains unsupported characters');
-    if (projectRef.startsWith('v') && projectRef !== 'v0.1.0-rc1-r14')
+    if (projectRef.startsWith('v') && projectRef !== projectRelease.tag)
         die(`release tag does not match package version: ${projectRef}`);
 
     const rootEntries = fs.readdirSync(inputDirectory).sort();

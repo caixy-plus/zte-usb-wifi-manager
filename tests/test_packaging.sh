@@ -11,6 +11,24 @@ mkdir -p "$work"
 expected_2512='25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst|0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c|openwrt-25.12.5-x86-64-generic-ext4-combined.img.gz|23e2538e8ab0eb52dfed1c65d608ecdb71ffd432dd54885da138ae67cd9e4461|e11279b01e7fea7f7d399e25e969d9382be6891071cbc1225804195224b27b52'
 expected_2410='24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f|fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148'
 
+release_metadata=scripts/project-release-metadata.js
+assert_eq '0.1.0_rc1|15|4|v0.1.0-rc1-r15|prerelease' \
+    "$(node "$release_metadata")"
+stable_root=$work/stable-release-root
+mkdir -p "$stable_root/package/zte-usb-wifi-manager" \
+    "$stable_root/luci-app-zte-usb-wifi-manager"
+printf '%s\n' 'PKG_VERSION:=1.0.0' 'PKG_RELEASE:=2' \
+    >"$stable_root/package/zte-usb-wifi-manager/Makefile"
+printf '%s\n' 'PKG_VERSION:=1.0.0' 'PKG_RELEASE:=3' \
+    >"$stable_root/luci-app-zte-usb-wifi-manager/Makefile"
+assert_eq '1.0.0|2|3|v1.0.0-r2|stable' \
+    "$(node "$release_metadata" "$stable_root")"
+printf '%s\n' 'PKG_VERSION:=1.0.0_beta1' 'PKG_RELEASE:=2' \
+    >"$stable_root/package/zte-usb-wifi-manager/Makefile"
+printf '%s\n' 'PKG_VERSION:=1.0.0_beta1' 'PKG_RELEASE:=3' \
+    >"$stable_root/luci-app-zte-usb-wifi-manager/Makefile"
+assert_failure node "$release_metadata" "$stable_root" >/dev/null 2>&1
+
 assert_eq "$expected_2512" "$(./scripts/openwrt-release-matrix.sh 25.12.5)"
 assert_eq "$expected_2410" "$(./scripts/openwrt-release-matrix.sh 24.10.7)"
 assert_failure ./scripts/openwrt-release-matrix.sh 23.05.6 >/dev/null 2>&1
@@ -18,6 +36,7 @@ assert_failure ./scripts/openwrt-release-matrix.sh '25.12.5;id' >/dev/null 2>&1
 
 builder=scripts/build-openwrt-packages.sh
 assert_file_contains "$builder" 'openwrt-release-matrix\.sh'
+assert_file_contains "$builder" 'project-release-metadata\.js'
 assert_file_contains "$builder" 'downloads\.openwrt\.org/releases/'
 assert_file_contains "$builder" 'sha256sums'
 assert_file_contains "$builder" 'feeds\.buildinfo'
@@ -34,10 +53,8 @@ if grep -Eq 'sdk/\*|_all\.\$format' "$builder"; then
 else
     pass
 fi
-assert_file_contains "$builder" \
-    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r14\\.apk"
-assert_file_contains "$builder" \
-    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r14_all\\.ipk"
+assert_file_contains "$builder" 'backend_version'
+assert_file_contains "$builder" 'luci_version'
 backend_package_definition="$work/backend-package-definition"
 sed -n '/^define Package\/zte-usb-wifi-manager$/,/^endef$/p' \
     package/zte-usb-wifi-manager/Makefile >"$backend_package_definition"
@@ -266,6 +283,7 @@ fake_bin="$work/fake-bin"
 mkdir -p "$builder_repo/scripts" "$builder_repo/package" \
     "$builder_repo/luci-app-zte-usb-wifi-manager" "$fake_bin"
 cp scripts/openwrt-release-matrix.sh scripts/build-openwrt-packages.sh \
+    scripts/project-release-metadata.js \
     "$builder_repo/scripts/"
 cp -R package/zte-usb-wifi-manager "$builder_repo/package/"
 cp luci-app-zte-usb-wifi-manager/Makefile \
@@ -347,11 +365,11 @@ package_file=$2
 case $(basename "$package_file") in
     luci-app-*)
         package_name=luci-app-zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r3
+        package_version=0.1.0_rc1-r4
         ;;
     *)
         package_name=zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r14
+        package_version=0.1.0_rc1-r15
         ;;
 esac
 [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] || package_name=wrong-package
@@ -370,11 +388,11 @@ SCRIPT
         case $(basename "$package_file") in
             luci-app-*)
                 package_name=luci-app-zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r3
+                package_version=0.1.0_rc1-r4
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r14
+                package_version=0.1.0_rc1-r15
                 ;;
         esac
         [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] ||
@@ -406,15 +424,15 @@ case " $* " in
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
         [ ! -e package/feeds/packages/curl ] || exit 1
         printf 'apk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r14.apk
+            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r15.apk
         printf 'ipk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r14_all.ipk
+            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r15_all.ipk
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
-            >bin/packages/fixture/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r3.apk
+            >bin/packages/fixture/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r4.apk
         printf 'ipk-luci\n' \
-            >bin/packages/fixture/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk
+            >bin/packages/fixture/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r4_all.ipk
         ;;
 esac
 EOF
@@ -461,10 +479,10 @@ assert_failure env PATH="$fake_bin:$PATH" \
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
-printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r14.apk"
-printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r3.apk"
-printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r14_all.ipk"
-printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk"
+printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r15.apk"
+printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r4.apk"
+printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r15_all.ipk"
+printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r4_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
 const fs = require('fs');
@@ -537,14 +555,14 @@ if (manifest.project_ref !== "main" || manifest.project_tag !== null ||
 ' "$work/dist" "$source_sha"
 
 assert_success node scripts/assemble-openwrt-packages.js \
-    "$work/incoming" "$work/dist-r14-tag" "$source_sha" v0.1.0-rc1-r14
+    "$work/incoming" "$work/dist-r15-tag" "$source_sha" v0.1.0-rc1-r15
 assert_success node -e '
 const fs = require("fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1]));
-if (manifest.project_ref !== "v0.1.0-rc1-r14" ||
-    manifest.project_tag !== "v0.1.0-rc1-r14")
+if (manifest.project_ref !== "v0.1.0-rc1-r15" ||
+    manifest.project_tag !== "v0.1.0-rc1-r15")
     process.exit(1);
-' "$work/dist-r14-tag/build-manifest.json"
+' "$work/dist-r15-tag/build-manifest.json"
 assert_failure node scripts/assemble-openwrt-packages.js \
     "$work/incoming" "$work/dist-old-tag" "$source_sha" v0.1.0-rc1 \
     >/dev/null 2>&1
@@ -556,7 +574,7 @@ assert_failure node scripts/assemble-openwrt-packages.js \
 
 rm "$work/incoming/packages-25.12.5/unexpected.txt"
 cp -R "$work/incoming" "$work/wrong-version-incoming"
-mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r14.apk" \
+mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r15.apk" \
     "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-9.9.9-r1.apk"
 node - "$work/wrong-version-incoming/packages-25.12.5/build-manifest.json" <<'NODE'
 const fs = require('fs');
@@ -583,31 +601,37 @@ assert_file_contains "$workflow" 'scripts/build-openwrt-packages\.sh'
 assert_file_contains "$workflow" 'SHA256SUMS'
 assert_file_contains "$workflow" 'gh release create'
 assert_file_contains "$workflow" '\-\-prerelease'
-assert_file_contains "$workflow" "      - 'v0\\.1\\.0-rc1-r14'"
+assert_file_contains "$workflow" "      - 'v\\*'"
+assert_file_contains "$workflow" '^          release_args=$'
+assert_file_contains "$workflow" '^            \*-rc\*\)$'
+assert_file_contains "$workflow" '^              release_args=--prerelease$'
+assert_file_contains "$workflow" 'Stable release for OpenWrt 25\.12\.5 and 24\.10\.7'
 if grep -Fqx "      - 'v0.1.0-rc1'" "$workflow"; then
-    fail 'r14 workflow must not publish the historical release tag'
+    fail 'r15 workflow must not publish the historical release tag'
 else
     pass
 fi
 if grep -Fiq 'read-only developer preview' "$workflow"; then
-    fail 'r14 release notes must not claim the package is read-only'
+    fail 'r15 release notes must not claim the package is read-only'
 else
     pass
 fi
-assert_file_contains "$workflow" 'Backend r14'
-assert_file_contains "$workflow" 'HAS_LOGIN:false'
+assert_file_contains "$workflow" 'capability-gated SIM controls'
+assert_file_contains "$workflow" 'effective power execution status'
 if grep -Eq 'Backend r[89]([^0-9]|$)' "$workflow"; then
-    fail 'r14 workflow must not retain stale r8 or r9 release notes'
+    fail 'r15 workflow must not retain stale r8 or r9 release notes'
 else
     pass
 fi
 assert_file_contains "$workflow" 'scripts/assemble-openwrt-packages\.js'
+assert_file_contains scripts/assemble-openwrt-packages.js \
+    'project-release-metadata\.js'
 assert_file_contains "$workflow" '11d5960a326750d5838078e36cf38b85af677262'
 assert_file_contains "$workflow" 'ea165f8d65b6e75b540449e92b4886f43607fa02'
 assert_file_contains "$workflow" 'd3f86a106a0bac45b974a628896c90dbdf5c8093'
 assert_file_contains docs/validation/github-packages-and-qemu.md \
-    'gh release download v0\.1\.0-rc1-r14'
-assert_file_contains README.md 'v0\.1\.0-rc1-r14'
+    'gh release download v0\.1\.0-rc1-r15'
+assert_file_contains README.md 'v0\.1\.0-rc1-r15'
 
 if grep -Eq 'pull_request:|--force-depends|--force-architecture' \
     "$workflow" 2>/dev/null; then
