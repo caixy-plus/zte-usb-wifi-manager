@@ -25,7 +25,7 @@ config schedule 'work'
 
 config power 'usb'
 	option backend 'unconfigured'
-	option control_path '/sys/class/gpio/modem_power/value'
+	option control_path 'auto'
 	option calibrated '0'
 	option off_probe_interval '900'
 	option probe_settle_seconds '15'

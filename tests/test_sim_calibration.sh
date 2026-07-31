@@ -23,6 +23,7 @@ mkdir -p "$lib" "$state"
 credential_file=$state/credentials
 cookie_file=$state/cookies
 fetch_log=$state/fetches
+login_log=$state/logins
 cleanup_fail_marker=$state/cleanup-fail-marker
 
 # Defined before all call sites for compatibility with older ShellCheck
@@ -52,9 +53,14 @@ cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/credentials
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/json.sh "$lib/"
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/validation.sh "$lib/"
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/http.sh "$lib/"
-cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/session.sh "$lib/"
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh "$lib/"
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/action-executor.sh "$lib/"
+cat >"$lib/session.sh" <<'EOF'
+zte_session_login() {
+    printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$ZTE_TEST_LOGIN_LOG"
+    [ "${ZTE_TEST_LOGIN_FAIL:-0}" = 0 ]
+}
+EOF
 cat >"$lib/adapter-zte-u25s.sh" <<'EOF'
 zte_adapter_fetch() {
     printf '%s\n' fetch >>"$ZTE_TEST_EVENT_LOG"
@@ -162,6 +168,8 @@ ZTE_SIM_CALIBRATION_STOP_ATTEMPTS=3
 ZTE_SIM_CALIBRATION_STOP_INTERVAL=0
 ZTE_TEST_FETCH_LOG=$fetch_log
 ZTE_TEST_FETCH_FAIL=0
+ZTE_TEST_LOGIN_LOG=$login_log
+ZTE_TEST_LOGIN_FAIL=0
 ZTE_TEST_MANAGER_STATE=$manager_state
 ZTE_TEST_MANAGER_LOG=$manager_log
 ZTE_TEST_MANAGER_RUNNING_CHECKS=$manager_running_checks
@@ -186,6 +194,8 @@ export ZTE_SIM_CALIBRATION_STOP_ATTEMPTS
 export ZTE_SIM_CALIBRATION_STOP_INTERVAL
 export ZTE_TEST_FETCH_LOG
 export ZTE_TEST_FETCH_FAIL
+export ZTE_TEST_LOGIN_LOG
+export ZTE_TEST_LOGIN_FAIL
 export ZTE_TEST_MANAGER_STATE
 export ZTE_TEST_MANAGER_LOG
 export ZTE_TEST_MANAGER_RUNNING_CHECKS
@@ -301,6 +311,7 @@ reset_execute_fixture() {
     ZTE_SIM_CALIBRATION_STATE_DIR=$default_calibration_state_dir
     ZTE_SIM_CALIBRATION_LOCK_DIR=$default_calibration_lock_dir
     ZTE_TEST_FETCH_FAIL=0
+    ZTE_TEST_LOGIN_FAIL=0
     ZTE_TEST_SWITCH_FAIL=
     ZTE_TEST_SWITCH_FAIL_ONCE=
     ZTE_TEST_MANAGER_FAIL=
@@ -318,6 +329,7 @@ reset_execute_fixture() {
     export ZTE_SIM_CALIBRATION_STATE_DIR
     export ZTE_SIM_CALIBRATION_LOCK_DIR
     export ZTE_TEST_FETCH_FAIL
+    export ZTE_TEST_LOGIN_FAIL
     export ZTE_TEST_SWITCH_FAIL
     export ZTE_TEST_SWITCH_FAIL_ONCE
     export ZTE_TEST_MANAGER_FAIL
@@ -334,6 +346,7 @@ reset_execute_fixture() {
     rm -rf "$ZTE_SIM_CALIBRATION_STATE_DIR" \
         "$ZTE_SIM_CALIBRATION_LOCK_DIR"
     : >"$fetch_log"
+    : >"$login_log"
     : >"$switch_log"
     : >"$state_audit"
     : >"$manager_log"
@@ -378,10 +391,13 @@ for slot_target in \
     slot=${slot_target%%:*}
     target=${slot_target#*:}
     : >"$fetch_log"
+    : >"$login_log"
     result=$(sim_call "{\"simcard_active_slot_temp\":\"$slot\",\"mc_modem_main_state\":\"connected\",\"network_provider_fullname\":\"Carrier Secret\",\"ppp_status\":\"ipv4_ipv6_connected\"}")
     assert_eq \
         "{\"ok\":true,\"mode\":\"probe\",\"active_target\":\"$target\",\"modem_ready\":true,\"network_registered\":true,\"ppp_ready\":true}" \
         "$result"
+    assert_eq "192.168.0.1|test-password|$cookie_file" \
+        "$(cat "$login_log")"
     assert_eq "192.168.0.1|test-password|$cookie_file" "$(cat "$fetch_log")"
 done
 
@@ -396,6 +412,16 @@ chmod 644 "$credential_file"
 assert_probe_failure credentials_unavailable \
     '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'
 chmod 600 "$credential_file"
+
+# A calibration probe authenticates before accepting readiness fields.
+: >"$fetch_log"
+: >"$login_log"
+ZTE_TEST_LOGIN_FAIL=1
+export ZTE_TEST_LOGIN_FAIL
+assert_probe_failure authentication_failed \
+    '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'
+assert_eq '' "$(cat "$fetch_log")"
+ZTE_TEST_LOGIN_FAIL=0
 
 # Each readiness failure has a stable, non-secret diagnostic code.
 assert_probe_failure modem_not_connected \
@@ -553,6 +579,8 @@ assert_eq 0 "$execute_status"
 assert_eq \
     '{"ok":true,"mode":"execute","target":"sim3","target_verified":true,"original_restored":true}' \
     "$execute_result"
+assert_eq "192.168.0.1|test-password|$cookie_file" \
+    "$(cat "$login_log")"
 assert_eq '' "$(cat "$manager_log")"
 assert_eq stopped "$(cat "$manager_state")"
 assert_eq \

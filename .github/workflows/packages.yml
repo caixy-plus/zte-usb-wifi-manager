@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v0.1.0-rc1-r7'
+      - 'v0.1.0-rc1-r8'
 
 permissions:
   contents: read
@@ -108,7 +108,7 @@ jobs:
         run: |
           printf '%s\n' \
             'Safety-gated developer preview for OpenWrt 25.12.5 and 24.10.7.' \
-            'Backend r7 adds safe diagnostic failure codes for SIM and USB power calibration probes; production writes remain disabled.' \
+            'Backend r8 forces authenticated SIM calibration probes and adds the official OpenWrt TR3000 ubootmod xHCI/regulator power profile; production writes remain calibration-gated.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md

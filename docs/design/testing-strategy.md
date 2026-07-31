@@ -68,14 +68,16 @@ USB 真实断电、USB 控制器重新枚举、`zte-usb-recover` 协调这三项
 包内提供两个只供备用台架使用的工具：
 
 - `/usr/libexec/zte-usb-power-calibrate`：默认只读探测；只有显式确认备用硬件后才
-  短暂切换 `modem_power`，并验证断电/上电读回以及 `eth2` 消失/恢复。
+  短暂切换板型对应的固定供电 profile，并验证控制入口、`usb-vbus`、`eth2`
+  消失/恢复和 U25S 管理接口。
 - `/usr/libexec/zte-usb-soak`：以有界 JSONL 采集 72 小时运行指标；电脑端用
   `scripts/verify-router-soak.js` 验证时长、状态新鲜度、RSS、文件句柄和恢复互锁。
 
-TR3000 v1 的当前候选入口来自目标固件上游 DTS 中
-`gpio-export,name = "modem_power"`、`GPIO_ACTIVE_LOW` 的定义及其供电默认值修正：
-<https://github.com/padavanonly/immortalwrt-mt798x-6.6/commit/86356f8a2f796e5808fda25ce3e3bf6b3cc3278e>。
-该源码证据只能确定候选控制节点，不能替代备用实机校准。
+官方 OpenWrt 的 TR3000 v1 DTS 把 GPIO 9 定义为 `usb-vbus` fixed regulator，
+由 xHCI 控制器消费；官方 profile 使用固定 bind/unbind 入口并同时核对 regulator
+状态。另有兼容固件导出 `modem_power`，两种 profile 均与板型严格绑定。源码和
+主路由器只读证据只能确定候选控制路径，不能替代备用实机校准：
+<https://github.com/openwrt/openwrt/blob/main/target/linux/mediatek/dts/mt7981b-cudy-tr3000-v1.dtsi>。
 
 ## 电池策略：影子执行
 

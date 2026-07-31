@@ -35,9 +35,9 @@ else
     pass
 fi
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r7\\.apk"
+    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r8\\.apk"
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r7_all\\.ipk"
+    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r8_all\\.ipk"
 backend_package_definition="$work/backend-package-definition"
 sed -n '/^define Package\/zte-usb-wifi-manager$/,/^endef$/p' \
     package/zte-usb-wifi-manager/Makefile >"$backend_package_definition"
@@ -79,17 +79,102 @@ render_package_hook() {
             sed -e '1d' -e '$d' -e 's/\$\$/\$/g' \
                 -e "s|/etc/zte-usb-wifi-manager|$hook_persistent|g" \
                 -e "s|/var/run/zte-usb-wifi-manager|$hook_runtime|g" \
+                -e "s|/var/lock/zte-usb-power-calibration.lock|$hook_runtime/power-calibration.lock|g" \
                 -e "s|/etc/init.d/zte-usb-wifi-manager|$hook_manager|g" \
                 -e "s|/usr/libexec/zte-usb-power-restore|$hook_restore|g"
     } >"$hook_output"
     chmod +x "$hook_output"
 }
 
+# Render and execute the shared APK/IPK postinst migration. It may rewrite the
+# historical GPIO default only on the exact live, disabled ubootmod profile.
+postinst_board=$work/postinst-board
+postinst_bin=$work/postinst-bin
+postinst_uci=$work/postinst-uci
+mkdir "$postinst_bin" "$postinst_uci"
+cat >"$postinst_bin/uci" <<'EOF'
+#!/bin/sh
+set -eu
+case $1:$2 in
+    -q:get)
+        key=$3
+        cat "$ZTE_TEST_UCI_DIR/${key##*.}"
+        ;;
+    set:*)
+        assignment=$2
+        printf '%s\n' "${assignment##*=}" \
+            >"$ZTE_TEST_UCI_DIR/control_path"
+        ;;
+    commit:zte-usb-wifi-manager)
+        printf '%s\n' commit >>"$ZTE_TEST_UCI_DIR/commits"
+        ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$postinst_bin/uci"
+
+reset_postinst_fixture() {
+    printf '%s\n' cudy,tr3000-v1-ubootmod >"$postinst_board"
+    printf '%s\n' /sys/class/gpio/modem_power/value \
+        >"$postinst_uci/control_path"
+    printf '%s\n' unconfigured >"$postinst_uci/backend"
+    printf '%s\n' 0 >"$postinst_uci/calibrated"
+    printf '%s\n' 0 >"$postinst_uci/write_enabled"
+    : >"$postinst_uci/commits"
+}
+
+for hook_format in apk ipk; do
+    hook_postinst="$work/$hook_format-postinst"
+    {
+        printf '%s\n' '#!/bin/sh' 'set -eu'
+        sed -n \
+            '/^define Package\/zte-usb-wifi-manager\/postinst$/,/^endef$/p' \
+            package/zte-usb-wifi-manager/Makefile |
+            sed -e '1d' -e '$d' -e 's/\$\$/\$/g' \
+                -e "s|/tmp/sysinfo/board_name|$postinst_board|g"
+    } >"$hook_postinst"
+    chmod +x "$hook_postinst"
+
+    reset_postinst_fixture
+    assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
+        PATH="$postinst_bin:$PATH" sh "$hook_postinst"
+    assert_eq auto "$(cat "$postinst_uci/control_path")"
+    assert_eq commit "$(cat "$postinst_uci/commits")"
+
+    for negative_gate in board control_path backend calibrated write_enabled root
+    do
+        reset_postinst_fixture
+        expected_postinst_control=/sys/class/gpio/modem_power/value
+        case $negative_gate in
+            board) printf '%s\n' cudy,tr3000-v1 >"$postinst_board" ;;
+            control_path)
+                printf '%s\n' auto >"$postinst_uci/control_path"
+                expected_postinst_control=auto
+                ;;
+            backend) printf '%s\n' hardware >"$postinst_uci/backend" ;;
+            calibrated) printf '%s\n' 1 >"$postinst_uci/calibrated" ;;
+            write_enabled) printf '%s\n' 1 >"$postinst_uci/write_enabled" ;;
+            root) ;;
+        esac
+        postinst_root=
+        [ "$negative_gate" != root ] ||
+            postinst_root=$work/$hook_format-staged-root
+        assert_success env IPKG_INSTROOT="$postinst_root" \
+            ZTE_TEST_UCI_DIR="$postinst_uci" \
+            PATH="$postinst_bin:$PATH" sh "$hook_postinst"
+        assert_eq "$expected_postinst_control" \
+            "$(cat "$postinst_uci/control_path")"
+        assert_eq '' "$(cat "$postinst_uci/commits")"
+    done
+done
+
 for hook_format in apk ipk; do
     hook_runtime="$work/$hook_format-runtime"
     hook_persistent="$work/$hook_format-persistent"
     hook_state="$hook_persistent/sim-calibration"
     hook_lock="$hook_persistent/sim-calibration.lock"
+    hook_power_state="$hook_runtime/calibration"
+    hook_power_lock="$hook_runtime/power-calibration.lock"
     hook_prerm="$work/$hook_format-prerm"
     hook_postrm="$work/$hook_format-postrm"
     render_package_hook prerm "$hook_prerm" "$hook_runtime" "$hook_persistent"
@@ -116,6 +201,25 @@ for hook_format in apk ipk; do
         sh "$hook_postrm"
     assert_success test -f "$hook_runtime/keep"
     assert_success test -d "$hook_lock"
+
+    rm -rf "$hook_runtime" "$hook_persistent"
+    mkdir -p "$hook_runtime" "$hook_persistent" "$hook_power_lock"
+    printf '%s\n' keep >"$hook_runtime/keep"
+    assert_failure env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_prerm"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_postrm"
+    assert_success test -f "$hook_runtime/keep"
+    assert_success test -d "$hook_power_lock"
+
+    rm -rf "$hook_runtime" "$hook_persistent"
+    mkdir -p "$hook_power_state" "$hook_persistent"
+    : >"$hook_power_state/inhibit-recovery"
+    assert_failure env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_prerm"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_postrm"
+    assert_success test -e "$hook_power_state/inhibit-recovery"
 
     rm -rf "$hook_runtime" "$hook_persistent"
     mkdir -p "$hook_runtime"
@@ -247,7 +351,7 @@ case $(basename "$package_file") in
         ;;
     *)
         package_name=zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r7
+        package_version=0.1.0_rc1-r8
         ;;
 esac
 [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] || package_name=wrong-package
@@ -270,7 +374,7 @@ SCRIPT
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r7
+                package_version=0.1.0_rc1-r8
                 ;;
         esac
         [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] ||
@@ -302,9 +406,9 @@ case " $* " in
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
         [ ! -e package/feeds/packages/curl ] || exit 1
         printf 'apk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r7.apk
+            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r8.apk
         printf 'ipk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r7_all.ipk
+            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r8_all.ipk
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
@@ -357,9 +461,9 @@ assert_failure env PATH="$fake_bin:$PATH" \
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
-printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r7.apk"
+printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r8.apk"
 printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r3.apk"
-printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r7_all.ipk"
+printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r8_all.ipk"
 printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
@@ -433,14 +537,14 @@ if (manifest.project_ref !== "main" || manifest.project_tag !== null ||
 ' "$work/dist" "$source_sha"
 
 assert_success node scripts/assemble-openwrt-packages.js \
-    "$work/incoming" "$work/dist-r7-tag" "$source_sha" v0.1.0-rc1-r7
+    "$work/incoming" "$work/dist-r8-tag" "$source_sha" v0.1.0-rc1-r8
 assert_success node -e '
 const fs = require("fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1]));
-if (manifest.project_ref !== "v0.1.0-rc1-r7" ||
-    manifest.project_tag !== "v0.1.0-rc1-r7")
+if (manifest.project_ref !== "v0.1.0-rc1-r8" ||
+    manifest.project_tag !== "v0.1.0-rc1-r8")
     process.exit(1);
-' "$work/dist-r7-tag/build-manifest.json"
+' "$work/dist-r8-tag/build-manifest.json"
 assert_failure node scripts/assemble-openwrt-packages.js \
     "$work/incoming" "$work/dist-old-tag" "$source_sha" v0.1.0-rc1 \
     >/dev/null 2>&1
@@ -452,7 +556,7 @@ assert_failure node scripts/assemble-openwrt-packages.js \
 
 rm "$work/incoming/packages-25.12.5/unexpected.txt"
 cp -R "$work/incoming" "$work/wrong-version-incoming"
-mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r7.apk" \
+mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r8.apk" \
     "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-9.9.9-r1.apk"
 node - "$work/wrong-version-incoming/packages-25.12.5/build-manifest.json" <<'NODE'
 const fs = require('fs');
@@ -479,14 +583,14 @@ assert_file_contains "$workflow" 'scripts/build-openwrt-packages\.sh'
 assert_file_contains "$workflow" 'SHA256SUMS'
 assert_file_contains "$workflow" 'gh release create'
 assert_file_contains "$workflow" '\-\-prerelease'
-assert_file_contains "$workflow" "      - 'v0\\.1\\.0-rc1-r7'"
+assert_file_contains "$workflow" "      - 'v0\\.1\\.0-rc1-r8'"
 if grep -Fqx "      - 'v0.1.0-rc1'" "$workflow"; then
-    fail 'r7 workflow must not publish the historical release tag'
+    fail 'r8 workflow must not publish the historical release tag'
 else
     pass
 fi
 if grep -Fiq 'read-only developer preview' "$workflow"; then
-    fail 'r7 release notes must not claim the package is read-only'
+    fail 'r8 release notes must not claim the package is read-only'
 else
     pass
 fi
@@ -495,8 +599,8 @@ assert_file_contains "$workflow" '11d5960a326750d5838078e36cf38b85af677262'
 assert_file_contains "$workflow" 'ea165f8d65b6e75b540449e92b4886f43607fa02'
 assert_file_contains "$workflow" 'd3f86a106a0bac45b974a628896c90dbdf5c8093'
 assert_file_contains docs/validation/github-packages-and-qemu.md \
-    'gh release download v0\.1\.0-rc1-r7'
-assert_file_contains README.md 'v0\.1\.0-rc1-r7'
+    'gh release download v0\.1\.0-rc1-r8'
+assert_file_contains README.md 'v0\.1\.0-rc1-r8'
 
 if grep -Eq 'pull_request:|--force-depends|--force-architecture' \
     "$workflow" 2>/dev/null; then

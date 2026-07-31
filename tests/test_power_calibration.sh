@@ -19,7 +19,11 @@ state=$work/state
 mkdir -p "$lib" "$bin" "$state/netdev"
 printf '%s\n' 'cudy,tr3000-v1' >"$state/board"
 printf '1\n' >"$state/power"
+printf '%s\n' running >"$state/manager-state"
 : >"$state/service-calls"
+ZTE_TEST_MANAGER_STATE=$state/manager-state
+ZTE_TEST_MANAGER_STUCK=0
+export ZTE_TEST_MANAGER_STATE ZTE_TEST_MANAGER_STUCK
 
 cat >"$lib/validation.sh" <<'EOF'
 zte_validate_netdev() {
@@ -36,8 +40,27 @@ zte_power_board_supported() {
 zte_power_control_path_valid() {
     [ "$1" = "$ZTE_CALIBRATION_CONTROL_PATH" ]
 }
+zte_power_board_control_supported() {
+    [ "$1" = 'cudy,tr3000-v1' ] &&
+        [ "$2" = "$ZTE_CALIBRATION_CONTROL_PATH" ]
+}
+zte_power_default_control_path() {
+    [ "$1" = 'cudy,tr3000-v1' ] || return 1
+    printf '%s\n' "$ZTE_TEST_DEFAULT_POWER_PATH"
+}
 zte_power_sysfs_read() {
+    return 1
+}
+zte_power_hardware_read() {
     cat "$1"
+}
+zte_power_supply_read() {
+    [ "${ZTE_TEST_SUPPLY_READ_FAIL:-0}" = 0 ] || return 1
+    if [ -n "${ZTE_TEST_SUPPLY_STATE:-}" ]; then
+        printf '%s\n' "$ZTE_TEST_SUPPLY_STATE"
+    else
+        cat "$1"
+    fi
 }
 zte_power_hardware_apply() {
     case $1 in
@@ -99,8 +122,23 @@ printf '%s\n' '{"modem_main_state":"modem_init_complete"}'
 EOF
 cat >"$bin/manager-service" <<'EOF'
 #!/bin/sh
-printf 'manager-%s\n' "$1" >>"$ZTE_TEST_SERVICE_CALLS"
-[ "${ZTE_TEST_FAIL_MANAGER_ACTION:-}" != "$1" ]
+case $1 in
+    running)
+        [ "$(cat "$ZTE_TEST_MANAGER_STATE")" = running ]
+        ;;
+    stop)
+        printf '%s\n' manager-stop >>"$ZTE_TEST_SERVICE_CALLS"
+        [ "${ZTE_TEST_FAIL_MANAGER_ACTION:-}" != stop ] || exit 1
+        [ "${ZTE_TEST_MANAGER_STUCK:-0}" = 1 ] ||
+            printf '%s\n' stopped >"$ZTE_TEST_MANAGER_STATE"
+        ;;
+    start)
+        printf '%s\n' manager-start >>"$ZTE_TEST_SERVICE_CALLS"
+        [ "${ZTE_TEST_FAIL_MANAGER_ACTION:-}" != start ] || exit 1
+        printf '%s\n' running >"$ZTE_TEST_MANAGER_STATE"
+        ;;
+    *) exit 1 ;;
+esac
 EOF
 chmod +x "$bin/"*
 
@@ -115,6 +153,22 @@ calibration_call() {
     ZTE_CALIBRATION_RECOVERY_SERVICE=/etc/init.d/zte-usb-recover \
     ZTE_CALIBRATION_OUTAGE_SECONDS=0 \
     ZTE_CALIBRATION_WAIT_ATTEMPTS=2 \
+    ZTE_TEST_SERVICE_CALLS=$state/service-calls \
+    PATH="$bin:$PATH" \
+        sh "$tool" "$@"
+}
+
+calibration_auto_call() {
+    ZTE_CALIBRATION_LIB_DIR=$lib \
+    ZTE_CALIBRATION_BOARD_FILE=$state/board \
+    ZTE_CALIBRATION_NETDEV_PATH=$state/netdev \
+    ZTE_CALIBRATION_STATE_DIR=$state/runtime \
+    ZTE_CALIBRATION_LOCK_DIR=$state/lock \
+    ZTE_CALIBRATION_MANAGER_SERVICE=$bin/manager-service \
+    ZTE_CALIBRATION_RECOVERY_SERVICE=/etc/init.d/zte-usb-recover \
+    ZTE_CALIBRATION_OUTAGE_SECONDS=0 \
+    ZTE_CALIBRATION_WAIT_ATTEMPTS=2 \
+    ZTE_TEST_DEFAULT_POWER_PATH=$state/power \
     ZTE_TEST_SERVICE_CALLS=$state/service-calls \
     PATH="$bin:$PATH" \
         sh "$tool" "$@"
@@ -135,6 +189,7 @@ assert_eq \
     '{"ok":true,"mode":"probe","board":"cudy,tr3000-v1","power":1,"recovery_service":true,"netdev_present":true,"device_reachable":true}' \
     "$probe_result"
 assert_eq '' "$(cat "$state/service-calls")"
+assert_eq "$probe_result" "$(calibration_auto_call probe)"
 
 mv "$state/board" "$state/board.saved"
 assert_power_probe_failure board_file_unreadable
@@ -147,6 +202,15 @@ printf '%s\n' 'cudy,tr3000-v1' >"$state/board"
 mv "$state/power" "$state/power.saved"
 assert_power_probe_failure power_read_failed
 mv "$state/power.saved" "$state/power"
+
+ZTE_TEST_SUPPLY_READ_FAIL=1
+export ZTE_TEST_SUPPLY_READ_FAIL
+assert_power_probe_failure supply_read_failed
+ZTE_TEST_SUPPLY_READ_FAIL=0
+ZTE_TEST_SUPPLY_STATE=0
+export ZTE_TEST_SUPPLY_STATE
+assert_power_probe_failure supply_state_mismatch
+ZTE_TEST_SUPPLY_STATE=
 
 ZTE_TEST_RECOVERY_UNAVAILABLE=1
 export ZTE_TEST_RECOVERY_UNAVAILABLE
@@ -202,6 +266,21 @@ assert_eq \
 manager-start" \
     "$(cat "$state/service-calls")"
 assert_failure test -d "$state/lock"
+
+# A successful stop command is not enough: if procd still reports the manager
+# running, abort before stopping recovery or touching USB power.
+: >"$state/service-calls"
+ZTE_TEST_MANAGER_STUCK=1
+export ZTE_TEST_MANAGER_STUCK
+assert_failure calibration_call execute I_AM_ON_SPARE_HARDWARE
+assert_eq 1 "$(cat "$state/power")"
+assert_success test -d "$state/netdev"
+assert_eq "manager-stop
+manager-start" "$(cat "$state/service-calls")"
+assert_failure test -e "$state/runtime/inhibit-recovery"
+assert_failure test -d "$state/lock"
+ZTE_TEST_MANAGER_STUCK=0
+export ZTE_TEST_MANAGER_STUCK
 
 : >"$state/service-calls"
 assert_failure env ZTE_TEST_FAIL_POWER_ACTION=OFF \

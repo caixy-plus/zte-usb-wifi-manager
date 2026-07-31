@@ -3,13 +3,15 @@ set -eu
 
 ZTE_CALIBRATION_LIB_DIR=${ZTE_CALIBRATION_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 ZTE_CALIBRATION_BOARD_FILE=${ZTE_CALIBRATION_BOARD_FILE:-/tmp/sysinfo/board_name}
-ZTE_CALIBRATION_CONTROL_PATH=${ZTE_CALIBRATION_CONTROL_PATH:-/sys/class/gpio/modem_power/value}
+ZTE_CALIBRATION_CONTROL_PATH=${ZTE_CALIBRATION_CONTROL_PATH:-}
 ZTE_CALIBRATION_STATE_DIR=${ZTE_CALIBRATION_STATE_DIR:-/var/run/zte-usb-wifi-manager/calibration}
 ZTE_CALIBRATION_LOCK_DIR=${ZTE_CALIBRATION_LOCK_DIR:-/var/lock/zte-usb-power-calibration.lock}
 ZTE_CALIBRATION_MANAGER_SERVICE=${ZTE_CALIBRATION_MANAGER_SERVICE:-/etc/init.d/zte-usb-wifi-manager}
 ZTE_CALIBRATION_RECOVERY_SERVICE=${ZTE_CALIBRATION_RECOVERY_SERVICE:-/etc/init.d/zte-usb-recover}
 ZTE_CALIBRATION_OUTAGE_SECONDS=${ZTE_CALIBRATION_OUTAGE_SECONDS:-3}
 ZTE_CALIBRATION_WAIT_ATTEMPTS=${ZTE_CALIBRATION_WAIT_ATTEMPTS:-60}
+ZTE_CALIBRATION_STOP_ATTEMPTS=${ZTE_CALIBRATION_STOP_ATTEMPTS:-10}
+ZTE_CALIBRATION_STOP_INTERVAL=${ZTE_CALIBRATION_STOP_INTERVAL:-1}
 
 . "$ZTE_CALIBRATION_LIB_DIR/validation.sh"
 . "$ZTE_CALIBRATION_LIB_DIR/power-adapter.sh"
@@ -31,7 +33,7 @@ zte_calibration_device_reachable() {
 zte_calibration_probe_fail() {
 	_zte_calibration_probe_code=$1
 	case $_zte_calibration_probe_code in
-		board_file_unreadable|board_read_failed|unsupported_board|invalid_control_path|power_read_failed|invalid_power_value|recovery_service_unavailable|device_unreachable) ;;
+		board_file_unreadable|board_read_failed|unsupported_board|invalid_control_path|power_read_failed|invalid_power_value|supply_read_failed|supply_state_mismatch|recovery_service_unavailable|device_unreachable) ;;
 		*) _zte_calibration_probe_code=probe_failed ;;
 	esac
 	printf \
@@ -47,15 +49,28 @@ zte_calibration_probe() {
 		zte_calibration_probe_fail board_read_failed
 	zte_power_board_supported "$_zte_calibration_board" ||
 		zte_calibration_probe_fail unsupported_board
+	if [ -z "$ZTE_CALIBRATION_CONTROL_PATH" ]; then
+		ZTE_CALIBRATION_CONTROL_PATH=$(
+			zte_power_default_control_path "$_zte_calibration_board"
+		) || zte_calibration_probe_fail invalid_control_path
+	fi
 	zte_power_control_path_valid "$ZTE_CALIBRATION_CONTROL_PATH" ||
 		zte_calibration_probe_fail invalid_control_path
+	zte_power_board_control_supported \
+		"$_zte_calibration_board" "$ZTE_CALIBRATION_CONTROL_PATH" ||
+		zte_calibration_probe_fail invalid_control_path
 	_zte_calibration_power=$(
-		zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH" 2>/dev/null
+		zte_power_hardware_read "$ZTE_CALIBRATION_CONTROL_PATH" 2>/dev/null
 	) || zte_calibration_probe_fail power_read_failed
 	case $_zte_calibration_power in
 		0|1) ;;
 		*) zte_calibration_probe_fail invalid_power_value ;;
 	esac
+	_zte_calibration_supply=$(
+		zte_power_supply_read "$ZTE_CALIBRATION_CONTROL_PATH" 2>/dev/null
+	) || zte_calibration_probe_fail supply_read_failed
+	[ "$_zte_calibration_supply" = "$_zte_calibration_power" ] ||
+		zte_calibration_probe_fail supply_state_mismatch
 	zte_recovery_service_available \
 		"$ZTE_CALIBRATION_RECOVERY_SERVICE" ||
 		zte_calibration_probe_fail recovery_service_unavailable
@@ -77,6 +92,23 @@ _zte_calibration_lock_held=0
 _zte_calibration_manager_stopped=0
 _zte_calibration_recovery_prepared=0
 
+zte_calibration_wait_manager_stopped() {
+	_zte_calibration_stop_attempt=1
+	while [ "$_zte_calibration_stop_attempt" -le \
+		"$ZTE_CALIBRATION_STOP_ATTEMPTS" ]; do
+		if ! "$ZTE_CALIBRATION_MANAGER_SERVICE" running \
+			>/dev/null 2>&1; then
+			return 0
+		fi
+		if [ "$_zte_calibration_stop_attempt" -lt \
+			"$ZTE_CALIBRATION_STOP_ATTEMPTS" ]; then
+			sleep "$ZTE_CALIBRATION_STOP_INTERVAL"
+		fi
+		_zte_calibration_stop_attempt=$((_zte_calibration_stop_attempt + 1))
+	done
+	return 1
+}
+
 zte_calibration_cleanup() {
 	if ! zte_power_hardware_apply \
 		ON "$ZTE_CALIBRATION_CONTROL_PATH" >/dev/null 2>&1; then
@@ -93,7 +125,8 @@ zte_calibration_cleanup() {
 		_zte_calibration_recovery_prepared=0
 	fi
 	if [ "$_zte_calibration_manager_stopped" = 1 ]; then
-		if ! "$ZTE_CALIBRATION_MANAGER_SERVICE" start \
+		if ! ZTE_POWER_CALIBRATION_BYPASS_LOCK=1 \
+			"$ZTE_CALIBRATION_MANAGER_SERVICE" start \
 			>/dev/null 2>&1; then
 			return 1
 		fi
@@ -121,11 +154,15 @@ zte_calibration_execute() {
 	case $ZTE_CALIBRATION_OUTAGE_SECONDS:$ZTE_CALIBRATION_WAIT_ATTEMPTS in
 		*[!0-9:]*|:*|*:) return 1 ;;
 	esac
+	case $ZTE_CALIBRATION_STOP_ATTEMPTS:$ZTE_CALIBRATION_STOP_INTERVAL in
+		*[!0-9:]*|:*|*:) return 1 ;;
+	esac
 	[ "$ZTE_CALIBRATION_WAIT_ATTEMPTS" -ge 1 ] || return 1
+	[ "$ZTE_CALIBRATION_STOP_ATTEMPTS" -ge 1 ] || return 1
 	[ -x "$ZTE_CALIBRATION_MANAGER_SERVICE" ] || return 1
 	zte_calibration_probe >/dev/null || return 1
 	_zte_calibration_initial_power=$(
-		zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH"
+		zte_power_hardware_read "$ZTE_CALIBRATION_CONTROL_PATH"
 	) || return 1
 	[ "$_zte_calibration_initial_power" = 1 ] || return 1
 	[ -e "$ZTE_CALIBRATION_NETDEV_PATH" ] || return 1
@@ -140,6 +177,7 @@ zte_calibration_execute() {
 
 	_zte_calibration_manager_stopped=1
 	"$ZTE_CALIBRATION_MANAGER_SERVICE" stop || return 1
+	zte_calibration_wait_manager_stopped || return 1
 	_zte_calibration_now=$(date +%s)
 	_zte_calibration_expires=$((_zte_calibration_now + 300))
 	_zte_calibration_recovery_prepared=1
@@ -150,14 +188,14 @@ zte_calibration_execute() {
 
 	zte_power_hardware_apply \
 		OFF "$ZTE_CALIBRATION_CONTROL_PATH" || return 1
-	[ "$(zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 0 ] ||
+	[ "$(zte_power_hardware_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 0 ] ||
 		return 1
 	sleep "$ZTE_CALIBRATION_OUTAGE_SECONDS"
 	[ ! -e "$ZTE_CALIBRATION_NETDEV_PATH" ] || return 1
 
 	zte_power_hardware_apply \
 		ON "$ZTE_CALIBRATION_CONTROL_PATH" || return 1
-	[ "$(zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 1 ] ||
+	[ "$(zte_power_hardware_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 1 ] ||
 		return 1
 	zte_recovery_finish_on \
 		"$ZTE_CALIBRATION_INHIBIT_FILE" \
@@ -178,7 +216,8 @@ zte_calibration_execute() {
 	done
 	[ "$_zte_calibration_restored" = 1 ] || return 1
 
-	"$ZTE_CALIBRATION_MANAGER_SERVICE" start || return 1
+	ZTE_POWER_CALIBRATION_BYPASS_LOCK=1 \
+		"$ZTE_CALIBRATION_MANAGER_SERVICE" start || return 1
 	_zte_calibration_manager_stopped=0
 	rmdir "$ZTE_CALIBRATION_LOCK_DIR" || return 1
 	_zte_calibration_lock_held=0
@@ -193,7 +232,15 @@ zte_calibration_recover() {
 	_zte_calibration_board=$(cat "$ZTE_CALIBRATION_BOARD_FILE") ||
 		return 1
 	zte_power_board_supported "$_zte_calibration_board" || return 1
+	if [ -z "$ZTE_CALIBRATION_CONTROL_PATH" ]; then
+		ZTE_CALIBRATION_CONTROL_PATH=$(
+			zte_power_default_control_path "$_zte_calibration_board"
+		) || return 1
+	fi
 	zte_power_control_path_valid "$ZTE_CALIBRATION_CONTROL_PATH" ||
+		return 1
+	zte_power_board_control_supported \
+		"$_zte_calibration_board" "$ZTE_CALIBRATION_CONTROL_PATH" ||
 		return 1
 	[ -x "$ZTE_CALIBRATION_MANAGER_SERVICE" ] || return 1
 	if [ -e "$ZTE_CALIBRATION_INHIBIT_FILE" ]; then
@@ -207,7 +254,7 @@ zte_calibration_recover() {
 	trap zte_calibration_on_exit EXIT
 	trap 'exit 130' HUP INT TERM
 	zte_calibration_cleanup || return 1
-	[ "$(zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 1 ] ||
+	[ "$(zte_power_hardware_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 1 ] ||
 		return 1
 	printf '%s\n' \
 		'{"ok":true,"mode":"recover","power":1,"services_restored":true}'

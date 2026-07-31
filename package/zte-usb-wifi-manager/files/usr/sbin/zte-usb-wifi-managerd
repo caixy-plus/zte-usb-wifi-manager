@@ -80,7 +80,7 @@ load_config() {
 	config_get schedule_lead work lead_minutes 90
 	config_get power_backend usb backend unconfigured
 	config_get power_control_path usb control_path \
-		/sys/class/gpio/modem_power/value
+		auto
 	config_get power_calibrated usb calibrated 0
 	config_get power_off_probe_interval usb off_probe_interval 900
 	config_get power_probe_settle_seconds usb probe_settle_seconds 15
@@ -139,7 +139,7 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid power backend'
 		return 1
 	}
-	zte_power_control_path_valid "$power_control_path" || {
+	zte_power_control_config_valid "$power_control_path" || {
 		logger -t zte-usb-wifi-manager 'invalid power control path'
 		return 1
 	}
@@ -244,6 +244,7 @@ apply_policy_action() {
 	_zte_policy_action=$2
 
 	_zte_power_board=''
+	_zte_power_effective_control_path=${power_control_path-}
 	case $power_backend in
 		mock|dry-run) ;;
 		hardware)
@@ -257,6 +258,14 @@ apply_policy_action() {
 			_zte_power_board=$(zte_power_detect_board) || {
 				logger -t zte-usb-wifi-manager \
 					'unsupported or unreadable power-control board'
+				return 0
+			}
+			_zte_power_effective_control_path=$(
+				zte_power_resolve_control_path \
+					"$_zte_power_board" "$power_control_path"
+			) || {
+				logger -t zte-usb-wifi-manager \
+					'power-control profile does not match board'
 				return 0
 			}
 			;;
@@ -332,7 +341,8 @@ apply_policy_action() {
 
 	if zte_power_apply \
 		"$power_backend" "$_zte_policy_action" "$_zte_power_reason" \
-		"$STATE_DIR/power-decision.json" "$power_control_path" \
+		"$STATE_DIR/power-decision.json" \
+		"$_zte_power_effective_control_path" \
 		"$power_calibrated" "$_zte_power_board" \
 		"$write_enabled" >/dev/null; then
 		if [ "$_zte_policy_action" = ON ]; then
@@ -397,8 +407,11 @@ restore_power_on() {
 		return 0
 	fi
 	_zte_restore_board=$(zte_power_detect_board) || return 1
-	zte_power_control_path_valid "$power_control_path" || return 1
-	zte_power_hardware_apply ON "$power_control_path" || return 1
+	_zte_restore_control_path=$(
+		zte_power_resolve_control_path \
+			"$_zte_restore_board" "$power_control_path"
+	) || return 1
+	zte_power_hardware_apply ON "$_zte_restore_control_path" || return 1
 	_zte_restore_record=$(printf \
 		'{"backend":"hardware","action":"ON","executed":true,"reason":"disabled"}')
 	zte_power_write_record \

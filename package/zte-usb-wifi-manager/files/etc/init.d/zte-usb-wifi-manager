@@ -12,12 +12,21 @@ USE_PROCD=1
 
 ZTE_SIM_CALIBRATION_STATE_DIR=${ZTE_SIM_CALIBRATION_STATE_DIR:-/etc/zte-usb-wifi-manager/sim-calibration}
 ZTE_SIM_CALIBRATION_LOCK_DIR=${ZTE_SIM_CALIBRATION_LOCK_DIR:-/etc/zte-usb-wifi-manager/sim-calibration.lock}
+ZTE_POWER_CALIBRATION_STATE_DIR=${ZTE_POWER_CALIBRATION_STATE_DIR:-/var/run/zte-usb-wifi-manager/calibration}
+ZTE_POWER_CALIBRATION_LOCK_DIR=${ZTE_POWER_CALIBRATION_LOCK_DIR:-/var/lock/zte-usb-power-calibration.lock}
 
 start_service() {
 	if [ -e "$ZTE_SIM_CALIBRATION_STATE_DIR" ] ||
 		[ -L "$ZTE_SIM_CALIBRATION_STATE_DIR" ] ||
 		[ -e "$ZTE_SIM_CALIBRATION_LOCK_DIR" ] ||
 		[ -L "$ZTE_SIM_CALIBRATION_LOCK_DIR" ]; then
+		return 1
+	fi
+	if [ "${ZTE_POWER_CALIBRATION_BYPASS_LOCK:-0}" != 1 ] &&
+		{ [ -e "$ZTE_POWER_CALIBRATION_LOCK_DIR" ] ||
+			[ -L "$ZTE_POWER_CALIBRATION_LOCK_DIR" ] ||
+			[ -e "$ZTE_POWER_CALIBRATION_STATE_DIR/inhibit-recovery" ] ||
+			[ -L "$ZTE_POWER_CALIBRATION_STATE_DIR/inhibit-recovery" ]; }; then
 		return 1
 	fi
 

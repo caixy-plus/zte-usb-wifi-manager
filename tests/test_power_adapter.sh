@@ -38,17 +38,51 @@ done
 assert_failure zte_power_reason_valid 'battery high'
 
 assert_success zte_power_board_supported 'cudy,tr3000-v1'
+assert_success zte_power_board_supported 'cudy,tr3000-v1-ubootmod'
 for board in '' 'cudy,tr3000' 'cudy,tr3000-v1;reboot' '../tr3000'; do
     assert_failure zte_power_board_supported "$board"
 done
 assert_success zte_power_control_path_valid \
     '/sys/class/gpio/modem_power/value'
+assert_success zte_power_control_path_valid \
+    '/sys/bus/platform/drivers/xhci-mtk/11200000.usb'
+assert_success zte_power_control_config_valid auto
+assert_success zte_power_control_config_valid \
+    '/sys/class/gpio/modem_power/value'
+assert_success zte_power_control_config_valid \
+    '/sys/bus/platform/drivers/xhci-mtk/11200000.usb'
+assert_failure zte_power_control_config_valid ''
+assert_eq '/sys/class/gpio/modem_power/value' \
+    "$(zte_power_resolve_control_path 'cudy,tr3000-v1' auto)"
+assert_eq '/sys/bus/platform/drivers/xhci-mtk/11200000.usb' \
+    "$(zte_power_resolve_control_path 'cudy,tr3000-v1-ubootmod' auto)"
+assert_eq '/sys/bus/platform/drivers/xhci-mtk/11200000.usb' \
+    "$(zte_power_resolve_control_path \
+        'cudy,tr3000-v1-ubootmod' \
+        '/sys/bus/platform/drivers/xhci-mtk/11200000.usb')"
+assert_failure zte_power_resolve_control_path \
+    'cudy,tr3000-v1-ubootmod' '/sys/class/gpio/modem_power/value'
 for path in \
     '' '/sys/class/gpio/modem_power/direction' \
+    '/sys/bus/platform/drivers/xhci-mtk/11200000.usb/driver' \
     '/sys/class/gpio/modem_power/value/../direction' "$work/value"
 do
     assert_failure zte_power_control_path_valid "$path"
 done
+assert_success zte_power_board_control_supported \
+    'cudy,tr3000-v1' '/sys/class/gpio/modem_power/value'
+assert_success zte_power_board_control_supported \
+    'cudy,tr3000-v1-ubootmod' \
+    '/sys/bus/platform/drivers/xhci-mtk/11200000.usb'
+assert_failure zte_power_board_control_supported \
+    'cudy,tr3000-v1' '/sys/bus/platform/drivers/xhci-mtk/11200000.usb'
+assert_failure zte_power_board_control_supported \
+    'cudy,tr3000-v1-ubootmod' '/sys/class/gpio/modem_power/value'
+assert_eq '/sys/class/gpio/modem_power/value' \
+    "$(zte_power_default_control_path 'cudy,tr3000-v1')"
+assert_eq '/sys/bus/platform/drivers/xhci-mtk/11200000.usb' \
+    "$(zte_power_default_control_path 'cudy,tr3000-v1-ubootmod')"
+assert_failure zte_power_default_control_path 'cudy,tr3000-v2'
 assert_success zte_power_calibrated_flag_valid 0
 assert_success zte_power_calibrated_flag_valid 1
 assert_failure zte_power_calibrated_flag_valid ''
@@ -112,6 +146,111 @@ assert_eq \
     "$(tail -n 1 "$hardware_calls")"
 assert_eq 1 "$(cat "$hardware_state")"
 
+# Official OpenWrt uses the xHCI driver's bind state as the fixed regulator
+# control boundary. Override that boundary so the test cannot affect host USB.
+xhci_path=/sys/bus/platform/drivers/xhci-mtk/11200000.usb
+xhci_state=$work/xhci-state
+xhci_supply_state=$work/xhci-supply-state
+xhci_calls=$work/xhci-calls
+printf '1\n' >"$xhci_state"
+printf '1\n' >"$xhci_supply_state"
+: >"$xhci_calls"
+zte_power_driver_state() {
+    cat "$xhci_state"
+}
+zte_power_supply_read() {
+    cat "$xhci_supply_state"
+}
+zte_power_driver_write() {
+    printf '%s:%s\n' "$1" "$2" >>"$xhci_calls"
+    case $1 in
+        */unbind)
+            printf '0\n' >"$xhci_state"
+            printf '0\n' >"$xhci_supply_state"
+            ;;
+        */bind)
+            printf '1\n' >"$xhci_state"
+            printf '1\n' >"$xhci_supply_state"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+xhci_off_result=$(zte_power_apply \
+    hardware OFF battery_high "$record" \
+    "$xhci_path" 1 'cudy,tr3000-v1-ubootmod' 1)
+assert_eq \
+    '{"backend":"hardware","action":"OFF","executed":true,"reason":"battery_high"}' \
+    "$xhci_off_result"
+assert_eq \
+    '/sys/bus/platform/drivers/xhci-mtk/unbind:11200000.usb' \
+    "$(tail -n 1 "$xhci_calls")"
+assert_eq 0 "$(cat "$xhci_state")"
+
+xhci_on_result=$(zte_power_apply \
+    hardware ON fail_safe "$record" \
+    "$xhci_path" 1 'cudy,tr3000-v1-ubootmod' 0)
+assert_eq \
+    '{"backend":"hardware","action":"ON","executed":true,"reason":"fail_safe"}' \
+    "$xhci_on_result"
+assert_eq \
+    '/sys/bus/platform/drivers/xhci-mtk/bind:11200000.usb' \
+    "$(tail -n 1 "$xhci_calls")"
+assert_eq 1 "$(cat "$xhci_state")"
+
+: >"$xhci_calls"
+assert_success zte_power_hardware_apply ON "$xhci_path"
+assert_eq '' "$(cat "$xhci_calls")"
+printf '0\n' >"$xhci_state"
+printf '0\n' >"$xhci_supply_state"
+assert_success zte_power_hardware_apply OFF "$xhci_path"
+assert_eq '' "$(cat "$xhci_calls")"
+printf '1\n' >"$xhci_state"
+printf '1\n' >"$xhci_supply_state"
+
+# A controller/regulator split-brain is repaired by cycling the fixed xHCI
+# profile in the requested direction.
+: >"$xhci_calls"
+printf '0\n' >"$xhci_supply_state"
+assert_success zte_power_hardware_apply ON "$xhci_path"
+assert_eq \
+    "/sys/bus/platform/drivers/xhci-mtk/unbind:11200000.usb
+/sys/bus/platform/drivers/xhci-mtk/bind:11200000.usb" \
+    "$(cat "$xhci_calls")"
+: >"$xhci_calls"
+printf '0\n' >"$xhci_state"
+printf '1\n' >"$xhci_supply_state"
+assert_success zte_power_hardware_apply OFF "$xhci_path"
+assert_eq \
+    "/sys/bus/platform/drivers/xhci-mtk/bind:11200000.usb
+/sys/bus/platform/drivers/xhci-mtk/unbind:11200000.usb" \
+    "$(cat "$xhci_calls")"
+printf '1\n' >"$xhci_state"
+printf '1\n' >"$xhci_supply_state"
+
+# A detached controller is not accepted as power-off unless the fixed
+# usb-vbus regulator also reports disabled.
+zte_power_driver_write() {
+    printf '%s:%s\n' "$1" "$2" >>"$xhci_calls"
+    case $1 in
+        */unbind) printf '0\n' >"$xhci_state" ;;
+        */bind) printf '1\n' >"$xhci_state" ;;
+        *) return 1 ;;
+    esac
+}
+assert_failure zte_power_hardware_apply OFF "$xhci_path"
+printf '1\n' >"$xhci_state"
+: >"$xhci_calls"
+
+assert_failure zte_power_apply \
+    hardware OFF battery_high "$record" \
+    "$xhci_path" 1 'cudy,tr3000-v1' 1
+assert_failure zte_power_apply \
+    hardware OFF battery_high "$record" \
+    '/sys/class/gpio/modem_power/value' \
+    1 'cudy,tr3000-v1-ubootmod' 1
+assert_eq "$xhci_on_result" "$(cat "$record")"
+
 assert_failure zte_power_apply \
     hardware OFF battery_high "$record" \
     '/sys/class/gpio/modem_power/value' 0 'cudy,tr3000-v1'
@@ -136,6 +275,9 @@ assert_eq "$hardware_on_result" "$(cat "$record")"
 
 zte_power_sysfs_write() {
     return 1
+}
+zte_power_sysfs_read() {
+    printf '0\n'
 }
 assert_failure zte_power_apply \
     hardware ON fail_safe "$record" \

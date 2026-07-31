@@ -22,8 +22,9 @@
 - 模拟器覆盖九类语义写动作的成功、拒绝、超时、会话过期和读回；这些 fixture
   动作不等同于真实 U25S 写接口。
 - 已实现严格限定为 Cudy TR3000 v1 的 hardware Power Adapter：
-  固定使用 `/sys/class/gpio/modem_power/value`，OFF 写 `0`、ON 写 `1`，
-  每次写入后必须读回一致；默认仍以 `calibrated=0` 锁定。
+  官方 OpenWrt `ubootmod` 固件使用 xHCI bind/unbind 和 `usb-vbus` regulator
+  双重读回；导出 `modem_power` 的兼容固件继续使用固定 GPIO 节点。
+  两种 profile 都必须与板型精确匹配，默认仍以 `calibrated=0` 锁定。
 - 真实断电前会写入带期限的 inhibit 并停止 `zte-usb-recover`，恢复供电后再启动；
   设备动作执行期间禁止断电，守护进程退出时强制恢复供电；独立协调实例会在主
   守护进程失效时继续处理过期 inhibit。
@@ -59,10 +60,11 @@
 | OpenWrt 25.12.5 | `.apk` | QEMU 安装验证通过 |
 | OpenWrt 24.10.7 | `.ipk` | QEMU 安装验证通过 |
 
-当前 backend r7 / LuCI r3 的真实 SDK 构建、升级、持久恢复门禁和卸载
-证据见 [验证记录](docs/validation/2026-07-31-r7-r3-qemu.md)。
+backend r7 / LuCI r3 的真实 SDK 构建和实机安装已完成；当前 backend r8 的
+本地检查已通过，GitHub SDK、QEMU 升级及实机只读 probe 正在补证。进度见
+[验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
-backend r7 的预发布入口预留为 `v0.1.0-rc1-r7`；只有维护者显式创建并推送该
+backend r8 的预发布入口预留为 `v0.1.0-rc1-r8`；只有维护者显式创建并推送该
 tag 时才会触发 prerelease 工作流。当前 SDK/QEMU 验证通过不代表该 tag 已发布，
 也不代表真实设备写接口、USB 供电或 72 小时稳定性验收已经完成。
 
@@ -225,8 +227,9 @@ cat /var/run/zte-usb-wifi-manager/status.json
 
 只有确认 ON 读回并恢复原有服务状态后，`recover` 才会清除标记和锁。
 
-工具会先停止管理守护进程与 `zte-usb-recover`，验证 GPIO 断电读回和 `eth2`
-消失，再恢复供电并等待 `eth2` 重新出现且 U25S 管理接口可读。任一环节失败或收到
+工具会先停止管理守护进程与 `zte-usb-recover`，验证控制入口和实际
+`usb-vbus` 供电均已关闭且 `eth2` 消失，再恢复供电并等待 `eth2`
+重新出现且 U25S 管理接口可读。任一环节失败或收到
 退出信号都会执行 best-effort 上电和服务恢复。只有输出中所有布尔项均为 `true`，
 才可在该备用设备临时启用：
 

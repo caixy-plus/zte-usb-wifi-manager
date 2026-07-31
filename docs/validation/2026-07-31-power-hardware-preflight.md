@@ -16,10 +16,23 @@ option calibrated '0'
 
 ## 板级入口证据
 
-目标固件上游提交
-[`86356f8`](https://github.com/padavanonly/immortalwrt-mt798x-6.6/commit/86356f8a2f796e5808fda25ce3e3bf6b3cc3278e)
-在 TR3000 v1 DTS 中导出 `modem_power`，使用 GPIO 9、`GPIO_ACTIVE_LOW`，并修正
-默认供电状态。候选操作为：
+官方 OpenWrt 24.10、25.12 和主线的
+[`mt7981b-cudy-tr3000-v1.dtsi`](https://github.com/openwrt/openwrt/blob/main/target/linux/mediatek/dts/mt7981b-cudy-tr3000-v1.dtsi)
+把 GPIO 9 定义为名为 `usb-vbus` 的 fixed regulator，并由
+`11200000.usb` xHCI 控制器消费。主路由器只读诊断与该设备树一致：
+
+```text
+board=cudy,tr3000-v1-ubootmod
+xhci=/sys/bus/platform/drivers/xhci-mtk/11200000.usb
+regulator=usb-vbus
+regulator_state=enabled
+gpio-521=regulator-usb, ACTIVE LOW
+```
+
+因此官方 OpenWrt profile 使用 xHCI driver 的固定 bind/unbind 入口，并同时检查
+控制器绑定状态和 `usb-vbus` regulator 状态。只有两项都变为 OFF/ON 才算动作成功。
+
+部分兼容固件另外导出 `modem_power`，该 profile 保留原固定映射：
 
 ```text
 OFF → /sys/class/gpio/modem_power/value 写 0
@@ -30,7 +43,8 @@ ON  → /sys/class/gpio/modem_power/value 写 1
 
 ## 已完成的安全门控
 
-- `hardware` 只允许 `cudy,tr3000-v1` 和固定 sysfs 节点。
+- `hardware` 只允许 `cudy,tr3000-v1`/`cudy,tr3000-v1-ubootmod` 与各自固定
+  profile 精确配对。
 - `write_enabled=1`、`usb.calibrated=1`、板型匹配和恢复服务可用必须同时成立。
 - 每次 GPIO 写入后必须读回期望值，否则动作失败。
 - 真实 OFF 前先写带期限的 inhibit，再停止 `/etc/init.d/zte-usb-recover`。

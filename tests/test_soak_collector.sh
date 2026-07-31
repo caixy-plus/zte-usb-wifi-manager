@@ -65,6 +65,18 @@ zte_recovery_service_running() {
     [ "${ZTE_TEST_RECOVERY_RUNNING:-1}" = 1 ]
 }
 EOF
+cat >"$lib/power-adapter.sh" <<'EOF'
+zte_power_hardware_read() {
+    cat "$1"
+}
+zte_power_supply_read() {
+    if [ -n "${ZTE_TEST_SUPPLY_STATE:-}" ]; then
+        printf '%s\n' "$ZTE_TEST_SUPPLY_STATE"
+    else
+        cat "$1"
+    fi
+}
+EOF
 cat >"$bin/date" <<'EOF'
 #!/bin/sh
 printf '%s\n' 1722345600
@@ -125,6 +137,21 @@ assert_failure env \
     ZTE_SOAK_PROC_ROOT="$proc" \
     ZTE_SOAK_MANAGER_PID_FILE="$runtime/manager.pid" \
     ZTE_SOAK_COORDINATOR_PID_FILE="$runtime/coordinator.pid" \
+    PATH="$bin:$PATH" \
+    sh "$collector" once
+
+printf '1\n' >"$runtime/power"
+assert_failure env \
+    ZTE_SOAK_LIB_DIR="$lib" \
+    ZTE_SOAK_STATUS_FILE="$runtime/status.json" \
+    ZTE_SOAK_POWER_PATH="$runtime/power" \
+    ZTE_SOAK_INHIBIT_FILE="$runtime/inhibit" \
+    ZTE_SOAK_EVENT_LOG="$runtime/logs/events.jsonl" \
+    ZTE_SOAK_NETDEV_PATH="$runtime/netdev" \
+    ZTE_SOAK_PROC_ROOT="$proc" \
+    ZTE_SOAK_MANAGER_PID_FILE="$runtime/manager.pid" \
+    ZTE_SOAK_COORDINATOR_PID_FILE="$runtime/coordinator.pid" \
+    ZTE_TEST_SUPPLY_STATE=0 \
     PATH="$bin:$PATH" \
     sh "$collector" once
 

@@ -12,7 +12,7 @@ luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=7$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=8$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -60,12 +60,18 @@ init_gate_root=$(mktemp -d /tmp/zte-test-init-gate.XXXXXX)
 init_gate_log=$init_gate_root/procd-instances
 init_gate_state=$init_gate_root/sim-calibration
 init_gate_lock=$init_gate_root/sim-calibration.lock
+init_power_state=$init_gate_root/power-calibration
+init_power_lock=$init_gate_root/power-calibration.lock
 run_gated_start() {
     (
         ZTE_SIM_CALIBRATION_STATE_DIR=$init_gate_state
         ZTE_SIM_CALIBRATION_LOCK_DIR=$init_gate_lock
+        ZTE_POWER_CALIBRATION_STATE_DIR=$init_power_state
+        ZTE_POWER_CALIBRATION_LOCK_DIR=$init_power_lock
         export ZTE_SIM_CALIBRATION_STATE_DIR
         export ZTE_SIM_CALIBRATION_LOCK_DIR
+        export ZTE_POWER_CALIBRATION_STATE_DIR
+        export ZTE_POWER_CALIBRATION_LOCK_DIR
         procd_open_instance() {
             printf '%s\n' "$1" >>"$init_gate_log"
         }
@@ -106,6 +112,26 @@ ln -s "$init_gate_root/missing-lock-target" "$init_gate_lock"
 assert_failure run_gated_start
 assert_eq '' "$(cat "$init_gate_log")"
 rm "$init_gate_lock"
+
+mkdir "$init_power_lock"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+ZTE_POWER_CALIBRATION_BYPASS_LOCK=1
+export ZTE_POWER_CALIBRATION_BYPASS_LOCK
+: >"$init_gate_log"
+assert_success run_gated_start
+assert_eq 'manager
+recovery-coordinator' "$(cat "$init_gate_log")"
+unset ZTE_POWER_CALIBRATION_BYPASS_LOCK
+rmdir "$init_power_lock"
+
+mkdir "$init_power_state"
+: >"$init_power_state/inhibit-recovery"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+rm -rf "$init_power_state"
 rm -rf "$init_gate_root"
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabilities"'
@@ -198,12 +224,12 @@ assert_file_contains README.md \
     '/usr/libexec/zte-u25s-sim-calibrate recover'
 assert_file_contains README.md '只能在备用 U25S'
 assert_file_contains README.md \
-    '当前 backend r7 / LuCI r3 的真实 SDK 构建'
+    '当前 backend r8 的'
 assert_file_contains README.md \
-    'docs/validation/2026-07-31-r7-r3-qemu\.md'
-assert_file_contains docs/validation/2026-07-31-r7-r3-qemu.md \
+    'docs/validation/2026-07-31-r8-r3-qemu\.md'
+assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
     'probe'
-assert_file_contains docs/validation/2026-07-31-r7-r3-qemu.md \
+assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
     '失败码'
 assert_file_contains README.md 'zte-usb-soak'
 assert_file_contains README.md '原子动作队列'
@@ -336,6 +362,13 @@ assert_file_contains \
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/recovery-adapter.sh" \
     '^zte_recovery_prepare_off\(\) \{$'
+assert_file_contains \
+    "$backend/files/etc/config/zte-usb-wifi-manager" \
+    "option control_path 'auto'"
+assert_file_contains "$backend/Makefile" \
+    'cudy,tr3000-v1-ubootmod'
+assert_file_contains "$backend/Makefile" \
+    'zte-usb-wifi-manager\.usb\.control_path=auto'
 # Match the literal shell variable expression in the production daemon.
 # shellcheck disable=SC2016
 assert_file_contains "$daemon" '^PID_FILE=\$STATE_DIR/manager\.pid$'
@@ -698,7 +731,8 @@ _zte_test_power_record_failure=0
 zte_power_write_record() {
     [ "$_zte_test_power_record_failure" = 0 ]
 }
-zte_power_detect_board() { printf '%s\n' 'cudy,tr3000-v1'; }
+_zte_test_board='cudy,tr3000-v1'
+zte_power_detect_board() { printf '%s\n' "$_zte_test_board"; }
 _zte_test_action_active=0
 zte_action_has_active() { [ "$_zte_test_action_active" = 1 ]; }
 _zte_test_power_transition=0
@@ -836,6 +870,22 @@ assert_eq 0 "$next_power_probe_at"
 assert_eq 0 "$_zte_test_power_transition"
 assert_eq '/etc/init.d/zte-usb-recover:start' \
     "$(tail -n 1 "$recovery_service_calls")"
+
+# The auto profile resolves the official ubootmod board to its fixed xHCI
+# control boundary before any hardware write is attempted.
+: >"$power_call_log"
+last_power_action=''
+_zte_test_board='cudy,tr3000-v1-ubootmod'
+power_control_path=auto
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq \
+    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/bus/platform/drivers/xhci-mtk/11200000.usb|1|cudy,tr3000-v1-ubootmod|1" \
+    "$(cat "$power_call_log")"
+apply_policy_action FAIL_SAFE_ON ON
+_zte_test_board='cudy,tr3000-v1'
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_control_path=/sys/class/gpio/modem_power/value
 
 # Missing recovery coordination is a hard gate for real hardware writes.
 : >"$power_call_log"

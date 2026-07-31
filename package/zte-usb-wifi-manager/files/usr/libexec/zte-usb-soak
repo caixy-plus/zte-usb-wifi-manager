@@ -3,7 +3,8 @@ set -eu
 
 ZTE_SOAK_LIB_DIR=${ZTE_SOAK_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 ZTE_SOAK_STATUS_FILE=${ZTE_SOAK_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
-ZTE_SOAK_POWER_PATH=${ZTE_SOAK_POWER_PATH:-/sys/class/gpio/modem_power/value}
+ZTE_SOAK_POWER_PATH=${ZTE_SOAK_POWER_PATH:-}
+ZTE_SOAK_BOARD_FILE=${ZTE_SOAK_BOARD_FILE:-/tmp/sysinfo/board_name}
 ZTE_SOAK_INHIBIT_FILE=${ZTE_SOAK_INHIBIT_FILE:-/var/run/zte-usb-wifi-manager/inhibit-recovery}
 ZTE_SOAK_EVENT_LOG=${ZTE_SOAK_EVENT_LOG:-/var/run/zte-usb-wifi-manager/logs/events.jsonl}
 ZTE_SOAK_NETDEV_PATH=${ZTE_SOAK_NETDEV_PATH:-/sys/class/net/eth2}
@@ -19,6 +20,15 @@ ZTE_SOAK_MAX_BYTES=${ZTE_SOAK_MAX_BYTES:-2097152}
 . "$ZTE_SOAK_LIB_DIR/json.sh"
 . "$ZTE_SOAK_LIB_DIR/recovery-inhibit.sh"
 . "$ZTE_SOAK_LIB_DIR/recovery-adapter.sh"
+. "$ZTE_SOAK_LIB_DIR/power-adapter.sh"
+
+if [ -z "$ZTE_SOAK_POWER_PATH" ]; then
+	[ -r "$ZTE_SOAK_BOARD_FILE" ] || exit 1
+	_zte_soak_board=$(cat "$ZTE_SOAK_BOARD_FILE") || exit 1
+	ZTE_SOAK_POWER_PATH=$(
+		zte_power_default_control_path "$_zte_soak_board"
+	) || exit 1
+fi
 
 zte_soak_collect() {
 	_zte_soak_now=$(date +%s)
@@ -98,11 +108,17 @@ zte_soak_collect() {
 	[ "$_zte_soak_now" -ge "$_zte_soak_updated" ] || return 1
 	_zte_soak_status_age=$((_zte_soak_now - _zte_soak_updated))
 
-	_zte_soak_power=$(cat "$ZTE_SOAK_POWER_PATH") || return 1
+	_zte_soak_power=$(
+		zte_power_hardware_read "$ZTE_SOAK_POWER_PATH"
+	) || return 1
 	case $_zte_soak_power in
 		0|1) ;;
 		*) return 1 ;;
 	esac
+	_zte_soak_supply=$(
+		zte_power_supply_read "$ZTE_SOAK_POWER_PATH"
+	) || return 1
+	[ "$_zte_soak_supply" = "$_zte_soak_power" ] || return 1
 	if zte_recovery_inhibit_active \
 		"$ZTE_SOAK_INHIBIT_FILE" "$_zte_soak_now"; then
 		_zte_soak_inhibit=true
