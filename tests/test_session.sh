@@ -8,6 +8,7 @@ TEST_NAME=test_session
 lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/json.sh"
 . "$lib/http.sh"
+. "$lib/credentials.sh"
 . "$lib/session.sh"
 
 work=/tmp/zte-test-session.$$
