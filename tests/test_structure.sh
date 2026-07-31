@@ -169,7 +169,8 @@ assert_file_contains "$qemu_evidence" 'Release 卸载.*PASS'
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'
 for library in \
-    json.sh session.sh snapshot.sh netifd-adapter.sh power-adapter.sh event-log.sh \
+    json.sh credentials.sh session.sh snapshot.sh netifd-adapter.sh \
+    power-adapter.sh event-log.sh \
     actions.sh recovery-inhibit.sh schedule.sh
 do
     assert_file_contains "$daemon" "$library"
@@ -188,11 +189,12 @@ assert_file_contains "$daemon" 'zte_validate_interface.*interface'
 assert_file_contains "$daemon" 'zte_validate_netdev.*netdev'
 assert_file_contains "$daemon" 'init_state'
 assert_file_contains "$daemon" '^[[:space:]]*state=credentials_missing$'
-assert_file_contains "$daemon" '^[[:space:]]*reason=credential_file_unreadable$'
+assert_file_contains "$daemon" '^[[:space:]]*reason=device_credentials_required$'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/session.sh" 'goformId=LOGIN'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh" 'multi_data=1'
 assert_file_contains tests/fixtures/u25s/read_ok.json 'NR5G-SA'
 assert_file_contains Makefile 'tests/test_session.sh'
+assert_file_contains Makefile 'tests/test_credentials.sh'
 assert_file_contains Makefile 'tests/test_schedule.sh'
 assert_file_contains Makefile 'tests/test_adapter.sh'
 assert_file_contains Makefile 'tests/test_u25s_simulator.sh'
@@ -337,6 +339,63 @@ zte_policy_decide() {
 schedule_pre_departure_now() { printf '0\n'; }
 date() { printf '%s\n' 1722345678; }
 write_status() { printf '%s\n' "$1" >>"$status_log"; }
+
+# Anonymous status firmware must be polled even when no credential file exists.
+anonymous_password_log=$work/anonymous-password
+zte_read_password() { return 1; }
+zte_adapter_fetch() {
+    printf '%s' "$2" >"$anonymous_password_log"
+    printf '%s\n' "$dev1"
+}
+zte_adapter_normalize() { printf '%s\n' "$1"; }
+poll_once
+assert_eq '' "$(cat "$anonymous_password_log")"
+assert_eq \
+    "$(zte_snapshot_compose ok '' "$dev1" "$net" DISABLED KEEP 0 1722345678)" \
+    "$(sed -n '1p' "$status_log")"
+
+# Adapter status 2 means the endpoint is reachable but needs a password.
+: >"$status_log"
+last_device_json=''
+last_logged_state=''
+failures=0
+zte_adapter_fetch() { return 2; }
+poll_once
+assert_eq \
+    "$(zte_snapshot_compose credentials_missing device_credentials_required '' \
+        "$net" DISABLED KEEP 0 1722345678)" \
+    "$(sed -n '1p' "$status_log")"
+
+# Restore the configured-credential sequence used by the degradation tests.
+: >"$status_log"
+: >"$event_call_log"
+printf 0 >"$fetch_count"
+# Read by the eval-defined production poll_once function.
+# shellcheck disable=SC2034
+last_device_json=''
+# Read by the eval-defined production record_state_change function.
+# shellcheck disable=SC2034
+last_logged_state=''
+failures=0
+zte_read_password() { printf '%s\n' secret; }
+zte_adapter_fetch() {
+    n=$(cat "$fetch_count")
+    n=$((n + 1))
+    printf '%s' "$n" >"$fetch_count"
+    case $n in
+        1) printf '%s\n' "$dev1" ;;
+        2) printf '%s\n' partial ;;
+        3) return 1 ;;
+        4) printf '%s\n' "$dev2" ;;
+    esac
+}
+zte_adapter_normalize() {
+    if [ "$1" = partial ]; then
+        printf '%s\n' '{"partial":true}'
+        return 1
+    fi
+    printf '%s\n' "$1"
+}
 
 poll_once
 assert_eq OFF "$(cat "$policy_power_log")" \

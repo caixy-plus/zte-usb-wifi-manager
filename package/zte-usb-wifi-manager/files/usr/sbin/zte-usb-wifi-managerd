@@ -5,6 +5,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/validation.sh
 . /usr/lib/zte-usb-wifi-manager/json.sh
 . /usr/lib/zte-usb-wifi-manager/http.sh
+. /usr/lib/zte-usb-wifi-manager/credentials.sh
 . /usr/lib/zte-usb-wifi-manager/session.sh
 . /usr/lib/zte-usb-wifi-manager/policy.sh
 . /usr/lib/zte-usb-wifi-manager/schedule.sh
@@ -300,21 +301,32 @@ calculate_policy() {
 poll_once() {
 	ok=0
 	candidate_device_json=''
-	health=credentials_missing
+	health=degraded
+	password=''
+	fetch_status=0
 
-	if password=$(zte_read_password "$credential_file") &&
-		[ -n "$password" ]; then
-		health=degraded
-		if raw_json=$(zte_adapter_fetch "$host" "$password" "$COOKIE_FILE") &&
-			candidate_device_json=$(zte_adapter_normalize "$raw_json"); then
+	if _zte_saved_password=$(zte_read_password "$credential_file" 2>/dev/null); then
+		password=$_zte_saved_password
+	fi
+	_zte_saved_password=''
+
+	if raw_json=$(zte_adapter_fetch "$host" "$password" "$COOKIE_FILE"); then
+		if candidate_device_json=$(zte_adapter_normalize "$raw_json"); then
 			ok=1
 		fi
+	else
+		fetch_status=$?
+	fi
+	password=''
+
+	if [ "$fetch_status" = 2 ]; then
+		health=credentials_missing
+	else
 		failure_result=$(zte_failures_next \
 			"$failures" "$ok" "$failure_threshold")
 		failures=${failure_result%%:*}
 		health=${failure_result#*:}
 	fi
-	password=
 	device_json=$(zte_device_retain \
 		"$last_device_json" "$candidate_device_json" "$ok")
 	if [ "$ok" = 1 ]; then
@@ -336,7 +348,7 @@ poll_once() {
 			;;
 		credentials_missing)
 			state=credentials_missing
-			reason=credential_file_unreadable
+			reason=device_credentials_required
 			;;
 	esac
 
