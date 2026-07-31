@@ -225,11 +225,11 @@ zte_sim_calibration_write_state() {
 			return 1
 			;;
 	esac
-	[ ! -e "$_zte_sim_calibration_state_tmp" ] &&
-		[ ! -L "$_zte_sim_calibration_state_tmp" ] || {
+	if [ -e "$_zte_sim_calibration_state_tmp" ] ||
+		[ -L "$_zte_sim_calibration_state_tmp" ]; then
 		_zte_sim_calibration_active_state_tmp=
 		return 1
-	}
+	fi
 	if ! {
 		printf \
 			'{"original_target":%s,"manager_was_running":%s}\n' \
