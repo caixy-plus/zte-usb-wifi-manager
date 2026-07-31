@@ -12,7 +12,7 @@ luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=3$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=4$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -199,6 +199,8 @@ assert_file_contains Makefile 'tests/test_schedule.sh'
 assert_file_contains Makefile 'tests/test_adapter.sh'
 assert_file_contains Makefile 'tests/test_u25s_simulator.sh'
 assert_file_contains Makefile 'tests/test_actions.sh'
+assert_file_contains Makefile 'tests/test_action_executor.sh'
+assert_file_contains Makefile 'tests/test_daemon_actions.sh'
 assert_file_contains Makefile 'tests/test_power_adapter.sh'
 assert_file_contains Makefile 'tests/test_event_log.sh'
 assert_file_contains Makefile 'tests/test_recovery_inhibit.sh'
@@ -207,6 +209,14 @@ assert_file_contains Makefile 'tests/test_runtime_stability.sh'
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/actions.sh" \
     '^zte_action_enqueue\(\) \{$'
+assert_file_contains "$daemon" 'action-executor\.sh'
+assert_file_contains "$daemon" 'zte_execute_switch_sim'
+assert_file_contains \
+    "$backend/files/usr/lib/zte-usb-wifi-manager/action-executor.sh" \
+    '^zte_execute_switch_sim\(\) \{$'
+assert_file_contains \
+    "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" \
+    '^zte_adapter_action_payload_valid\(\) \{$'
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/power-adapter.sh" \
     '^zte_power_apply\(\) \{$'

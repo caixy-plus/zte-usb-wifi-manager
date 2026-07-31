@@ -11,6 +11,7 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/session.sh"
 . "$lib/adapter-zte-u25s-metadata.sh"
 . "$lib/adapter-zte-u25s.sh"
+. "$lib/action-executor.sh"
 
 if python3 - <<'PY'
 import importlib.util
@@ -200,6 +201,16 @@ start_simulator normal 1
 action_jar=$work/action.cookies
 assert_success zte_session_login \
     "$simulator_host" "$login_secret" "$action_jar"
+ZTE_SIM_READBACK_ATTEMPTS=1
+ZTE_SIM_READBACK_INTERVAL=0
+assert_eq ok "$(
+    zte_execute_switch_sim \
+        "$simulator_host" "$login_secret" "$action_jar" sim2
+)" 'calibrated SIM request must succeed only after matching status readback'
+assert_eq 1 "$(grep -c '^POST SIM_SWITCH_SIMCARD 200$' "$request_log")"
+switched_raw=$(zte_adapter_fetch \
+    "$simulator_host" "$login_secret" "$action_jar")
+assert_eq 2 "$(zte_json_flat_get "$switched_raw" simcard_active_slot_temp)"
 for fixture_action in \
     FIXTURE_SWITCH_SIM \
     FIXTURE_SET_APN \
@@ -261,6 +272,18 @@ assert_eq '{"result":"0"}' "$(
         'goformId=FIXTURE_SWITCH_SIM&fixture_value=verified' \
         "$write_expired_jar"
 )"
+assert_log_safe
+
+start_simulator write-expire-once 1
+calibrated_expired_jar=$work/calibrated-expired.cookies
+assert_eq ok "$(
+    zte_execute_switch_sim \
+        "$simulator_host" "$login_secret" \
+        "$calibrated_expired_jar" physical 2>/dev/null
+)" 'calibrated idempotent write must relogin and retry once'
+assert_eq 2 "$(grep -c '^POST LOGIN 200$' "$request_log")"
+assert_eq 1 "$(grep -c '^POST SIM_SWITCH_SIMCARD 401$' "$request_log")"
+assert_eq 1 "$(grep -c '^POST SIM_SWITCH_SIMCARD 200$' "$request_log")"
 assert_log_safe
 
 stop_simulator

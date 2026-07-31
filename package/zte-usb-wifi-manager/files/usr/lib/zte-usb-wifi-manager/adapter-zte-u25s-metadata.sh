@@ -38,6 +38,23 @@ zte_adapter_action_supported() {
 	esac
 }
 
+zte_adapter_action_payload_valid() {
+	_zte_metadata_action=${1-}
+	_zte_metadata_payload=${2-}
+	case $_zte_metadata_action in
+		switch_sim)
+			_zte_metadata_target=$(
+				zte_json_flat_get "$_zte_metadata_payload" target
+			)
+			case $_zte_metadata_target in
+				sim1|sim2|sim3|physical) return 0 ;;
+				*) return 1 ;;
+			esac
+			;;
+		*) return 0 ;;
+	esac
+}
+
 zte_adapter_framework_status_json() {
 	printf '%s\n' \
 		'{"online":false,"model":"U25S","state":"framework_ready","reason":"device_polling_not_configured"}'

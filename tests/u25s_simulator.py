@@ -37,6 +37,8 @@ FIXTURE_ACTIONS = {
     "FIXTURE_DELETE_SMS",
     "FIXTURE_MARK_SMS_READ",
 }
+CALIBRATED_SIM_ACTION = "SIM_SWITCH_SIMCARD"
+CALIBRATED_SIM_INDEXES = {"0", "1", "2", "3"}
 READ_FIELDS = {
     "mc_modem_main_state",
     "network_type",
@@ -82,6 +84,9 @@ class SimulatorState:
         self.expired_once = False
         self.allow_fixture_writes = allow_fixture_writes
         self.last_action = None
+        self.active_sim_slot = str(
+            json.loads(self.fixture).get("simcard_active_slot_temp", "")
+        )
 
     def expected_digest(self):
         first = hashlib.sha256(self.login_secret.encode("utf-8")).hexdigest()
@@ -119,6 +124,16 @@ class SimulatorState:
     def fixture_action_state(self):
         with self.lock:
             return self.last_action
+
+    def apply_sim_switch(self, index):
+        with self.lock:
+            self.active_sim_slot = index
+
+    def status_payload(self):
+        with self.lock:
+            payload = json.loads(self.fixture)
+            payload["simcard_active_slot_temp"] = self.active_sim_slot
+            return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     def record(self, entry):
         with self.lock:
@@ -210,7 +225,7 @@ class U25SHandler(BaseHTTPRequestHandler):
                 '{"network_type":"LTE","battery_exist":"0"}',
             )
         else:
-            self.send_payload(200, self.state.fixture)
+            self.send_payload(200, self.state.status_payload())
 
     def do_POST(self):
         request = urlparse(self.path)
@@ -225,12 +240,17 @@ class U25SHandler(BaseHTTPRequestHandler):
 
         action = form.get("goformId", [""])[0]
         if action != "LOGIN":
-            if not self.state.allow_fixture_writes or action not in FIXTURE_ACTIONS:
+            if not self.state.allow_fixture_writes:
                 self.state.record("POST WRITE 403")
                 self.send_payload(403, '{"result":"denied"}')
                 return
             if self.state.session_state(self.session_id(), "write") != "valid":
-                self.state.record("POST FIXTURE_WRITE 401")
+                event = (
+                    f"POST {CALIBRATED_SIM_ACTION} 401"
+                    if action == CALIBRATED_SIM_ACTION
+                    else "POST FIXTURE_WRITE 401"
+                )
+                self.state.record(event)
                 self.send_payload(401, '{"result":"session_expired"}')
                 return
             if self.state.scenario == "write-denied":
@@ -239,6 +259,24 @@ class U25SHandler(BaseHTTPRequestHandler):
                 return
             if self.state.scenario == "write-timeout":
                 time.sleep(2)
+            if action == CALIBRATED_SIM_ACTION:
+                index = form.get("card_index", [""])[0]
+                if (
+                    index not in CALIBRATED_SIM_INDEXES
+                    or form.get("isTest", [""])[0] != "false"
+                    or set(form) != {"isTest", "goformId", "card_index"}
+                ):
+                    self.state.record(f"POST {CALIBRATED_SIM_ACTION} 400")
+                    self.send_payload(400, '{"result":"invalid_request"}')
+                    return
+                self.state.apply_sim_switch(index)
+                self.state.record(f"POST {CALIBRATED_SIM_ACTION} 200")
+                self.send_payload(200, '{"result":"success"}')
+                return
+            if action not in FIXTURE_ACTIONS:
+                self.state.record("POST WRITE 403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
             value = form.get("fixture_value", [""])[0]
             if not value or len(form) != 2:
                 self.state.record("POST FIXTURE_WRITE 400")

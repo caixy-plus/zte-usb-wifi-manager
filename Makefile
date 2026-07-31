@@ -15,6 +15,8 @@ test:
 		tests/test_adapter.sh \
 		tests/test_u25s_simulator.sh \
 		tests/test_actions.sh \
+		tests/test_action_executor.sh \
+		tests/test_daemon_actions.sh \
 		tests/test_power_adapter.sh \
 		tests/test_event_log.sh \
 		tests/test_recovery_inhibit.sh \

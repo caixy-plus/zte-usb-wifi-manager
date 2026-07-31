@@ -15,7 +15,7 @@ CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/creden
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
+		'{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
 }
 
 get_status() {
@@ -134,6 +134,11 @@ handle_action() {
 	fi
 	if ! zte_adapter_action_supported "$_zte_action"; then
 		printf '%s\n' '{"ok":false,"error":"unsupported"}'
+		return
+	fi
+	if ! zte_adapter_action_payload_valid \
+		"$_zte_action" "$_zte_request"; then
+		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
 		return
 	fi
 	if ! device_writes_enabled; then

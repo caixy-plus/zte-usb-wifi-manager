@@ -57,7 +57,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
+assert_eq '{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -151,7 +151,9 @@ for library in validation.sh json.sh credentials.sh actions.sh event-log.sh; do
     ln -s "$(pwd)/package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/$library" \
         "$write_lib/$library"
 done
-sed 's/^ZTE_CAP_WIFI_WRITE=0$/ZTE_CAP_WIFI_WRITE=1/' \
+sed \
+    -e 's/^ZTE_CAP_SIM_SWITCH=0$/ZTE_CAP_SIM_SWITCH=1/' \
+    -e 's/^ZTE_CAP_WIFI_WRITE=0$/ZTE_CAP_WIFI_WRITE=1/' \
     "$metadata" >"$write_lib/adapter-zte-u25s-metadata.sh"
 # The generated stub must expand this variable when it executes, not here.
 # shellcheck disable=SC2016
@@ -165,6 +167,33 @@ printf '%s\n' \
 chmod +x "$test_bin/uci"
 RPCD_TEST_LIB_DIR=$write_lib
 export RPCD_TEST_LIB_DIR
+
+sim_write_disabled=$(printf '%s\n' \
+    '{"action":"switch_sim","target":"sim2"}' |
+    ZTE_TEST_WRITE_ENABLED=0 rpcd_call call cellular_action)
+assert_eq '{"ok":false,"error":"write_not_enabled"}' "$sim_write_disabled"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"switch_sim"}' |
+        ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action
+)"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"switch_sim","target":"invalid"}' |
+        ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action
+)"
+sim_queued=$(printf '%s\n' \
+    '{"action":"switch_sim","target":"physical"}' |
+    ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action)
+assert_success assert_json "$sim_queued"
+sim_queued_id=$(zte_json_flat_get "$sim_queued" operation_id)
+assert_success zte_operation_id_valid "$sim_queued_id"
+assert_eq physical "$(
+    zte_json_path_get \
+        "$(cat "$state_dir/actions/pending/$sim_queued_id.json")" \
+        payload target
+)"
+zte_action_claim "$state_dir" >/dev/null
+assert_success zte_action_finish \
+    "$state_dir" "$sim_queued_id" failed test_complete 1722345680
 
 write_disabled=$(printf '%s\n' '{"action":"set_wifi"}' |
     ZTE_TEST_WRITE_ENABLED=0 rpcd_call call wifi_action)

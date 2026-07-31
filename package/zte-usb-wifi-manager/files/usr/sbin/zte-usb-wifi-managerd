@@ -13,6 +13,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
 . /usr/lib/zte-usb-wifi-manager/event-log.sh
 . /usr/lib/zte-usb-wifi-manager/actions.sh
+. /usr/lib/zte-usb-wifi-manager/action-executor.sh
 . /usr/lib/zte-usb-wifi-manager/snapshot.sh
 . /usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
@@ -244,12 +245,64 @@ process_actions() {
 		return 1
 	fi
 	_zte_action_time=$(date +%s)
+	_zte_action_state=failed
+	_zte_action_code=unsupported
+	_zte_action_event_level=warn
+	_zte_action_event_code=action_unsupported
+
+	if zte_adapter_action_supported "$_zte_action_type"; then
+		case $_zte_action_type in
+			switch_sim)
+				_zte_action_target=$(
+					zte_json_path_get \
+						"$_zte_action_record" payload target
+				)
+				_zte_action_password=''
+				if _zte_saved_action_password=$(
+					zte_read_password "$credential_file" 2>/dev/null
+				); then
+					_zte_action_password=$_zte_saved_action_password
+				fi
+				_zte_saved_action_password=''
+				if [ -z "$_zte_action_password" ]; then
+					_zte_action_code=credentials_missing
+					_zte_action_event_level=error
+					_zte_action_event_code=action_failed
+				else
+					_zte_action_result=''
+					if _zte_action_result=$(
+						zte_execute_switch_sim \
+							"$host" "$_zte_action_password" \
+							"$COOKIE_FILE" "$_zte_action_target"
+					); then
+						_zte_action_state=succeeded
+						_zte_action_code=ok
+						_zte_action_event_level=info
+						_zte_action_event_code=action_succeeded
+					else
+						if zte_action_code_valid \
+							"$_zte_action_result"; then
+							_zte_action_code=$_zte_action_result
+						else
+							_zte_action_code=executor_failed
+						fi
+						_zte_action_event_level=error
+						_zte_action_event_code=action_failed
+					fi
+				fi
+				_zte_action_password=''
+				;;
+		esac
+	fi
+
 	zte_action_finish \
-		"$STATE_DIR" "$_zte_operation_id" failed unsupported \
-		"$_zte_action_time" || return 1
+		"$STATE_DIR" "$_zte_operation_id" "$_zte_action_state" \
+		"$_zte_action_code" "$_zte_action_time" || return 1
 	zte_action_prune_results \
 		"$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || return 1
-	record_event warn action action_unsupported "$_zte_action_time" || :
+	record_event \
+		"$_zte_action_event_level" action "$_zte_action_event_code" \
+		"$_zte_action_time" || :
 }
 
 calculate_policy() {
