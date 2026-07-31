@@ -65,15 +65,17 @@ backend r8 / LuCI r3 的本地检查、GitHub 双版本真实 SDK 构建、官�
 只读 probe 均已完成。进度见
 [验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
-目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；修复版
-backend r9 已完成双 SDK 构建并正式升级。守护进程读取正常，但独立校准 probe
-仍可能与轮询争用设备的全局 `LD` 挑战；backend r10 正在加入跨进程登录串行化。
-根因与测试记录见
+目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
+r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在
+同一设备正式升级，但单次校准 probe 仍返回 `authentication_failed`，因此并发
+不是该认证失败的根因。对目标固件 `service.js` 的被动复核又确认浏览器登录 POST
+会发送 `isTest=false`，并把结果码 `0` 和 `4` 都视为成功；backend r11 已按该
+协议补齐测试和实现，尚待新的双 SDK 制品与下一次受控实机验证。记录见
 [r9 登录摘要校准](docs/validation/2026-07-31-r9-login-digest.md)。
 实机部署与会话锁记录见
 [r10 会话锁验证](docs/validation/2026-07-31-r10-session-lock.md)。
 
-backend r10 的预发布入口预留为 `v0.1.0-rc1-r10`；只有维护者显式创建并推送该
+backend r11 的预发布入口预留为 `v0.1.0-rc1-r11`；只有维护者显式创建并推送该
 tag 时才会触发 prerelease 工作流。当前 SDK/QEMU 验证通过不代表该 tag 已发布，
 也不代表真实设备写接口、USB 供电或 72 小时稳定性验收已经完成。
 

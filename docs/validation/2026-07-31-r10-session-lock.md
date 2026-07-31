@@ -70,8 +70,25 @@ TDD 红灯证据：生产代码尚未加锁时，HTTP stub 要求登录期间持
 - `test_sim_calibration`：413 assertions PASS；
 - `make lint`：PASS。
 
-## 待补实机证据
+## r10 构建、部署和实机结论
 
-r10 需完成 GitHub 双 SDK 构建、安装到同一 OpenWrt 25.12.5 路由器，并严格只
-执行一次只读 probe。只有它返回 `ok:true`，才能把全局挑战并发根因标记为实机
-证实。SIM 切换仍只能在备用 U25S 上执行。
+- GitHub Actions run：`30620735690`
+- source commit：`44570470986d7e22ecb3fe6b47b73f114d703a14`
+- OpenWrt 25.12.5 APK 与 24.10.7 IPK 的真实 SDK 构建均通过。
+- r10 APK SHA-256：
+  `9ec3403a417747c0e77786486305e9854f73285ee4bf518614cad6d3c3d39f5b`
+- r10 IPK SHA-256：
+  `a1c64a2a96a0f9bb6952f88f6a1f2f12f9a6212f4695069e7f84887676a05718`
+- Cudy TR3000 上正式升级结果：
+  `0.1.0_rc1-r9 -> 0.1.0_rc1-r10`
+
+安装后严格只执行了一次只读 probe，仍返回：
+
+```json
+{"ok":false,"mode":"probe","code":"authentication_failed"}
+```
+
+因此“全局 `LD` 挑战并发导致认证失败”的根因假设已被实机证伪。会话锁本身仍是
+必要的并发正确性修复，但不是这次认证失败的充分修复。安装后守护进程正常运行，
+会话锁无残留，凭据文件保持 root 所有和 `0600`，临时 SSH 授权与安装文件均已
+清理。SIM 切换仍只能在备用 U25S 上执行。

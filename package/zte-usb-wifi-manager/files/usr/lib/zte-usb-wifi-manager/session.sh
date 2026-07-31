@@ -112,6 +112,9 @@ zte_session_login() (
     _zte_digest=$(zte_session_digest "$2" "$_zte_ld") || return 1
     _zte_login_response=$(zte_http_post \
         "http://$_zte_host/goform/goform_set_cmd_process" \
-        "goformId=LOGIN&password=$_zte_digest" "$3") || return 1
-    [ "$(zte_json_flat_get "$_zte_login_response" result)" = 0 ]
+        "isTest=false&goformId=LOGIN&password=$_zte_digest" "$3") || return 1
+    case $(zte_json_flat_get "$_zte_login_response" result) in
+        0|4) return 0 ;;
+        *) return 1 ;;
+    esac
 )

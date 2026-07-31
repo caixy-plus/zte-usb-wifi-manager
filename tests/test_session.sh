@@ -51,7 +51,7 @@ _zte_step1=unchanged-step1
 _zte_step2=unchanged-step2
 _zte_hash=unchanged-hash
 assert_success zte_session_login 192.168.0.1 test123 "$work/cookies"
-assert_eq 'goformId=LOGIN&password=9677B188078A8ABD861E7FFD312B35BC7EA176616DF6BF0BA2AC7F22764710A7' \
+assert_eq 'isTest=false&goformId=LOGIN&password=9677B188078A8ABD861E7FFD312B35BC7EA176616DF6BF0BA2AC7F22764710A7' \
     "$(cat "$post_log")"
 assert_eq unchanged-digest "$_zte_digest"
 assert_eq unchanged-step1 "$_zte_step1"
@@ -214,7 +214,7 @@ else
     pass
 fi
 
-# non-zero login result is rejected
+# Other non-zero login results are rejected.
 # Injected into zte_session_login from the sourced production library.
 # shellcheck disable=SC2329
 zte_http_post() { printf '%s\n' '{"result":"3"}'; }
@@ -289,6 +289,15 @@ saved_path=$PATH
 PATH="$work/bin:/usr/bin:/bin"
 assert_failure zte_sha256_hex test123
 PATH=$saved_path
+
+# Target firmware accepts result 4 as an already-established login.
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
+zte_http_get() { printf '%s\n' '{"LD":"LD-abc123"}'; }
+# Injected into zte_session_login from the sourced production library.
+# shellcheck disable=SC2329
+zte_http_post() { printf '%s\n' '{"result":"4"}'; }
+assert_success zte_session_login 192.168.0.1 test123 "$work/cookies"
 
 rm -rf "$work"
 finish
