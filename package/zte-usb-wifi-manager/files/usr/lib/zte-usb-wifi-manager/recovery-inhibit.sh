@@ -1,5 +1,7 @@
 #!/bin/sh
 
+ZTE_RECOVERY_INHIBIT_MAX_TTL=7200
+
 zte_recovery_reason_valid() {
 	case ${1-} in
 		scheduled_power_off|manual_power_off|battery_high) return 0 ;;
@@ -20,6 +22,8 @@ zte_recovery_inhibit_write() {
 	zte_is_uint "$_zte_inhibit_expires" || return 1
 	zte_is_uint "$_zte_inhibit_created" || return 1
 	[ "$_zte_inhibit_expires" -gt "$_zte_inhibit_created" ] || return 1
+	[ $((_zte_inhibit_expires - _zte_inhibit_created)) -le \
+		"$ZTE_RECOVERY_INHIBIT_MAX_TTL" ] || return 1
 	case $_zte_inhibit_restart_service in
 		true|false) ;;
 		*) return 1 ;;
@@ -43,12 +47,18 @@ zte_recovery_inhibit_active() {
 	_zte_inhibit_json=$(cat "$_zte_inhibit_file")
 	zte_json_is_flat_object "$_zte_inhibit_json" || return 1
 	_zte_inhibit_reason=$(zte_json_flat_get "$_zte_inhibit_json" reason)
+	_zte_inhibit_created=$(zte_json_flat_get "$_zte_inhibit_json" created)
 	_zte_inhibit_expires=$(zte_json_flat_get "$_zte_inhibit_json" expires)
 	_zte_inhibit_restart=$(
 		zte_json_flat_get "$_zte_inhibit_json" restart_service
 	)
 	zte_recovery_reason_valid "$_zte_inhibit_reason" || return 1
+	zte_is_uint "$_zte_inhibit_created" || return 1
 	zte_is_uint "$_zte_inhibit_expires" || return 1
+	[ "$_zte_inhibit_created" -le "$_zte_inhibit_now" ] || return 1
+	[ "$_zte_inhibit_expires" -gt "$_zte_inhibit_created" ] || return 1
+	[ $((_zte_inhibit_expires - _zte_inhibit_created)) -le \
+		"$ZTE_RECOVERY_INHIBIT_MAX_TTL" ] || return 1
 	case $_zte_inhibit_restart in
 		true|false) ;;
 		*) return 1 ;;

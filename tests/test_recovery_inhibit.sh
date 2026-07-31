@@ -50,6 +50,17 @@ assert_eq \
 assert_failure zte_recovery_inhibit_write \
     "$inhibit" battery_high 1722347000 1722345900 maybe
 
+assert_failure zte_recovery_inhibit_write \
+    "$inhibit" battery_high 1722353101 1722345900 true
+printf '%s\n' \
+    '{"reason":"battery_high","created":1722346000,"expires":1722346600,"restart_service":true}' \
+    >"$inhibit"
+assert_failure zte_recovery_inhibit_active "$inhibit" 1722345999
+printf '%s\n' \
+    '{"reason":"battery_high","created":1722340000,"expires":1722350000,"restart_service":true}' \
+    >"$inhibit"
+assert_failure zte_recovery_inhibit_active "$inhibit" 1722345000
+
 assert_success zte_recovery_inhibit_clear "$inhibit"
 assert_failure test -e "$inhibit"
 assert_success zte_recovery_inhibit_clear "$inhibit"
