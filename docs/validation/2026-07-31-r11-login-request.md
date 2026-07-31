@@ -38,8 +38,20 @@ TDD 红灯时 `test_session` 明确失败 2 项：表单缺少 `isTest=false`，
 - `test_u25s_simulator`：56 assertions PASS；
 - `test_sim_calibration`：413 assertions PASS。
 
+## 全量检查与双 SDK 构建
+
+- `make check`：PASS；
+- GitHub Actions run：`30621709431`；
+- source commit：`f409f99a73481664372d54cc6455c7f2adeef769`；
+- OpenWrt 25.12.5 APK 与 24.10.7 IPK 的真实 SDK 构建均通过；
+- 汇总制品 `SHA256SUMS` 全部通过；
+- r11 APK SHA-256：
+  `d8243e4a7d9fa5d2fbe247df137a38b2f0f0eb78492f498c7a3a8ace8110cfe1`；
+- r11 IPK SHA-256：
+  `7435b819b9a7c420137be27a736248c94550ecc8e75068aea3808e142b7e6e39`。
+
 ## 尚未完成
 
-r11 仍需完成全量 `make check`、GitHub 双 SDK 构建、正式升级和下一次受控只读
-probe。只有 probe 返回 `ok:true`，才能继续在备用 U25S 上校准 SIM 写接口。
+r11 仍需正式升级到同一 OpenWrt 25.12.5 路由器，并在新的受控阶段只执行一次
+只读 probe。只有 probe 返回 `ok:true`，才能继续在备用 U25S 上校准 SIM 写接口。
 USB 真实供电和恢复协调仍必须在备用 TR3000 台架验证。
