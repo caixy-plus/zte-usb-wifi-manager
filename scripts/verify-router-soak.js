@@ -5,12 +5,18 @@ const fs = require('fs');
 
 const allowedFields = new Set([
 	'timestamp',
+	'monotonic_seconds',
+	'boot_id',
 	'service_running',
 	'pid',
+	'manager_comm',
+	'manager_start_ticks',
 	'rss_kb',
 	'fd_count',
 	'coordinator_running',
 	'coordinator_pid',
+	'coordinator_comm',
+	'coordinator_start_ticks',
 	'coordinator_rss_kb',
 	'coordinator_fd_count',
 	'recovery_service_running',
@@ -62,16 +68,26 @@ function validateSample(sample, index, options) {
 	}
 
 	requireInteger(sample, 'timestamp', index, 1);
+	requireInteger(sample, 'monotonic_seconds', index);
 	requireInteger(sample, 'pid', index, 1);
+	requireInteger(sample, 'manager_start_ticks', index, 1);
 	requireInteger(sample, 'rss_kb', index);
 	requireInteger(sample, 'fd_count', index);
 	requireInteger(sample, 'coordinator_pid', index, 1);
+	requireInteger(sample, 'coordinator_start_ticks', index, 1);
 	requireInteger(sample, 'coordinator_rss_kb', index);
 	requireInteger(sample, 'coordinator_fd_count', index);
 	requireInteger(sample, 'status_age', index);
 	requireInteger(sample, 'event_log_bytes', index);
 	if (sample.service_running !== true)
 		throw new Error(`sample ${index + 1}: service was not running`);
+	if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(
+		sample.boot_id))
+		throw new Error(`sample ${index + 1} has invalid boot_id`);
+	if (sample.manager_comm !== 'zte-usb-wifi-ma')
+		throw new Error(`sample ${index + 1} has invalid manager_comm`);
+	if (sample.coordinator_comm !== 'zte-usb-recover')
+		throw new Error(`sample ${index + 1} has invalid coordinator_comm`);
 	if (sample.coordinator_running !== true)
 		throw new Error(`sample ${index + 1}: coordinator was not running`);
 	if (!allowedStates.has(sample.state))
@@ -87,6 +103,11 @@ function validateSample(sample, index, options) {
 	if (sample.power === 0 && sample.recovery_service_running !== false)
 		throw new Error(
 			`sample ${index + 1}: recovery service active during power-off`);
+	if (sample.power === 1 &&
+		(sample.recovery_inhibit !== false ||
+			sample.recovery_service_running !== true))
+		throw new Error(
+			`sample ${index + 1}: power-on recovery coordination incomplete`);
 	if (sample.event_log_bytes > options.maxEventLogBytes)
 		throw new Error(`sample ${index + 1}: event log exceeded limit`);
 	if (sample.status_age > options.maxStatusAgeSeconds)
@@ -103,8 +124,13 @@ function validateSamples(samples, options) {
 		maxStatusAgeSeconds: 180,
 		maxEventLogBytes: 524288,
 		maxSampleGapSeconds: 180,
-		maxPidChanges: 0
+		maxPidChanges: 0,
+		testMode: false
 	}, options || {});
+	if (typeof settings.testMode !== 'boolean')
+		throw new Error('invalid testMode');
+	if (!settings.testMode && settings.minDurationSeconds < 259200)
+		throw new Error('minimum 72-hour duration is required');
 	for (const field of [
 		'minDurationSeconds',
 		'maxRssGrowthKb',
@@ -123,11 +149,30 @@ function validateSamples(samples, options) {
 	let maxSampleGap = 0;
 	let pidChanges = 0;
 	let coordinatorPidChanges = 0;
+	const managerStarts = new Map();
+	const coordinatorStarts = new Map();
+	for (const sample of samples) {
+		if (managerStarts.has(sample.pid) &&
+			managerStarts.get(sample.pid) !== sample.manager_start_ticks)
+			throw new Error('manager process identity changed');
+		managerStarts.set(sample.pid, sample.manager_start_ticks);
+		if (coordinatorStarts.has(sample.coordinator_pid) &&
+			coordinatorStarts.get(sample.coordinator_pid) !==
+				sample.coordinator_start_ticks)
+			throw new Error('coordinator process identity changed');
+		coordinatorStarts.set(
+			sample.coordinator_pid, sample.coordinator_start_ticks);
+	}
 	for (let index = 1; index < samples.length; index += 1) {
+		if (samples[index].boot_id !== samples[0].boot_id)
+			throw new Error('boot ID changed during soak');
 		if (samples[index].timestamp <= samples[index - 1].timestamp)
 			throw new Error('sample timestamps must be strictly increasing');
-		const gap = samples[index].timestamp -
-			samples[index - 1].timestamp;
+		if (samples[index].monotonic_seconds <=
+			samples[index - 1].monotonic_seconds)
+			throw new Error('sample monotonic time must be strictly increasing');
+		const gap = samples[index].monotonic_seconds -
+			samples[index - 1].monotonic_seconds;
 		maxSampleGap = Math.max(maxSampleGap, gap);
 		if (gap > settings.maxSampleGapSeconds)
 			throw new Error(`sample gap ${gap}s exceeded limit`);
@@ -143,8 +188,8 @@ function validateSamples(samples, options) {
 		throw new Error(
 			`coordinator PID changes ${coordinatorPidChanges} exceeded limit`);
 
-	const duration = samples[samples.length - 1].timestamp -
-		samples[0].timestamp;
+	const duration = samples[samples.length - 1].monotonic_seconds -
+		samples[0].monotonic_seconds;
 	if (duration < settings.minDurationSeconds)
 		throw new Error(`soak duration ${duration}s is below required duration`);
 	const rssValues = samples.map((sample) => sample.rss_kb);
@@ -170,8 +215,19 @@ function validateSamples(samples, options) {
 	if (maxCoordinatorFd - minCoordinatorFd > settings.maxFdGrowth)
 		throw new Error('coordinator file-descriptor growth exceeded limit');
 
+	const thresholds = {
+		minDurationSeconds: settings.minDurationSeconds,
+		maxRssGrowthKb: settings.maxRssGrowthKb,
+		maxFdGrowth: settings.maxFdGrowth,
+		maxStatusAgeSeconds: settings.maxStatusAgeSeconds,
+		maxEventLogBytes: settings.maxEventLogBytes,
+		maxSampleGapSeconds: settings.maxSampleGapSeconds,
+		maxPidChanges: settings.maxPidChanges
+	};
 	return {
 		ok: true,
+		test_mode: settings.testMode,
+		thresholds,
 		duration_seconds: duration,
 		samples: samples.length,
 		max_rss_kb: maxRss,
@@ -201,14 +257,25 @@ function parseCli(argv) {
 		'--max-sample-gap': 'maxSampleGapSeconds',
 		'--max-pid-changes': 'maxPidChanges'
 	};
-	for (let index = 1; index < argv.length; index += 2) {
+	for (let index = 1; index < argv.length;) {
 		const name = argv[index];
+		if (name === '--test-mode') {
+			result.options.testMode = true;
+			index += 1;
+			continue;
+		}
 		const value = argv[index + 1];
 		if (!Object.prototype.hasOwnProperty.call(mappings, name) ||
 			value === undefined || !/^\d+$/.test(value))
 			throw new Error(`invalid option ${name || ''}`.trim());
 		result.options[mappings[name]] = Number(value);
+		index += 2;
 	}
+	if (result.options.testMode !== true &&
+		Object.prototype.hasOwnProperty.call(
+			result.options, 'minDurationSeconds') &&
+		result.options.minDurationSeconds < 259200)
+		throw new Error('minimum 72-hour duration is required');
 	return result;
 }
 
@@ -226,5 +293,6 @@ if (require.main === module) {
 
 module.exports = {
 	parseJsonLines,
-	validateSamples
+	validateSamples,
+	parseCli
 };

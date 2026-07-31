@@ -17,7 +17,10 @@ bin=$work/bin
 runtime=$work/runtime
 proc=$work/proc
 mkdir -p "$lib" "$bin" "$runtime/logs" "$runtime/netdev" \
-    "$proc/123/fd" "$proc/456/fd"
+    "$proc/123/fd" "$proc/456/fd" "$proc/sys/kernel/random"
+printf '%s\n' '11111111-2222-3333-4444-555555555555' \
+    >"$proc/sys/kernel/random/boot_id"
+printf '%s\n' '500.25 100.00' >"$proc/uptime"
 printf '%s\n' 123 >"$runtime/manager.pid"
 printf '%s\n' 456 >"$runtime/coordinator.pid"
 printf '%s\n' '{"state":"ok","updated":1722345590}' >"$runtime/status.json"
@@ -26,12 +29,18 @@ printf '%s\n' '{"time":1722345590}' >"$runtime/logs/events.jsonl"
 printf '%s\n' \
     'Name:	zte-usb-wifi-managerd' \
     'VmRSS:	    2345 kB' >"$proc/123/status"
+printf '%s\n' zte-usb-wifi-ma >"$proc/123/comm"
+printf '%s\n' '123 (zte-usb-wifi-managerd) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 100' \
+    >"$proc/123/stat"
 : >"$proc/123/fd/1"
 : >"$proc/123/fd/2"
 : >"$proc/123/fd/3"
 printf '%s\n' \
     'Name:	zte-usb-recovery-coordinatord' \
     'VmRSS:	     512 kB' >"$proc/456/status"
+printf '%s\n' zte-usb-recover >"$proc/456/comm"
+printf '%s\n' '456 (zte-usb-recovery-coordinatord) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 200' \
+    >"$proc/456/stat"
 : >"$proc/456/fd/1"
 : >"$proc/456/fd/2"
 
@@ -97,7 +106,7 @@ sample=$(
         sh "$collector" once
 )
 assert_eq \
-    '{"timestamp":1722345600,"service_running":true,"pid":123,"rss_kb":2345,"fd_count":3,"coordinator_running":true,"coordinator_pid":456,"coordinator_rss_kb":512,"coordinator_fd_count":2,"recovery_service_running":true,"state":"ok","status_age":10,"power":1,"recovery_inhibit":false,"netdev_present":true,"event_log_bytes":20}' \
+    '{"timestamp":1722345600,"monotonic_seconds":500,"boot_id":"11111111-2222-3333-4444-555555555555","service_running":true,"pid":123,"manager_comm":"zte-usb-wifi-ma","manager_start_ticks":100,"rss_kb":2345,"fd_count":3,"coordinator_running":true,"coordinator_pid":456,"coordinator_comm":"zte-usb-recover","coordinator_start_ticks":200,"coordinator_rss_kb":512,"coordinator_fd_count":2,"recovery_service_running":true,"state":"ok","status_age":10,"power":1,"recovery_inhibit":false,"netdev_present":true,"event_log_bytes":20}' \
     "$sample"
 
 printf '0\n' >"$runtime/power"
@@ -123,7 +132,7 @@ sample_off=$(
         sh "$collector" once
 )
 assert_eq \
-    '{"timestamp":1722345600,"service_running":true,"pid":123,"rss_kb":2345,"fd_count":3,"coordinator_running":true,"coordinator_pid":456,"coordinator_rss_kb":512,"coordinator_fd_count":2,"recovery_service_running":false,"state":"ok","status_age":10,"power":0,"recovery_inhibit":true,"netdev_present":false,"event_log_bytes":20}' \
+    '{"timestamp":1722345600,"monotonic_seconds":500,"boot_id":"11111111-2222-3333-4444-555555555555","service_running":true,"pid":123,"manager_comm":"zte-usb-wifi-ma","manager_start_ticks":100,"rss_kb":2345,"fd_count":3,"coordinator_running":true,"coordinator_pid":456,"coordinator_comm":"zte-usb-recover","coordinator_start_ticks":200,"coordinator_rss_kb":512,"coordinator_fd_count":2,"recovery_service_running":false,"state":"ok","status_age":10,"power":0,"recovery_inhibit":true,"netdev_present":false,"event_log_bytes":20}' \
     "$sample_off"
 
 printf 'invalid\n' >"$runtime/power"

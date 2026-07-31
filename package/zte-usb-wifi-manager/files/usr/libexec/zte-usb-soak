@@ -33,9 +33,28 @@ fi
 zte_soak_collect() {
 	_zte_soak_now=$(date +%s)
 	zte_is_uint "$_zte_soak_now" || return 1
+	[ -r "$ZTE_SOAK_PROC_ROOT/sys/kernel/random/boot_id" ] || return 1
+	_zte_soak_boot_id=$(
+		cat "$ZTE_SOAK_PROC_ROOT/sys/kernel/random/boot_id"
+	) || return 1
+	case $_zte_soak_boot_id in
+		????????-????-????-????-????????????) ;;
+		*) return 1 ;;
+	esac
+	case $_zte_soak_boot_id in
+		*[!0-9a-f-]*) return 1 ;;
+	esac
+	[ -r "$ZTE_SOAK_PROC_ROOT/uptime" ] || return 1
+	_zte_soak_monotonic=$(
+		awk '{ split($1, part, "."); print part[1] }' \
+			"$ZTE_SOAK_PROC_ROOT/uptime"
+	) || return 1
+	zte_is_uint "$_zte_soak_monotonic" || return 1
 
 	_zte_soak_service_running=false
 	_zte_soak_sample_pid=0
+	_zte_soak_manager_comm=''
+	_zte_soak_manager_start=0
 	_zte_soak_rss=0
 	_zte_soak_fds=0
 	_zte_soak_pid=0
@@ -43,7 +62,15 @@ zte_soak_collect() {
 		_zte_soak_pid=$(cat "$ZTE_SOAK_MANAGER_PID_FILE") || return 1
 	fi
 	if zte_is_uint "$_zte_soak_pid" &&
-		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/status" ]; then
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/status" ] &&
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/comm" ] &&
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/stat" ]; then
+		_zte_soak_manager_comm=$(cat \
+			"$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/comm") || return 1
+		[ "$_zte_soak_manager_comm" = zte-usb-wifi-ma ] || return 1
+		_zte_soak_manager_start=$(sed 's/^.*) //' \
+			"$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/stat" | awk '{print $20}')
+		zte_is_uint "$_zte_soak_manager_start" || return 1
 		_zte_soak_service_running=true
 		_zte_soak_sample_pid=$_zte_soak_pid
 		_zte_soak_rss=$(
@@ -62,6 +89,8 @@ zte_soak_collect() {
 
 	_zte_soak_coordinator_running=false
 	_zte_soak_coordinator_pid=0
+	_zte_soak_coordinator_comm=''
+	_zte_soak_coordinator_start=0
 	_zte_soak_coordinator_rss=0
 	_zte_soak_coordinator_fds=0
 	_zte_soak_found_coordinator_pid=0
@@ -71,7 +100,17 @@ zte_soak_collect() {
 		) || return 1
 	fi
 	if zte_is_uint "$_zte_soak_found_coordinator_pid" &&
-		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/status" ]; then
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/status" ] &&
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/comm" ] &&
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/stat" ]; then
+		_zte_soak_coordinator_comm=$(cat \
+			"$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/comm") ||
+			return 1
+		[ "$_zte_soak_coordinator_comm" = zte-usb-recover ] || return 1
+		_zte_soak_coordinator_start=$(sed 's/^.*) //' \
+			"$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/stat" |
+			awk '{print $20}')
+		zte_is_uint "$_zte_soak_coordinator_start" || return 1
 		_zte_soak_coordinator_running=true
 		_zte_soak_coordinator_pid=$_zte_soak_found_coordinator_pid
 		_zte_soak_coordinator_rss=$(
@@ -139,10 +178,13 @@ zte_soak_collect() {
 	zte_is_uint "$_zte_soak_event_bytes" || return 1
 
 	printf \
-		'{"timestamp":%s,"service_running":%s,"pid":%s,"rss_kb":%s,"fd_count":%s,"coordinator_running":%s,"coordinator_pid":%s,"coordinator_rss_kb":%s,"coordinator_fd_count":%s,"recovery_service_running":%s,"state":"%s","status_age":%s,"power":%s,"recovery_inhibit":%s,"netdev_present":%s,"event_log_bytes":%s}\n' \
-		"$_zte_soak_now" "$_zte_soak_service_running" \
-		"$_zte_soak_sample_pid" "$_zte_soak_rss" "$_zte_soak_fds" \
+		'{"timestamp":%s,"monotonic_seconds":%s,"boot_id":"%s","service_running":%s,"pid":%s,"manager_comm":"%s","manager_start_ticks":%s,"rss_kb":%s,"fd_count":%s,"coordinator_running":%s,"coordinator_pid":%s,"coordinator_comm":"%s","coordinator_start_ticks":%s,"coordinator_rss_kb":%s,"coordinator_fd_count":%s,"recovery_service_running":%s,"state":"%s","status_age":%s,"power":%s,"recovery_inhibit":%s,"netdev_present":%s,"event_log_bytes":%s}\n' \
+		"$_zte_soak_now" "$_zte_soak_monotonic" "$_zte_soak_boot_id" \
+		"$_zte_soak_service_running" "$_zte_soak_sample_pid" \
+		"$_zte_soak_manager_comm" "$_zte_soak_manager_start" \
+		"$_zte_soak_rss" "$_zte_soak_fds" \
 		"$_zte_soak_coordinator_running" "$_zte_soak_coordinator_pid" \
+		"$_zte_soak_coordinator_comm" "$_zte_soak_coordinator_start" \
 		"$_zte_soak_coordinator_rss" "$_zte_soak_coordinator_fds" \
 		"$_zte_soak_recovery_running" \
 		"$_zte_soak_state" "$_zte_soak_status_age" \
