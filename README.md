@@ -96,6 +96,10 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 Release。当前 r15 / LuCI r4 已通过双 SDK 与 QEMU 复验，但这不代表真实设备写接口、
 USB 供电或 72 小时稳定性验收已经完成。
 
+当前候选安装包已发布到
+[v0.1.0-rc1-r15 prerelease](https://github.com/caixy-plus/zte-usb-wifi-manager/releases/tag/v0.1.0-rc1-r15)，
+Release 原文件已在两套全新 QEMU overlay 中再次完成安装、服务和卸载验证。
+
 两个包均为纯脚本和静态资源，发布时标记为 `all` 架构。这里的 `all` 只表示不受
 CPU 架构限制，不表示可以跨 OpenWrt 软件包格式或发行系列安装。未列出的 OpenWrt
 版本目前不受支持，请勿强制安装。

@@ -239,7 +239,11 @@ assert_file_contains README.md \
 assert_file_contains docs/validation/2026-07-31-r15-r4-qemu.md \
     '30639262368'
 assert_file_contains docs/validation/2026-07-31-r15-r4-qemu.md \
+    '30640806789'
+assert_file_contains docs/validation/2026-07-31-r15-r4-qemu.md \
     'r14/r3→r15/r4'
+assert_file_contains README.md \
+    'releases/tag/v0\.1\.0-rc1-r15'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
     'probe'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
