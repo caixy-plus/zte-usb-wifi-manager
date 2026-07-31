@@ -57,25 +57,61 @@ zte_execute_switch_sim() {
 		_zte_execute_interval=2
 	fi
 
-	_zte_execute_seen_slot=0
+	_zte_execute_failure=readback_failed
 	_zte_execute_attempt=1
 	while [ "$_zte_execute_attempt" -le "$_zte_execute_attempts" ]; do
 		_zte_execute_raw=''
+		_zte_execute_failure=readback_failed
 		if _zte_execute_raw=$(
 			zte_adapter_fetch \
 				"$_zte_execute_host" "$_zte_execute_password" \
 				"$_zte_execute_jar"
 		) &&
+			zte_json_is_flat_object "$_zte_execute_raw" &&
 			zte_json_flat_has \
-				"$_zte_execute_raw" simcard_active_slot_temp; then
-			_zte_execute_seen_slot=1
+				"$_zte_execute_raw" simcard_active_slot_temp &&
+			zte_json_flat_has \
+				"$_zte_execute_raw" mc_modem_main_state &&
+			zte_json_flat_has \
+				"$_zte_execute_raw" network_provider_fullname &&
+			zte_json_flat_has \
+				"$_zte_execute_raw" ppp_status; then
 			_zte_execute_active=$(
 				zte_json_flat_get \
 					"$_zte_execute_raw" simcard_active_slot_temp
 			)
-			if [ "$_zte_execute_active" = "$_zte_execute_index" ]; then
-				printf 'ok\n'
-				return 0
+			_zte_execute_modem=$(
+				zte_json_flat_get \
+					"$_zte_execute_raw" mc_modem_main_state
+			)
+			_zte_execute_provider=$(
+				zte_json_flat_get \
+					"$_zte_execute_raw" network_provider_fullname
+			)
+			_zte_execute_ppp=$(
+				zte_json_flat_get "$_zte_execute_raw" ppp_status
+			)
+
+			if [ -z "$_zte_execute_active" ]; then
+				_zte_execute_failure=readback_failed
+			elif [ "$_zte_execute_active" != "$_zte_execute_index" ]; then
+				_zte_execute_failure=readback_mismatch
+			elif [ "$_zte_execute_modem" != connected ]; then
+				_zte_execute_failure=modem_not_ready
+			else
+				case $_zte_execute_provider in
+					*[![:space:]]*)
+						if [ "$_zte_execute_ppp" = \
+							ipv4_ipv6_connected ]; then
+							printf 'ok\n'
+							return 0
+						fi
+						_zte_execute_failure=ppp_not_restored
+						;;
+					*)
+						_zte_execute_failure=network_not_registered
+						;;
+				esac
 			fi
 		fi
 		if [ "$_zte_execute_attempt" -lt "$_zte_execute_attempts" ]; then
@@ -84,10 +120,6 @@ zte_execute_switch_sim() {
 		_zte_execute_attempt=$((_zte_execute_attempt + 1))
 	done
 
-	if [ "$_zte_execute_seen_slot" = 1 ]; then
-		printf 'readback_mismatch\n'
-	else
-		printf 'readback_failed\n'
-	fi
+	printf '%s\n' "$_zte_execute_failure"
 	return 1
 }

@@ -44,7 +44,8 @@ zte_adapter_switch_sim() {
 
 zte_adapter_fetch() {
     printf '%s|%s\n' "$1" "$3" >>"$fetch_log"
-    printf '%s\n' '{"simcard_active_slot_temp":"2"}'
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
 }
 
 sleep() {
@@ -83,7 +84,8 @@ zte_session_login() {
 # A successful write is not accepted until the observed active slot matches.
 zte_adapter_switch_sim() { return 0; }
 zte_adapter_fetch() {
-    printf '%s\n' '{"simcard_active_slot_temp":"1"}'
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"1","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
 }
 : >"$sleep_log"
 export ZTE_SIM_READBACK_ATTEMPTS=2
@@ -92,13 +94,99 @@ assert_eq readback_mismatch "$(
 )"
 assert_eq 1 "$(wc -l <"$sleep_log" | tr -d ' ')"
 
+# Matching the target slot alone is insufficient: each later recovery stage
+# must be confirmed from fields observed in the sanitized device fixture.
+export ZTE_SIM_READBACK_ATTEMPTS=1
+zte_adapter_fetch() {
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
+}
+assert_eq modem_not_ready "$(
+    zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
+)"
+
+zte_adapter_fetch() {
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"","ppp_status":"ipv4_ipv6_connected"}'
+}
+assert_eq network_not_registered "$(
+    zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
+)"
+
+zte_adapter_fetch() {
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":""}'
+}
+assert_eq ppp_not_restored "$(
+    zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
+)"
+
+# Polling remains bounded while allowing the four ordered stages to recover.
+: >"$fetch_log"
+: >"$sleep_log"
+export ZTE_SIM_READBACK_ATTEMPTS=5
+zte_adapter_fetch() {
+    printf '%s\n' fetch >>"$fetch_log"
+    case $(wc -l <"$fetch_log" | tr -d ' ') in
+        1)
+            printf '%s\n' \
+                '{"simcard_active_slot_temp":"1","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
+            ;;
+        2)
+            printf '%s\n' \
+                '{"simcard_active_slot_temp":"2","mc_modem_main_state":"","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
+            ;;
+        3)
+            printf '%s\n' \
+                '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"","ppp_status":"ipv4_ipv6_connected"}'
+            ;;
+        4)
+            printf '%s\n' \
+                '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":""}'
+            ;;
+        *)
+            printf '%s\n' \
+                '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
+            ;;
+    esac
+}
+assert_eq ok "$(
+    zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
+)"
+assert_eq 5 "$(wc -l <"$fetch_log" | tr -d ' ')"
+assert_eq 4 "$(wc -l <"$sleep_log" | tr -d ' ')"
+
 # Transport or parsing failures remain distinct from a valid mismatched slot.
 zte_adapter_fetch() { return 1; }
 : >"$sleep_log"
+export ZTE_SIM_READBACK_ATTEMPTS=2
 assert_eq readback_failed "$(
     zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" physical
 )"
 assert_eq 1 "$(wc -l <"$sleep_log" | tr -d ' ')"
+
+# Malformed JSON and missing verification fields can never confirm success.
+export ZTE_SIM_READBACK_ATTEMPTS=1
+zte_adapter_fetch() {
+    printf '%s\n' '{"simcard_active_slot_temp":"2"'
+}
+assert_eq readback_failed "$(
+    zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
+)"
+zte_adapter_fetch() {
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"","mc_modem_main_state":"","network_provider_fullname":"","ppp_status":""}'
+}
+assert_eq readback_failed "$(
+    zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
+)"
+zte_adapter_fetch() {
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected"}'
+}
+assert_eq readback_failed "$(
+    zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
+)"
 
 # A second rejected idempotent write is a bounded terminal failure.
 zte_adapter_switch_sim() { return 1; }
