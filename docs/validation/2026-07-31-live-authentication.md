@@ -2,20 +2,23 @@
 
 ## 结论
 
-提交 `66ebc435016eeff4e475fa3910aafec421151e7f` 对应的 OpenWrt 25.12.5
-APK 已正式升级到 Cudy TR3000 v1：
+GitHub Actions 运行 `30607714699` 从提交
+`d6dc45fb1c5e1d88f0043aacb379b0a3c8763b65` 构建的 OpenWrt 25.12.5 APK
+已正式升级到 Cudy TR3000 v1：
 
-- `zte-usb-wifi-manager`：`0.1.0_rc1-r3`
-- `luci-app-zte-usb-wifi-manager`：`0.1.0_rc1-r2`
+- `zte-usb-wifi-manager`：`0.1.0_rc1-r6`
+- `luci-app-zte-usb-wifi-manager`：`0.1.0_rc1-r3`
 
-升级保留了现有配置。安装时使用一次性计划任务调用
-`apk add --allow-untrusted`；任务执行后自动删除自身，原有计划任务内容逐字保持不变。
-没有新增 SSH 密钥或其他持久管理入口。
+两个上传文件的 SHA-256 与 GitHub 汇总产物一致。LuCI 包管理器能安全上传 APK，
+但会按预期拒绝没有 OpenWrt 仓库签名的本地包。升级因此使用一次性计划任务批量调用
+`apk add --allow-untrusted`；任务执行后删除自身和临时 APK，原有三条 OpenClash
+计划任务内容逐字保持不变。升级保留现有配置和凭据，没有新增 SSH 密钥或其他持久
+管理入口。
 
 ## 构建与校验
 
 GitHub Actions 运行
-[`30595239364`](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/runs/30595239364)
+[`30607714699`](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/runs/30607714699)
 完成：
 
 - `check`：PASS
@@ -63,11 +66,10 @@ MAC 地址或 LuCI 会话标识。
 - 只读状态持续刷新，设备型号、后端状态和 USB 上联均可正常呈现；
 - 电池策略保持“仅监控，不控制供电”，页面继续声明写接口尚未完成实机校准。
 
-复核时包管理器中的实际安装版本仍为后端 `0.1.0_rc1-r3`、LuCI
-`0.1.0_rc1-r2`。尝试升级到 r6/r3 时，Chrome 扩展未获本地文件访问权限，
-而 `apk add http://...apk` 不把 HTTP URL 当作本地 APK 安装，因此升级明确失败且
-现有版本未被改变。本记录只证明登录入口和当前只读运行状态，不把失败的上传写成
-已部署。
+开启 Chrome 扩展的本地文件访问权限后，包管理器中的实际安装版本已复核为后端
+`0.1.0_rc1-r6`、LuCI `0.1.0_rc1-r3`。升级后的页面继续显示设备在线、后端正常、
+USB 上联 `eth2` 已连接；这证明正式包已部署并能提供只读状态，不代表真实写接口、
+USB 断电或恢复协调已经通过硬件校准。
 
 ## 仍保持门控的项目
 
