@@ -5,6 +5,7 @@ ZTE_RECOVERY_COORDINATOR_LIB_DIR=${ZTE_RECOVERY_COORDINATOR_LIB_DIR:-/usr/lib/zt
 ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE=${ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE:-/var/run/zte-usb-wifi-manager/inhibit-recovery}
 ZTE_RECOVERY_COORDINATOR_SERVICE=${ZTE_RECOVERY_COORDINATOR_SERVICE:-/etc/init.d/zte-usb-recover}
 ZTE_RECOVERY_COORDINATOR_INTERVAL=${ZTE_RECOVERY_COORDINATOR_INTERVAL:-30}
+ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL=${ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL:-900}
 ZTE_RECOVERY_COORDINATOR_PID_FILE=${ZTE_RECOVERY_COORDINATOR_PID_FILE:-/var/run/zte-usb-wifi-manager/coordinator.pid}
 ZTE_RECOVERY_COORDINATOR_STATE_DIR=${ZTE_RECOVERY_COORDINATOR_STATE_DIR:-/var/run/zte-usb-wifi-manager}
 ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER=${ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER:-/usr/libexec/zte-usb-power-restore}
@@ -86,14 +87,45 @@ zte_recovery_coordinator_cleanup() {
 zte_recovery_coordinator_run() {
 	zte_is_uint "$ZTE_RECOVERY_COORDINATOR_INTERVAL" &&
 		[ "$ZTE_RECOVERY_COORDINATOR_INTERVAL" -ge 10 ] || return 1
+	zte_is_uint "$ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL" &&
+		[ "$ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL" -ge \
+			"$ZTE_RECOVERY_COORDINATOR_INTERVAL" ] &&
+		[ "$ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL" -le 3600 ] || return 1
 	zte_recovery_coordinator_write_pid || return 1
 	trap zte_recovery_coordinator_cleanup 0
 	trap 'exit 0' 1 2 15
+	_zte_recovery_failure_count=0
+	_zte_recovery_next_log_failure=1
+	_zte_recovery_log_interval_failures=1
+	_zte_recovery_max_log_failures=$((
+		ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL /
+		ZTE_RECOVERY_COORDINATOR_INTERVAL
+	))
 	while :; do
-		zte_recovery_coordinator_once || {
-			logger -t zte-usb-wifi-manager \
-				'USB recovery coordinator retry pending'
-		}
+		if zte_recovery_coordinator_once; then
+			_zte_recovery_failure_count=0
+			_zte_recovery_next_log_failure=1
+			_zte_recovery_log_interval_failures=1
+		else
+			_zte_recovery_failure_count=$((_zte_recovery_failure_count + 1))
+			if [ "$_zte_recovery_failure_count" -ge \
+				"$_zte_recovery_next_log_failure" ]; then
+				logger -t zte-usb-wifi-manager \
+					'USB recovery coordinator retry pending'
+				_zte_recovery_next_log_failure=$((
+					_zte_recovery_failure_count +
+					_zte_recovery_log_interval_failures
+				))
+				_zte_recovery_log_interval_failures=$((
+					_zte_recovery_log_interval_failures * 2
+				))
+				if [ "$_zte_recovery_log_interval_failures" -gt \
+					"$_zte_recovery_max_log_failures" ]; then
+					_zte_recovery_log_interval_failures=\
+$_zte_recovery_max_log_failures
+				fi
+			fi
+		fi
 		sleep "$ZTE_RECOVERY_COORDINATOR_INTERVAL"
 	done
 }

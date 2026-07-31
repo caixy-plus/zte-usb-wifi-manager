@@ -27,6 +27,12 @@ EOF
 cat >"$bin/sleep" <<'EOF'
 #!/bin/sh
 cat "$ZTE_RECOVERY_COORDINATOR_PID_FILE" >"$ZTE_TEST_OBSERVED_PID"
+if [ -n "${ZTE_TEST_SLEEP_LOG:-}" ]; then
+    printf '%s\n' "$1" >>"$ZTE_TEST_SLEEP_LOG"
+    calls=$(wc -l <"$ZTE_TEST_SLEEP_LOG" | tr -d ' ')
+    [ "$calls" -lt "${ZTE_TEST_SLEEP_LIMIT:-1}" ] || exit 1
+    exit 0
+fi
 exit 1
 EOF
 cat >"$bin/mkdir" <<'EOF'
@@ -38,14 +44,26 @@ if [ "${ZTE_TEST_CLAIM_RACE:-0}" = 1 ] && [ "$#" -eq 1 ] &&
 fi
 exec /bin/mkdir "$@"
 EOF
+cat >"$bin/logger" <<'EOF'
+#!/bin/sh
+[ -n "${ZTE_TEST_LOGGER_CALLS:-}" ] || exit 0
+printf '%s\n' "$*" >>"$ZTE_TEST_LOGGER_CALLS"
+EOF
 chmod +x "$bin/date"
 chmod +x "$bin/sleep"
 chmod +x "$bin/mkdir"
+chmod +x "$bin/logger"
 cat >"$bin/power-restore" <<'EOF'
 #!/bin/sh
 [ -d "$ZTE_RECOVERY_COORDINATOR_STATE_DIR/actions/power-transition" ] || exit 1
 printf '%s\n' restore >>"$ZTE_TEST_RESTORE_CALLS"
-if [ "${ZTE_TEST_RESTORE_FAILURE:-0}" != 0 ]; then
+restore_count=$(wc -l <"$ZTE_TEST_RESTORE_CALLS" | tr -d ' ')
+pattern_failure=0
+case ${ZTE_TEST_RESTORE_PATTERN:-}:$restore_count in
+    fail-success-fail:1|fail-success-fail:3) pattern_failure=1 ;;
+esac
+if [ "${ZTE_TEST_RESTORE_FAILURE:-0}" != 0 ] ||
+    [ "$pattern_failure" = 1 ]; then
     [ "${ZTE_POWER_RESTORE_COORDINATOR_CLAIM:-0}" != 1 ] ||
         rmdir "$ZTE_RECOVERY_COORDINATOR_STATE_DIR/actions/power-transition"
     exit 1
@@ -194,6 +212,66 @@ assert_failure env \
     PATH="$bin:$PATH" \
     sh "$coordinator" run
 assert_success test -s "$observed_pid"
+assert_failure test -e "$coordinator_pid"
+
+sleep_log=$work/sleep-log
+logger_calls=$work/logger-calls
+: >"$sleep_log"
+: >"$logger_calls"
+assert_failure env \
+    ZTE_RECOVERY_COORDINATOR_LIB_DIR="$lib" \
+    ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE="$inhibit" \
+    ZTE_RECOVERY_COORDINATOR_INTERVAL=10 \
+    ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL=40 \
+    ZTE_RECOVERY_COORDINATOR_PID_FILE="$coordinator_pid" \
+    ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER="$work/missing-helper" \
+    ZTE_RECOVERY_COORDINATOR_STATE_DIR="$state" \
+    ZTE_RECOVERY_TEST_MODE=1 \
+    ZTE_RECOVERY_TEST_SERVICE_CALLS="$calls" \
+    ZTE_RECOVERY_TEST_SERVICE_AVAILABLE=1 \
+    ZTE_TEST_OBSERVED_PID="$observed_pid" \
+    ZTE_TEST_SLEEP_LOG="$sleep_log" \
+    ZTE_TEST_SLEEP_LIMIT=4 \
+    ZTE_TEST_LOGGER_CALLS="$logger_calls" \
+    PATH="$bin:$PATH" \
+    sh "$coordinator" run
+assert_eq "10
+10
+10
+10" "$(cat "$sleep_log")"
+assert_eq 3 "$(wc -l <"$logger_calls" | tr -d ' ')"
+assert_failure test -e "$coordinator_pid"
+
+# A successful recovery resets log throttling immediately; a new failure is
+# logged at once while recovery attempts remain at the base interval.
+: >"$sleep_log"
+: >"$logger_calls"
+: >"$work/restore-calls"
+assert_failure env \
+    ZTE_RECOVERY_COORDINATOR_LIB_DIR="$lib" \
+    ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE="$inhibit" \
+    ZTE_RECOVERY_COORDINATOR_INTERVAL=10 \
+    ZTE_RECOVERY_COORDINATOR_LOG_MAX_INTERVAL=40 \
+    ZTE_RECOVERY_COORDINATOR_PID_FILE="$coordinator_pid" \
+    ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER="$bin/power-restore" \
+    ZTE_RECOVERY_COORDINATOR_STATE_DIR="$state" \
+    ZTE_RECOVERY_TEST_MODE=1 \
+    ZTE_RECOVERY_TEST_SERVICE_CALLS="$calls" \
+    ZTE_RECOVERY_TEST_SERVICE_AVAILABLE=1 \
+    ZTE_TEST_OBSERVED_PID="$observed_pid" \
+    ZTE_TEST_SLEEP_LOG="$sleep_log" \
+    ZTE_TEST_SLEEP_LIMIT=4 \
+    ZTE_TEST_LOGGER_CALLS="$logger_calls" \
+    ZTE_TEST_RESTORE_CALLS="$work/restore-calls" \
+    ZTE_TEST_RESTORE_ACTIONS="$work/restore-actions" \
+    ZTE_TEST_RESTORE_PATTERN=fail-success-fail \
+    PATH="$bin:$PATH" \
+    sh "$coordinator" run
+assert_eq "10
+10
+10
+10" "$(cat "$sleep_log")"
+assert_eq 2 "$(wc -l <"$logger_calls" | tr -d ' ')"
 assert_failure test -e "$coordinator_pid"
 
 finish
