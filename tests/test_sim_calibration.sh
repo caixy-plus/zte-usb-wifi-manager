@@ -220,6 +220,7 @@ else
 fi
 # shellcheck source=/dev/null
 . "$tool"
+ZTE_LOGIN_REQUIRED=1
 
 # Unit tests exercise the remaining probe contract without weakening the
 # production root check.
@@ -400,6 +401,30 @@ for slot_target in \
         "$(cat "$login_log")"
     assert_eq "192.168.0.1|test-password|$cookie_file" "$(cat "$fetch_log")"
 done
+
+# The target firmware advertises HAS_LOGIN:false. Its readiness probe must use
+# the anonymous status path without requiring a credential or calling LOGIN.
+ZTE_LOGIN_REQUIRED=0
+rm "$credential_file"
+: >"$fetch_log"
+: >"$login_log"
+ZTE_TEST_LOGIN_FAIL=1
+export ZTE_TEST_LOGIN_FAIL
+anonymous_status=0
+anonymous_result=$(sim_call \
+    '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}') || anonymous_status=$?
+assert_eq 0 "$anonymous_status"
+assert_eq \
+    '{"ok":true,"mode":"probe","active_target":"physical","modem_ready":true,"network_registered":true,"ppp_ready":true}' \
+    "$anonymous_result"
+assert_eq '' "$(cat "$login_log")"
+assert_eq "192.168.0.1||$cookie_file" "$(cat "$fetch_log")"
+printf '%s\n' 'password=test-password' >"$credential_file"
+chmod 600 "$credential_file"
+ZTE_TEST_LOGIN_FAIL=0
+# shellcheck disable=SC2034
+ZTE_LOGIN_REQUIRED=1
+export ZTE_TEST_LOGIN_FAIL
 
 # Missing or non-0600 credentials are rejected before the adapter is called.
 rm "$credential_file"

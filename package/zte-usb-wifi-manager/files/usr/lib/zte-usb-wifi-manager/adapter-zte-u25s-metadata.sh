@@ -5,6 +5,10 @@
 ZTE_ADAPTER_ID=zte_u25s
 ZTE_ADAPTER_MODEL=U25S
 
+# The target firmware's published WebUI config declares HAS_LOGIN:false. Its
+# own service layer therefore treats the device as logged in without LOGIN.
+ZTE_LOGIN_REQUIRED=0
+
 # Write capabilities remain disabled until their request parameters and
 # recovery behavior have been calibrated on the target firmware.
 ZTE_CAP_SIM_SWITCH=0
@@ -20,11 +24,20 @@ ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_prov
 : "$ZTE_ADAPTER_ID" "$ZTE_ADAPTER_MODEL" "$ZTE_CAP_SIM_SWITCH"
 : "$ZTE_CAP_CELLULAR_WRITE" "$ZTE_CAP_WIFI_WRITE" "$ZTE_CAP_SMS_WRITE"
 : "$ZTE_CAP_TRAFFIC_WRITE"
-: "$ZTE_READ_FIELDS"
+: "$ZTE_LOGIN_REQUIRED" "$ZTE_READ_FIELDS"
+
+zte_adapter_login_required() {
+	[ "$ZTE_LOGIN_REQUIRED" = 1 ]
+}
 
 zte_adapter_capabilities_json() {
-	printf '%s\n' \
-		'{"adapter":"zte_u25s","model":"U25S","read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}'
+	if zte_adapter_login_required; then
+		_zte_metadata_login_required=true
+	else
+		_zte_metadata_login_required=false
+	fi
+	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}\n' \
+		"$_zte_metadata_login_required"
 }
 
 zte_adapter_action_supported() {

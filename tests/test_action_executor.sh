@@ -31,6 +31,7 @@ sleep_log=$work/sleeps
 : >"$switch_log"
 : >"$fetch_log"
 : >"$sleep_log"
+ZTE_LOGIN_REQUIRED=1
 
 zte_session_login() {
     printf '%s|%s\n' "$1" "$3" >>"$login_log"
@@ -195,5 +196,25 @@ assert_eq write_failed "$(
     zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim1
 )"
 assert_eq 2 "$(wc -l <"$login_log" | tr -d ' ')"
+
+# The verified target firmware has HAS_LOGIN:false. Anonymous mode must not
+# reject an empty credential or attempt LOGIN before its gated write.
+# shellcheck disable=SC2034
+ZTE_LOGIN_REQUIRED=0
+: >"$login_log"
+zte_session_login() {
+    printf 'unexpected-login\n' >>"$login_log"
+    return 1
+}
+zte_adapter_switch_sim() { return 0; }
+zte_adapter_fetch() {
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
+}
+export ZTE_SIM_READBACK_ATTEMPTS=1
+assert_eq ok "$(
+    zte_execute_switch_sim 192.168.0.1 '' "$work/cookies" sim2
+)"
+assert_eq 0 "$(wc -l <"$login_log" | tr -d ' ')"
 
 finish

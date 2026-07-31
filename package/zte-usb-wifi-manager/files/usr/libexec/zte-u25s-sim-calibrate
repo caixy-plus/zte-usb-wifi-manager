@@ -53,14 +53,23 @@ zte_sim_calibration_probe_fail() {
 	return 1
 }
 
+zte_sim_calibration_password() {
+	if zte_adapter_login_required; then
+		zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
+	else
+		printf '\n'
+	fi
+}
+
 zte_sim_calibration_probe_readiness() {
 	_zte_sim_calibration_probe_password=$1
-	zte_session_login "$ZTE_SIM_CALIBRATION_HOST" \
+	if zte_adapter_login_required &&
+		! zte_session_login "$ZTE_SIM_CALIBRATION_HOST" \
 		"$_zte_sim_calibration_probe_password" \
-		"$ZTE_SIM_CALIBRATION_COOKIE_FILE" || {
+		"$ZTE_SIM_CALIBRATION_COOKIE_FILE"; then
 		zte_sim_calibration_probe_fail authentication_failed
 		return 1
-	}
+	fi
 	_zte_sim_calibration_probe_raw=$(
 		zte_adapter_fetch "$ZTE_SIM_CALIBRATION_HOST" \
 			"$_zte_sim_calibration_probe_password" \
@@ -115,9 +124,12 @@ zte_sim_calibration_probe_readiness() {
 
 zte_sim_calibration_read_ready_target() {
 	_zte_sim_calibration_read_password=$1
-	zte_session_login "$ZTE_SIM_CALIBRATION_HOST" \
+	if zte_adapter_login_required &&
+		! zte_session_login "$ZTE_SIM_CALIBRATION_HOST" \
 		"$_zte_sim_calibration_read_password" \
-		"$ZTE_SIM_CALIBRATION_COOKIE_FILE" || return 1
+		"$ZTE_SIM_CALIBRATION_COOKIE_FILE"; then
+		return 1
+	fi
 	_zte_sim_calibration_raw=$(
 		zte_adapter_fetch "$ZTE_SIM_CALIBRATION_HOST" \
 			"$_zte_sim_calibration_read_password" \
@@ -155,7 +167,7 @@ zte_sim_calibration_probe() {
 	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" ||
 		zte_sim_calibration_probe_fail invalid_host
 	_zte_sim_calibration_password=$(
-		zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
+		zte_sim_calibration_password
 	) || zte_sim_calibration_probe_fail credentials_unavailable
 	zte_sim_calibration_probe_readiness \
 		"$_zte_sim_calibration_password" || return 1
@@ -577,7 +589,7 @@ zte_sim_calibration_recover_owned_state() {
 	_zte_sim_calibration_original_restored=false
 	if [ "$_zte_sim_calibration_recovery_original" != null ]; then
 		_zte_sim_calibration_recovery_password=$(
-			zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
+			zte_sim_calibration_password
 		) || {
 			rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
 			printf '%s\n' credentials_missing
@@ -675,7 +687,7 @@ zte_sim_calibration_execute() {
 	[ -x "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" ] || return 1
 	zte_sim_calibration_stop_settings_valid || return 1
 	_zte_sim_calibration_password=$(
-		zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
+		zte_sim_calibration_password
 	) || return 1
 
 	_zte_sim_calibration_owned_state_dir=0

@@ -19,15 +19,17 @@ zte_execute_switch_sim() {
 		printf 'invalid_target\n'
 		return 1
 	}
-	if [ -z "$_zte_execute_password" ]; then
-		printf 'credentials_missing\n'
-		return 1
-	fi
-	if ! zte_session_login \
-		"$_zte_execute_host" "$_zte_execute_password" \
-		"$_zte_execute_jar"; then
-		printf 'authentication_failed\n'
-		return 1
+	if zte_adapter_login_required; then
+		if [ -z "$_zte_execute_password" ]; then
+			printf 'credentials_missing\n'
+			return 1
+		fi
+		if ! zte_session_login \
+			"$_zte_execute_host" "$_zte_execute_password" \
+			"$_zte_execute_jar"; then
+			printf 'authentication_failed\n'
+			return 1
+		fi
 	fi
 
 	# Selecting an already selected slot is idempotent. One relogin and retry
@@ -36,7 +38,8 @@ zte_execute_switch_sim() {
 	if ! zte_adapter_switch_sim \
 		"$_zte_execute_host" "$_zte_execute_target" \
 		"$_zte_execute_jar"; then
-		if ! zte_session_login \
+		if ! zte_adapter_login_required ||
+			! zte_session_login \
 			"$_zte_execute_host" "$_zte_execute_password" \
 			"$_zte_execute_jar" ||
 			! zte_adapter_switch_sim \

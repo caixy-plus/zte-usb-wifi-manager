@@ -64,7 +64,7 @@ assert_eq '{"status":{},"capabilities":{},"credential_status":{},"set_credential
 capabilities=$(rpcd_call call capabilities)
 assert_success assert_json "$capabilities"
 assert_eq \
-    '{"adapter":"zte_u25s","model":"U25S","read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}' \
+    '{"adapter":"zte_u25s","model":"U25S","login_required":false,"read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}' \
     "$capabilities" \
     'rpcd capabilities must come from static adapter metadata'
 

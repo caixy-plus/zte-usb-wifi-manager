@@ -13,6 +13,11 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/adapter-zte-u25s.sh"
 . "$lib/action-executor.sh"
 
+# This simulator intentionally exercises the authenticated firmware variant;
+# the inspected production U25S overrides this contract to anonymous mode.
+# shellcheck disable=SC2034
+ZTE_LOGIN_REQUIRED=1
+
 if python3 - <<'PY'
 import importlib.util
 import tempfile

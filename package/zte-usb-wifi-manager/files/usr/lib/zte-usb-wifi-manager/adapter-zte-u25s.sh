@@ -47,6 +47,7 @@ zte_adapter_fetch() {
 		return 0
 	fi
 
+	zte_adapter_login_required || return 1
 	[ -n "$_zte_password" ] || return 2
 	zte_session_login "$_zte_host" "$_zte_password" "$_zte_jar" || return 1
 	_zte_resp=$(zte_http_get "$_zte_url" "$_zte_jar") || return 1

@@ -14,6 +14,22 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/adapter-zte-u25s.sh"
 . "$lib/snapshot.sh"
 
+# The inspected target firmware advertises HAS_LOGIN:false and its WebUI
+# therefore treats the device as logged in without a LOGIN exchange.
+assert_eq 0 "${ZTE_LOGIN_REQUIRED:-missing}"
+assert_failure zte_adapter_login_required
+assert_eq false "$(
+    zte_adapter_capabilities_json |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).login_required)))'
+)"
+ZTE_LOGIN_REQUIRED=1
+assert_success zte_adapter_login_required
+assert_eq true "$(
+    zte_adapter_capabilities_json |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).login_required)))'
+)"
+ZTE_LOGIN_REQUIRED=0
+
 fixtures=./tests/fixtures/u25s
 work=/tmp/zte-test-adapter.$$
 mkdir -p "$work"
@@ -50,6 +66,7 @@ assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
 
 # If the anonymous probe is valid JSON but has no known status fields, an
 # absent password is a distinct "credentials required" outcome.
+ZTE_LOGIN_REQUIRED=1
 : >"$jar"
 : >"$anonymous_logins"
 # Injected into zte_adapter_fetch from the sourced production library.
@@ -60,6 +77,17 @@ zte_adapter_fetch 192.168.0.1 '' "$jar" >/dev/null
 anonymous_status=$?
 set -e
 assert_eq 2 "$anonymous_status"
+assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
+ZTE_LOGIN_REQUIRED=0
+
+# A stale optional credential must never make HAS_LOGIN:false firmware enter
+# LOGIN after a malformed or unknown anonymous response.
+: >"$anonymous_logins"
+set +e
+zte_adapter_fetch 192.168.0.1 stale-optional-password "$jar" >/dev/null
+anonymous_status=$?
+set -e
+assert_eq 1 "$anonymous_status"
 assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
 
 # fetch with a warm cookie jar performs no login
@@ -166,6 +194,7 @@ assert_failure zte_adapter_fetch 192.168.0.1 secret "$jar"
 assert_eq 1 "$(cat "$get_calls")"
 
 # stale session triggers exactly one relogin and one retry
+ZTE_LOGIN_REQUIRED=1
 printf 0 >"$get_calls"
 logins=$work/logins
 : >"$logins"
@@ -186,6 +215,7 @@ raw2=$(zte_adapter_fetch 192.168.0.1 secret "$jar")
 assert_eq "$(cat "$fixtures/read_ok.json")" "$raw2"
 assert_eq 2 "$(cat "$get_calls")"
 assert_eq 1 "$(wc -l <"$logins" | tr -d ' ')"
+ZTE_LOGIN_REQUIRED=0
 
 # Target firmware login page exposes four SIM choices. Keep the semantic
 # action payload independent of the firmware's non-sequential physical slot.
