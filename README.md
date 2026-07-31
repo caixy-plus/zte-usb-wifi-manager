@@ -120,7 +120,15 @@ opkg install \
 
 ### 4. 配置 U25S 凭据
 
-凭据文件必须由 root 拥有且权限为 `0600`。为避免密码进入 shell 历史，使用编辑器填写：
+安装后先打开 LuCI：**服务 → 中兴随身 WiFi → 设备登录**。需要认证的
+U25S 可以在这里保存管理密码。页面只提供写入入口，不会读取、回显或保存在
+浏览器中；后端以 root 身份原子写入权限为 `0600` 的凭据文件。
+
+部分 U25S 固件允许免登录读取状态。插件会先执行只读探测，成功时不强制要求
+密码；保存的密码仅在设备明确要求认证时使用。保存成功仅表示凭据安全落盘，
+不等同于密码已经通过设备验证。
+
+无 LuCI 时可用编辑器配置。为避免密码进入 shell 历史：
 
 ```sh
 umask 077
@@ -145,7 +153,7 @@ uci set zte-usb-wifi-manager.zte.netdev='eth2'
 uci commit zte-usb-wifi-manager
 ```
 
-当前版本必须保持只读：
+当前生产能力矩阵仍保持设备写操作关闭：
 
 ```sh
 uci set zte-usb-wifi-manager.main.write_enabled='0'
