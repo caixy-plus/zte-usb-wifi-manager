@@ -351,7 +351,7 @@ for slot_target in \
 done
 
 # Missing or non-0600 credentials are rejected before the adapter is called.
-rm "$credential_file"
+command rm "$credential_file"
 : >"$fetch_log"
 assert_failure sim_call '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' >/dev/null 2>&1
 assert_eq '' "$(cat "$fetch_log")"
@@ -548,7 +548,7 @@ export ZTE_SIM_CALIBRATION_STOP_INTERVAL
 assert_eq '' "$(cat "$fetch_log")"
 assert_failure test -d "$ZTE_SIM_CALIBRATION_LOCK_DIR"
 
-rm "$credential_file"
+command rm "$credential_file"
 assert_failure execute_call physical sim2 >/dev/null 2>&1
 assert_failure test -d "$ZTE_SIM_CALIBRATION_LOCK_DIR"
 printf '%s\n' 'password=test-password' >"$credential_file"
