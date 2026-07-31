@@ -35,13 +35,16 @@ zte_validate_host() {
 EOF
 cat >"$lib/power-adapter.sh" <<'EOF'
 zte_power_board_supported() {
-    [ "$1" = 'cudy,tr3000-v1' ]
+    case $1 in
+        cudy,tr3000-v1|cudy,tr3000-v1-ubootmod) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 zte_power_control_path_valid() {
     [ "$1" = "$ZTE_CALIBRATION_CONTROL_PATH" ]
 }
 zte_power_board_control_supported() {
-    [ "$1" = 'cudy,tr3000-v1' ] &&
+    zte_power_board_supported "$1" &&
         [ "$2" = "$ZTE_CALIBRATION_CONTROL_PATH" ]
 }
 zte_power_default_control_path() {
@@ -63,6 +66,11 @@ zte_power_supply_read() {
     fi
 }
 zte_power_hardware_apply() {
+    if [ "$1" = OFF ] &&
+        [ -n "${ZTE_POWER_CONTROLLER_DEVICE_PATH:-}" ]; then
+        zte_power_controller_topology_safe \
+            "$2" "${ZTE_POWER_NETDEV_PATH:-}" || return 1
+    fi
     case $1 in
         OFF)
             printf '0\n' >"$2"
@@ -76,6 +84,17 @@ zte_power_hardware_apply() {
             ;;
         *) return 1 ;;
     esac
+}
+zte_power_controller_topology_safe() {
+    [ -n "${ZTE_POWER_CONTROLLER_DEVICE_PATH:-}" ] || return 0
+    controller=$(cd "$ZTE_POWER_CONTROLLER_DEVICE_PATH" 2>/dev/null && pwd -P) ||
+        return 1
+    target=$(cd "$2/device" 2>/dev/null && pwd -P) || return 1
+    case $target/ in
+        "$controller"/*) ;;
+        *) return 1 ;;
+    esac
+    [ ! -d "$controller/usb2/2-1" ]
 }
 EOF
 cat >"$lib/recovery-inhibit.sh" <<'EOF'
@@ -141,6 +160,9 @@ case $1 in
         [ "${ZTE_TEST_FAIL_MANAGER_ACTION:-}" != stop ] || exit 1
         [ "${ZTE_TEST_MANAGER_STUCK:-0}" = 1 ] ||
             printf '%s\n' stopped >"$ZTE_TEST_MANAGER_STATE"
+        if [ -n "${ZTE_TEST_ADD_USB_SIBLING_ON_STOP:-}" ]; then
+            mkdir -p "$ZTE_TEST_ADD_USB_SIBLING_ON_STOP"
+        fi
         ;;
     start)
         printf '%s\n' manager-start >>"$ZTE_TEST_SERVICE_CALLS"
@@ -156,7 +178,7 @@ calibration_call() {
     ZTE_CALIBRATION_LIB_DIR=$lib \
     ZTE_CALIBRATION_BOARD_FILE=$state/board \
     ZTE_CALIBRATION_CONTROL_PATH=$state/power \
-    ZTE_CALIBRATION_NETDEV_PATH=$state/netdev \
+    ZTE_CALIBRATION_NETDEV_PATH=${ZTE_TEST_CALIBRATION_NETDEV_PATH:-$state/netdev} \
     ZTE_CALIBRATION_STATE_DIR=$state/runtime \
     ZTE_CALIBRATION_LOCK_DIR=$state/lock \
     ZTE_CALIBRATION_MANAGER_SERVICE=$bin/manager-service \
@@ -200,6 +222,56 @@ assert_eq \
     "$probe_result"
 assert_eq '' "$(cat "$state/service-calls")"
 assert_eq "$probe_result" "$(calibration_auto_call probe)"
+
+# The ubootmod profile unbinds the whole xHCI controller. It is safe only
+# when every attached USB device on that controller is an ancestor of the
+# configured U25S network interface.
+topology=$state/topology
+controller=$topology/11200000.usb
+target_usb=$controller/usb1/1-1
+target_interface=$target_usb/1-1:1.0
+topology_netdev=$topology/netdev
+mkdir -p "$target_interface" "$topology_netdev"
+ln -s "$target_interface" "$topology_netdev/device"
+printf '%s\n' 'cudy,tr3000-v1-ubootmod' >"$state/board"
+topology_probe=$(ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH="$controller" \
+    ZTE_TEST_CALIBRATION_NETDEV_PATH="$topology_netdev" calibration_call probe)
+assert_eq \
+    '{"ok":true,"mode":"probe","board":"cudy,tr3000-v1-ubootmod","power":1,"recovery_service":true,"netdev_present":true,"device_reachable":true}' \
+    "$topology_probe"
+
+: >"$state/service-calls"
+printf '%s\n' running >"$state/manager-state"
+topology_execute_status=0
+ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH="$controller" \
+    ZTE_TEST_CALIBRATION_NETDEV_PATH="$topology_netdev" \
+    ZTE_TEST_ADD_USB_SIBLING_ON_STOP="$controller/usb2/2-1" \
+    calibration_call execute I_AM_ON_SPARE_HARDWARE >/dev/null ||
+    topology_execute_status=$?
+assert_failure test "$topology_execute_status" -eq 0
+assert_eq 1 "$(cat "$state/power")"
+assert_eq \
+    "manager-stop
+stop
+start
+manager-start" \
+    "$(cat "$state/service-calls")"
+assert_failure test -d "$state/lock"
+
+probe_status=0
+probe_output=$(ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH="$controller" \
+    ZTE_TEST_CALIBRATION_NETDEV_PATH="$topology_netdev" \
+    calibration_call probe) || probe_status=$?
+assert_eq 1 "$probe_status"
+assert_eq \
+    '{"ok":false,"mode":"probe","code":"shared_usb_controller"}' \
+    "$probe_output"
+rm -rf "$topology"
+printf '%s\n' 'cudy,tr3000-v1' >"$state/board"
+unset ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH
+unset ZTE_TEST_CALIBRATION_NETDEV_PATH
+unset ZTE_TEST_ADD_USB_SIBLING_ON_STOP
+: >"$state/service-calls"
 
 mv "$state/board" "$state/board.saved"
 assert_power_probe_failure board_file_unreadable

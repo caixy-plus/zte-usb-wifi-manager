@@ -108,7 +108,8 @@ load_config() {
 		return 1
 	}
 	ZTE_HTTP_INTERFACE=$netdev
-	export ZTE_HTTP_INTERFACE
+	ZTE_POWER_NETDEV_PATH=/sys/class/net/$netdev
+	export ZTE_HTTP_INTERFACE ZTE_POWER_NETDEV_PATH
 	if ! zte_is_uint "$failure_threshold" ||
 		[ "$failure_threshold" -lt 1 ]; then
 		logger -t zte-usb-wifi-manager 'invalid failure threshold'

@@ -159,6 +159,18 @@ xhci_path=/sys/bus/platform/drivers/xhci-mtk/11200000.usb
 xhci_state=$work/xhci-state
 xhci_supply_state=$work/xhci-supply-state
 xhci_calls=$work/xhci-calls
+topology=$work/topology
+controller=$topology/11200000.usb
+target_usb=$controller/usb1/1-1
+target_interface=$target_usb/1-1:1.0
+topology_netdev=$topology/netdev
+mkdir -p "$target_interface" "$topology_netdev"
+ln -s "$target_interface" "$topology_netdev/device"
+ZTE_POWER_CONTROLLER_DEVICE_PATH=$controller
+ZTE_POWER_NETDEV_PATH=$topology_netdev
+export ZTE_POWER_CONTROLLER_DEVICE_PATH ZTE_POWER_NETDEV_PATH
+assert_success zte_power_controller_topology_safe \
+    "$xhci_path" "$ZTE_POWER_NETDEV_PATH"
 printf '1\n' >"$xhci_state"
 printf '1\n' >"$xhci_supply_state"
 : >"$xhci_calls"
@@ -194,6 +206,14 @@ assert_eq \
     "$(tail -n 1 "$xhci_calls")"
 assert_eq 0 "$(cat "$xhci_state")"
 
+# An already detached and unpowered controller is idempotently OFF even
+# though its controller and netdev sysfs nodes no longer exist.
+mv "$topology" "$work/topology-off"
+: >"$xhci_calls"
+assert_success zte_power_hardware_apply OFF "$xhci_path"
+assert_eq '' "$(cat "$xhci_calls")"
+mv "$work/topology-off" "$topology"
+
 xhci_on_result=$(zte_power_apply \
     hardware ON fail_safe "$record" \
     "$xhci_path" 1 'cudy,tr3000-v1-ubootmod' 0)
@@ -204,6 +224,17 @@ assert_eq \
     '/sys/bus/platform/drivers/xhci-mtk/bind:11200000.usb' \
     "$(tail -n 1 "$xhci_calls")"
 assert_eq 1 "$(cat "$xhci_state")"
+
+# Runtime topology changes invalidate the old calibration. Every later xHCI
+# OFF must fail before unbind when another USB device shares the controller.
+mkdir -p "$controller/usb2/2-1"
+: >"$xhci_calls"
+assert_failure zte_power_apply \
+    hardware OFF battery_high "$record" \
+    "$xhci_path" 1 'cudy,tr3000-v1-ubootmod' 1
+assert_eq '' "$(cat "$xhci_calls")"
+assert_eq 1 "$(cat "$xhci_state")"
+rm -rf "$controller/usb2"
 
 : >"$xhci_calls"
 assert_success zte_power_hardware_apply ON "$xhci_path"
@@ -219,19 +250,24 @@ printf '1\n' >"$xhci_supply_state"
 # profile in the requested direction.
 : >"$xhci_calls"
 printf '0\n' >"$xhci_supply_state"
+rm -rf "$target_usb" "$topology_netdev"
+unset ZTE_POWER_NETDEV_PATH
 assert_success zte_power_hardware_apply ON "$xhci_path"
 assert_eq \
     "/sys/bus/platform/drivers/xhci-mtk/unbind:11200000.usb
 /sys/bus/platform/drivers/xhci-mtk/bind:11200000.usb" \
     "$(cat "$xhci_calls")"
+mkdir -p "$target_interface" "$topology_netdev"
+ln -s "$target_interface" "$topology_netdev/device"
+ZTE_POWER_NETDEV_PATH=$topology_netdev
+export ZTE_POWER_NETDEV_PATH
 : >"$xhci_calls"
 printf '0\n' >"$xhci_state"
 printf '1\n' >"$xhci_supply_state"
-assert_success zte_power_hardware_apply OFF "$xhci_path"
-assert_eq \
-    "/sys/bus/platform/drivers/xhci-mtk/bind:11200000.usb
-/sys/bus/platform/drivers/xhci-mtk/unbind:11200000.usb" \
-    "$(cat "$xhci_calls")"
+mv "$topology" "$work/topology-off"
+assert_failure zte_power_hardware_apply OFF "$xhci_path"
+assert_eq '' "$(cat "$xhci_calls")"
+mv "$work/topology-off" "$topology"
 printf '1\n' >"$xhci_state"
 printf '1\n' >"$xhci_supply_state"
 

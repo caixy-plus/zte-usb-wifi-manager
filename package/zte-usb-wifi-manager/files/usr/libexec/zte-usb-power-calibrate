@@ -4,6 +4,7 @@ set -eu
 ZTE_CALIBRATION_LIB_DIR=${ZTE_CALIBRATION_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 ZTE_CALIBRATION_BOARD_FILE=${ZTE_CALIBRATION_BOARD_FILE:-/tmp/sysinfo/board_name}
 ZTE_CALIBRATION_CONTROL_PATH=${ZTE_CALIBRATION_CONTROL_PATH:-}
+ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH=${ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH:-}
 ZTE_CALIBRATION_STATE_DIR=${ZTE_CALIBRATION_STATE_DIR:-/var/run/zte-usb-wifi-manager/calibration}
 ZTE_CALIBRATION_LOCK_DIR=${ZTE_CALIBRATION_LOCK_DIR:-/var/lock/zte-usb-power-calibration.lock}
 ZTE_CALIBRATION_MANAGER_SERVICE=${ZTE_CALIBRATION_MANAGER_SERVICE:-/etc/init.d/zte-usb-wifi-manager}
@@ -18,6 +19,13 @@ ZTE_CALIBRATION_STOP_INTERVAL=${ZTE_CALIBRATION_STOP_INTERVAL:-1}
 . "$ZTE_CALIBRATION_LIB_DIR/recovery-inhibit.sh"
 . "$ZTE_CALIBRATION_LIB_DIR/recovery-adapter.sh"
 . "$ZTE_CALIBRATION_LIB_DIR/netifd-adapter.sh"
+
+zte_calibration_controller_topology_safe() {
+	[ "$_zte_calibration_board" = cudy,tr3000-v1-ubootmod ] || return 0
+	ZTE_POWER_CONTROLLER_DEVICE_PATH=$ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH \
+		zte_power_controller_topology_safe \
+		"$ZTE_CALIBRATION_CONTROL_PATH" "$ZTE_CALIBRATION_NETDEV_PATH"
+}
 
 zte_calibration_device_reachable() {
 	_zte_calibration_response=$(
@@ -35,7 +43,7 @@ zte_calibration_device_reachable() {
 zte_calibration_probe_fail() {
 	_zte_calibration_probe_code=$1
 	case $_zte_calibration_probe_code in
-		board_file_unreadable|board_read_failed|unsupported_board|invalid_control_path|power_read_failed|invalid_power_value|supply_read_failed|supply_state_mismatch|recovery_service_unavailable|device_route_mismatch|device_unreachable) ;;
+		board_file_unreadable|board_read_failed|unsupported_board|invalid_control_path|shared_usb_controller|power_read_failed|invalid_power_value|supply_read_failed|supply_state_mismatch|recovery_service_unavailable|device_route_mismatch|device_unreachable) ;;
 		*) _zte_calibration_probe_code=probe_failed ;;
 	esac
 	printf \
@@ -61,6 +69,8 @@ zte_calibration_probe() {
 	zte_power_board_control_supported \
 		"$_zte_calibration_board" "$ZTE_CALIBRATION_CONTROL_PATH" ||
 		zte_calibration_probe_fail invalid_control_path
+	zte_calibration_controller_topology_safe ||
+		zte_calibration_probe_fail shared_usb_controller
 	_zte_calibration_power=$(
 		zte_power_hardware_read "$ZTE_CALIBRATION_CONTROL_PATH" 2>/dev/null
 	) || zte_calibration_probe_fail power_read_failed
@@ -214,6 +224,7 @@ zte_calibration_execute() {
 		"$ZTE_CALIBRATION_INHIBIT_FILE" battery_high \
 		"$_zte_calibration_expires" "$_zte_calibration_now" \
 		"$ZTE_CALIBRATION_RECOVERY_SERVICE" || return 1
+	zte_calibration_controller_topology_safe || return 1
 
 	zte_power_hardware_apply \
 		OFF "$ZTE_CALIBRATION_CONTROL_PATH" || return 1
@@ -316,6 +327,9 @@ ZTE_CALIBRATION_DEVICE_HOST=$(
 )
 zte_validate_host "$ZTE_CALIBRATION_DEVICE_HOST" || exit 1
 ZTE_CALIBRATION_NETDEV_PATH=${ZTE_CALIBRATION_NETDEV_PATH:-/sys/class/net/$_zte_calibration_netdev}
+ZTE_POWER_NETDEV_PATH=$ZTE_CALIBRATION_NETDEV_PATH
+ZTE_POWER_CONTROLLER_DEVICE_PATH=$ZTE_CALIBRATION_CONTROLLER_DEVICE_PATH
+export ZTE_POWER_NETDEV_PATH ZTE_POWER_CONTROLLER_DEVICE_PATH
 ZTE_CALIBRATION_INHIBIT_FILE=$ZTE_CALIBRATION_STATE_DIR/inhibit-recovery
 
 case ${1-probe} in

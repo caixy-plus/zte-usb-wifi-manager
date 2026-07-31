@@ -121,6 +121,95 @@ zte_power_driver_state() {
 	fi
 }
 
+zte_power_canonical_dir() {
+	[ -d "$1" ] || return 1
+	(
+		cd "$1" 2>/dev/null || exit 1
+		pwd -P
+	)
+}
+
+zte_power_usb_tree_safe() (
+	_zte_power_tree_root=$1
+	_zte_power_tree_target=$2
+	for _zte_power_tree_entry in "$_zte_power_tree_root"/*; do
+		[ -d "$_zte_power_tree_entry" ] || continue
+		[ ! -L "$_zte_power_tree_entry" ] || continue
+		_zte_power_tree_name=${_zte_power_tree_entry##*/}
+		case $_zte_power_tree_name in
+			*:*) ;;
+			[0-9]*-[0-9]*)
+				case $_zte_power_tree_target/ in
+					"$_zte_power_tree_entry"/*) ;;
+					*) return 1 ;;
+				esac
+				;;
+		esac
+		zte_power_usb_tree_safe \
+			"$_zte_power_tree_entry" "$_zte_power_tree_target" || return 1
+	done
+)
+
+zte_power_usb_tree_empty() (
+	_zte_power_tree_root=$1
+	for _zte_power_tree_entry in "$_zte_power_tree_root"/*; do
+		[ -d "$_zte_power_tree_entry" ] || continue
+		[ ! -L "$_zte_power_tree_entry" ] || continue
+		_zte_power_tree_name=${_zte_power_tree_entry##*/}
+		case $_zte_power_tree_name in
+			*:*) ;;
+			[0-9]*-[0-9]*) return 1 ;;
+		esac
+		zte_power_usb_tree_empty "$_zte_power_tree_entry" || return 1
+	done
+)
+
+zte_power_controller_topology_safe() {
+	_zte_power_topology_control=$1
+	_zte_power_topology_netdev=${2-}
+	[ "$_zte_power_topology_control" = \
+		/sys/bus/platform/drivers/xhci-mtk/11200000.usb ] || return 0
+	[ -n "$_zte_power_topology_netdev" ] || return 1
+	_zte_power_topology_controller=${ZTE_POWER_CONTROLLER_DEVICE_PATH:-}
+	if [ -z "$_zte_power_topology_controller" ]; then
+		_zte_power_topology_controller=$(zte_power_canonical_dir \
+			"$_zte_power_topology_control") || return 1
+	else
+		_zte_power_topology_controller=$(zte_power_canonical_dir \
+			"$_zte_power_topology_controller") || return 1
+	fi
+	_zte_power_topology_target=$(zte_power_canonical_dir \
+		"$_zte_power_topology_netdev/device") || return 1
+	case $_zte_power_topology_target/ in
+		"$_zte_power_topology_controller"/*) ;;
+		*) return 1 ;;
+	esac
+	zte_power_usb_tree_safe \
+		"$_zte_power_topology_controller" "$_zte_power_topology_target"
+}
+
+zte_power_controller_rebind_safe() {
+	_zte_power_rebind_control=$1
+	_zte_power_rebind_netdev=${2-}
+	[ "$_zte_power_rebind_control" = \
+		/sys/bus/platform/drivers/xhci-mtk/11200000.usb ] || return 0
+	if [ -n "$_zte_power_rebind_netdev" ] &&
+		[ -d "$_zte_power_rebind_netdev/device" ]; then
+		zte_power_controller_topology_safe \
+			"$_zte_power_rebind_control" "$_zte_power_rebind_netdev"
+		return
+	fi
+	_zte_power_rebind_controller=${ZTE_POWER_CONTROLLER_DEVICE_PATH:-}
+	if [ -z "$_zte_power_rebind_controller" ]; then
+		_zte_power_rebind_controller=$(zte_power_canonical_dir \
+			"$_zte_power_rebind_control") || return 1
+	else
+		_zte_power_rebind_controller=$(zte_power_canonical_dir \
+			"$_zte_power_rebind_controller") || return 1
+	fi
+	zte_power_usb_tree_empty "$_zte_power_rebind_controller"
+}
+
 zte_power_driver_write() {
 	_zte_power_driver_control=$1
 	_zte_power_driver_device=$2
@@ -203,7 +292,6 @@ zte_power_hardware_apply() {
 		OFF) _zte_power_expected_value=0 ;;
 		*) return 1 ;;
 	esac
-
 	_zte_power_current_value=$(
 		zte_power_hardware_read "$_zte_power_hardware_path" 2>/dev/null
 	) || _zte_power_current_value=''
@@ -219,6 +307,9 @@ zte_power_hardware_apply() {
 			/sys/bus/platform/drivers/xhci-mtk/11200000.usb ] ||
 			return 1
 		if [ "$_zte_power_hardware_action" = ON ]; then
+			zte_power_controller_rebind_safe \
+				"$_zte_power_hardware_path" \
+				"${ZTE_POWER_NETDEV_PATH:-}" || return 1
 			zte_power_driver_write \
 				/sys/bus/platform/drivers/xhci-mtk/unbind \
 				11200000.usb || return 1
@@ -226,12 +317,7 @@ zte_power_hardware_apply() {
 				/sys/bus/platform/drivers/xhci-mtk/bind \
 				11200000.usb || return 1
 		else
-			zte_power_driver_write \
-				/sys/bus/platform/drivers/xhci-mtk/bind \
-				11200000.usb || return 1
-			zte_power_driver_write \
-				/sys/bus/platform/drivers/xhci-mtk/unbind \
-				11200000.usb || return 1
+			return 1
 		fi
 	fi
 
@@ -250,6 +336,9 @@ zte_power_hardware_apply() {
 			else
 				_zte_power_driver_control=\
 /sys/bus/platform/drivers/xhci-mtk/unbind
+				zte_power_controller_topology_safe \
+					"$_zte_power_hardware_path" \
+					"${ZTE_POWER_NETDEV_PATH:-}" || return 1
 			fi
 			zte_power_driver_write \
 				"$_zte_power_driver_control" 11200000.usb ||
