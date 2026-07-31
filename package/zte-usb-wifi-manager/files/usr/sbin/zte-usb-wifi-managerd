@@ -592,6 +592,35 @@ process_actions() {
 		"$_zte_action_time" || :
 }
 
+read_current_power_state() {
+	case $power_backend in
+		dry-run) ;;
+		hardware)
+			if [ "$power_calibrated" != 1 ]; then
+				printf '%s\n' UNKNOWN
+				return
+			fi
+			;;
+		*)
+			printf '%s\n' UNKNOWN
+			return
+			;;
+	esac
+	_zte_current_power_board=$(zte_power_detect_board 2>/dev/null) || {
+		printf '%s\n' UNKNOWN
+		return
+	}
+	_zte_current_power_path=$(
+		zte_power_resolve_control_path \
+			"$_zte_current_power_board" "$power_control_path" \
+			2>/dev/null
+	) || {
+		printf '%s\n' UNKNOWN
+		return
+	}
+	zte_power_observed_state "$_zte_current_power_path"
+}
+
 calculate_policy() {
 	policy_state=unavailable
 	power_action=none
@@ -609,14 +638,8 @@ calculate_policy() {
 				battery_percent=$(
 					zte_json_path_get "$device_json" battery percent
 				)
-				battery_charging=$(
-					zte_json_path_get "$device_json" battery charging
-				)
-				case $battery_charging in
-					true) current_power=ON ;;
-					false) current_power=OFF ;;
-					*) current_power=UNKNOWN ;;
-				esac
+				current_power=$(read_current_power_state) ||
+					current_power=UNKNOWN
 				if zte_is_uint "$battery_percent"; then
 					pre_departure=0
 					pre_departure=$(schedule_pre_departure_now) ||

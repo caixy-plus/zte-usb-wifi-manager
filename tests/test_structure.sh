@@ -392,6 +392,7 @@ extract_daemon_function() {
 }
 eval "$(extract_daemon_function poll_once)"
 eval "$(extract_daemon_function calculate_policy)"
+eval "$(extract_daemon_function read_current_power_state)"
 eval "$(extract_daemon_function main)"
 eval "$(extract_daemon_function apply_policy_action)"
 eval "$(extract_daemon_function power_inhibit_expiry)"
@@ -444,6 +445,25 @@ if find "$STATE_DIR" -name 'status.json.tmp.*' -print | grep -q .; then
 else
     pass
 fi
+
+power_backend=unconfigured
+power_calibrated=0
+power_control_path=auto
+assert_eq UNKNOWN "$(read_current_power_state)"
+power_backend=hardware
+assert_eq UNKNOWN "$(read_current_power_state)"
+power_calibrated=1
+zte_power_detect_board() { printf '%s\n' cudy,tr3000-v1; }
+zte_power_resolve_control_path() {
+    printf '%s\n' /sys/class/gpio/modem_power/value
+}
+zte_power_observed_state() { printf '%s\n' ON; }
+assert_eq ON "$(read_current_power_state)"
+power_backend=dry-run
+power_calibrated=0
+assert_eq ON "$(read_current_power_state)"
+zte_power_observed_state() { printf '%s\n' UNKNOWN; }
+assert_eq UNKNOWN "$(read_current_power_state)"
 
 dev1='{"online":true,"model":"U25S","battery":{"present":true,"percent":82,"charging":false}}'
 dev2='{"online":true,"model":"U25S","battery":{"present":true,"percent":83,"charging":false}}'
@@ -509,6 +529,7 @@ zte_policy_decide() {
     printf '%s\n' 'DISABLED:KEEP'
 }
 schedule_pre_departure_now() { printf '0\n'; }
+read_current_power_state() { printf 'ON\n'; }
 date() { printf '%s\n' 1722345678; }
 write_status() { printf '%s\n' "$1" >>"$status_log"; }
 
@@ -570,8 +591,8 @@ zte_adapter_normalize() {
 }
 
 poll_once
-assert_eq OFF "$(cat "$policy_power_log")" \
-    'daemon must map the observed charging flag to current power state'
+assert_eq ON "$(cat "$policy_power_log")" \
+    'daemon must use the power adapter rather than battery charging state'
 poll_once
 poll_once
 poll_once

@@ -124,6 +124,13 @@ zte_power_sysfs_read() {
     cat "$hardware_state"
 }
 
+assert_eq ON "$(zte_power_observed_state \
+    '/sys/class/gpio/modem_power/value')"
+printf '0\n' >"$hardware_state"
+assert_eq OFF "$(zte_power_observed_state \
+    '/sys/class/gpio/modem_power/value')"
+printf '1\n' >"$hardware_state"
+
 hardware_off_result=$(zte_power_apply \
     hardware OFF battery_high "$record" \
     '/sys/class/gpio/modem_power/value' 1 'cudy,tr3000-v1' 1)
@@ -287,5 +294,14 @@ assert_eq "$hardware_on_result" "$(cat "$record")"
 assert_failure zte_power_apply unconfigured OFF battery_high "$record"
 assert_failure zte_power_apply dry-run RESET battery_high "$record"
 assert_failure zte_power_apply dry-run OFF 'battery high' "$record"
+
+zte_power_hardware_read() { printf '%s\n' 1; }
+zte_power_supply_read() { printf '%s\n' 0; }
+assert_eq UNKNOWN "$(zte_power_observed_state \
+    '/sys/bus/platform/drivers/xhci-mtk/11200000.usb')"
+zte_power_hardware_read() { return 1; }
+zte_power_supply_read() { return 1; }
+assert_eq UNKNOWN "$(zte_power_observed_state \
+    '/sys/bus/platform/drivers/xhci-mtk/11200000.usb')"
 
 finish

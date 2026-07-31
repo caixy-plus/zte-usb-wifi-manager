@@ -179,6 +179,21 @@ ${ZTE_POWER_REGULATOR_ROOT:-/sys/class/regulator}
 	esac
 }
 
+zte_power_observed_state() {
+	_zte_power_observed_path=$1
+	_zte_power_observed_control=$(
+		zte_power_hardware_read "$_zte_power_observed_path" 2>/dev/null
+	) || _zte_power_observed_control=''
+	_zte_power_observed_supply=$(
+		zte_power_supply_read "$_zte_power_observed_path" 2>/dev/null
+	) || _zte_power_observed_supply=''
+	case $_zte_power_observed_control:$_zte_power_observed_supply in
+		1:1) printf '%s\n' ON ;;
+		0:0) printf '%s\n' OFF ;;
+		*) printf '%s\n' UNKNOWN ;;
+	esac
+}
+
 zte_power_hardware_apply() {
 	_zte_power_hardware_action=$1
 	_zte_power_hardware_path=$2
