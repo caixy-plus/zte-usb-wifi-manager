@@ -32,3 +32,22 @@ JSON `true`；既有 `false/no`、`true/yes` fixture 兼容不变，未知值继
 r14 只修复只读状态规范化，不改变任何能力开关。正式升级后仍必须确认
 `write_enabled=0`、`power_backend=unconfigured`、`power_calibrated=0` 和
 `policy.enabled=0`。真实 SIM 写入与 USB 断电继续只允许在备用硬件台架执行。
+
+## 构建与正式升级结果
+
+r14 源码提交 `49b6c466cf2c684975266851cb857039c126e049` 的 GitHub Actions
+运行 `30625146721` 全部通过：检查、OpenWrt 25.12.5 APK SDK、OpenWrt 24.10.7
+IPK SDK 和聚合产物均成功。聚合产物经 `SHA256SUMS` 复核全部通过：
+
+- APK：`c5d78c0174b1c3f94cf152f060a6dd6b24eb2800294d829ee08c745387eb0862`；
+- IPK：`b20a23a1cb683ab52b94a9deb34cc7d3dddd92bfc143f665a9bc4fa56f4fe74c`。
+
+目标 Cudy TR3000 已从 r13 正式升级到 r14，并正常重启服务加载新代码。首个新
+快照恢复为 `online=true`、`state=ok`、`failures=0`，电量 100% 时
+`battery.charging=false`；网络为 `NR5G-SA`，SIM 原始槽位仍为 `2`，PPP 保持
+`ipv4_ipv6_connected`。
+
+升级后复核：四个写入/硬件控制开关仍为 `0,unconfigured,0,0`，凭据文件保持
+`0600 root`，crontab SHA-256 未变化，临时 APK 与临时 SSH 密钥均已删除，LuCI
+页面显示“设备在线 / 后端状态正常”。本次没有再次执行 probe，也没有执行任何
+SIM 写入或 USB 断电。
