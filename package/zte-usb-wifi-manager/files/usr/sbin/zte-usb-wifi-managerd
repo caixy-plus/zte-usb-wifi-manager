@@ -500,13 +500,19 @@ process_actions() {
 						"$_zte_action_record" payload target
 				)
 				_zte_action_password=''
-				if _zte_saved_action_password=$(
-					zte_read_password "$credential_file" 2>/dev/null
-				); then
-					_zte_action_password=$_zte_saved_action_password
+				_zte_action_login_required=0
+				if zte_adapter_login_required; then
+					_zte_action_login_required=1
+					if _zte_saved_action_password=$(
+						zte_read_password \
+							"$credential_file" 2>/dev/null
+					); then
+						_zte_action_password=$_zte_saved_action_password
+					fi
 				fi
 				_zte_saved_action_password=''
-				if [ -z "$_zte_action_password" ]; then
+				if [ "$_zte_action_login_required" = 1 ] &&
+					[ -z "$_zte_action_password" ]; then
 					_zte_action_code=credentials_missing
 					_zte_action_event_level=error
 					_zte_action_event_code=action_failed
@@ -533,6 +539,7 @@ process_actions() {
 					fi
 				fi
 				_zte_action_password=''
+				_zte_action_login_required=0
 				;;
 		esac
 	fi

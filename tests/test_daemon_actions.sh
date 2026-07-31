@@ -37,6 +37,7 @@ record_event() {
     printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$event_log"
 }
 zte_read_password() { printf '%s\n' secret; }
+zte_adapter_login_required() { return 0; }
 zte_adapter_action_supported() { [ "$1" = switch_sim ]; }
 zte_execute_switch_sim() {
     printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$execute_log"
@@ -83,7 +84,28 @@ assert_eq \
     '{"operation_id":"op-1722345682-1236","type":"switch_sim","state":"failed","code":"credentials_missing","updated":1722345680}' \
     "$(zte_action_get "$STATE_DIR" op-1722345682-1236)"
 
+# Firmware that explicitly declares anonymous access must not require a saved
+# password before invoking the calibrated executor.
+: >"$execute_log"
+zte_adapter_login_required() { return 1; }
+zte_read_password() { printf '%s\n' stale-secret; }
+zte_execute_switch_sim() {
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$execute_log"
+    printf '%s\n' ok
+}
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345682-1239 switch_sim \
+    '{"action":"switch_sim","target":"sim1"}' 1722345682
+assert_success process_actions
+assert_eq \
+    '{"operation_id":"op-1722345682-1239","type":"switch_sim","state":"succeeded","code":"ok","updated":1722345680}' \
+    "$(zte_action_get "$STATE_DIR" op-1722345682-1239)"
+assert_eq \
+    "192.168.0.1||$COOKIE_FILE|sim1" \
+    "$(cat "$execute_log")"
+
 zte_read_password() { printf '%s\n' secret; }
+zte_adapter_login_required() { return 0; }
 zte_execute_switch_sim() {
     printf '%s\n' invalid_target
     return 1
