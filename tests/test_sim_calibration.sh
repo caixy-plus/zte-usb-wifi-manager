@@ -23,6 +23,30 @@ mkdir -p "$lib" "$state"
 credential_file=$state/credentials
 cookie_file=$state/cookies
 fetch_log=$state/fetches
+cleanup_fail_marker=$state/cleanup-fail-marker
+
+# Defined before all call sites for compatibility with older ShellCheck
+# releases. Outside the cleanup-failure cases these wrappers pass through.
+rm() {
+    if [ "${ZTE_TEST_CLEANUP_FAIL_STAGE:-}" = state_file ] &&
+        [ "${2-}" = "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" ] &&
+        [ ! -e "$cleanup_fail_marker" ]; then
+        : >"$cleanup_fail_marker"
+        return 1
+    fi
+    command rm "$@"
+}
+rmdir() {
+    if [ ! -e "$cleanup_fail_marker" ]; then
+        case ${ZTE_TEST_CLEANUP_FAIL_STAGE:-}:$1 in
+            state_dir:"$ZTE_SIM_CALIBRATION_STATE_DIR"|lock_dir:"$ZTE_SIM_CALIBRATION_LOCK_DIR"|claim:"$ZTE_SIM_CALIBRATION_LOCK_DIR/recovery-active")
+                : >"$cleanup_fail_marker"
+                return 1
+                ;;
+        esac
+    fi
+    command rmdir "$@"
+}
 
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/credentials.sh "$lib/"
 cp ./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/json.sh "$lib/"
@@ -351,7 +375,7 @@ for slot_target in \
 done
 
 # Missing or non-0600 credentials are rejected before the adapter is called.
-command rm "$credential_file"
+rm "$credential_file"
 : >"$fetch_log"
 assert_failure sim_call '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' >/dev/null 2>&1
 assert_eq '' "$(cat "$fetch_log")"
@@ -548,7 +572,7 @@ export ZTE_SIM_CALIBRATION_STOP_INTERVAL
 assert_eq '' "$(cat "$fetch_log")"
 assert_failure test -d "$ZTE_SIM_CALIBRATION_LOCK_DIR"
 
-command rm "$credential_file"
+rm "$credential_file"
 assert_failure execute_call physical sim2 >/dev/null 2>&1
 assert_failure test -d "$ZTE_SIM_CALIBRATION_LOCK_DIR"
 printf '%s\n' 'password=test-password' >"$credential_file"
@@ -1173,27 +1197,6 @@ assert_success test -d "$ZTE_SIM_CALIBRATION_LOCK_DIR"
 
 # Cleanup is transactional: failure at any destructive stage re-establishes a
 # canonical null state under the lock with the manager stopped.
-cleanup_fail_marker=$state/cleanup-fail-marker
-rm() {
-    if [ "${ZTE_TEST_CLEANUP_FAIL_STAGE:-}" = state_file ] &&
-        [ "${2-}" = "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" ] &&
-        [ ! -e "$cleanup_fail_marker" ]; then
-        : >"$cleanup_fail_marker"
-        return 1
-    fi
-    command rm "$@"
-}
-rmdir() {
-    if [ ! -e "$cleanup_fail_marker" ]; then
-        case ${ZTE_TEST_CLEANUP_FAIL_STAGE:-}:$1 in
-            state_dir:"$ZTE_SIM_CALIBRATION_STATE_DIR"|lock_dir:"$ZTE_SIM_CALIBRATION_LOCK_DIR"|claim:"$ZTE_SIM_CALIBRATION_LOCK_DIR/recovery-active")
-                : >"$cleanup_fail_marker"
-                return 1
-                ;;
-        esac
-    fi
-    command rmdir "$@"
-}
 for cleanup_stage in state_file state_dir lock_dir claim; do
     prepare_recovery_state physical true
     command rm -f "$cleanup_fail_marker"
