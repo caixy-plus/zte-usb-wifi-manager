@@ -9,6 +9,17 @@ zte_adapter_bool() {
 	esac
 }
 
+# The target firmware uses 2 for a present, fully charged battery. Its WebUI
+# renders 0 as discharging, 2 as full, and the remaining known value 1 as
+# charging. Keep this device-specific enum out of the generic boolean mapper.
+zte_adapter_charging_bool() {
+	case ${1-} in
+		1|true|yes) printf 'true' ;;
+		0|2|false|no) printf 'false' ;;
+		*) return 1 ;;
+	esac
+}
+
 zte_adapter_modem_ready() {
 	case ${1-} in
 		connected|modem_init_complete) return 0 ;;
@@ -136,11 +147,9 @@ zte_adapter_normalize() {
 
 	if zte_json_flat_has "$_zte_raw" battery_charging; then
 		_zte_charging_raw=$(zte_json_flat_get "$_zte_raw" battery_charging)
-		case $_zte_charging_raw in
-			1|true|yes|0|false|no) ;;
-			*) return 1 ;;
-		esac
-		_zte_charging=$(zte_adapter_bool "$_zte_charging_raw")
+		_zte_charging=$(
+			zte_adapter_charging_bool "$_zte_charging_raw"
+		) || return 1
 	else
 		_zte_charging=null
 	fi

@@ -12,7 +12,7 @@ luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=13$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=14$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -224,7 +224,7 @@ assert_file_contains README.md \
     '/usr/libexec/zte-u25s-sim-calibrate recover'
 assert_file_contains README.md '只能在备用 U25S'
 assert_file_contains README.md \
-    'r13 已纳入实机 modem 状态'
+    'r14 已修复实机满电状态枚举'
 assert_file_contains README.md \
     'docs/validation/2026-07-31-r8-r3-qemu\.md'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \

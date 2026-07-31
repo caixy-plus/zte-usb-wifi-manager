@@ -30,8 +30,20 @@ probe、执行前读取和操作后回读统一使用该函数；空值、offlin
 - `test_sim_calibration`：419 assertions PASS；
 - ShellCheck：PASS。
 
-## 尚未完成
+## 构建与实机结果
 
-r13 仍需全量检查、双 SDK 构建、正式升级和一次新的匿名只读 probe。只有 probe
-返回 `ok:true`，才转移到备用 U25S 执行 SIM 切换与回读校准。主路由器不执行 SIM
-写或 USB 断电测试。
+r13 源码提交 `29fa0f0acf65d74c64d8f8cefe4c1f930f577a57` 的 GitHub Actions
+运行 `30624120182` 全部通过：检查、OpenWrt 25.12.5 APK SDK、OpenWrt 24.10.7
+IPK SDK 和聚合产物均成功。APK SHA-256 为
+`d0a3450b6c6c8f40aeaf370abdd22744a10404204ce8efa78fb0572e79a28298`。
+
+目标 Cudy TR3000 已从 r12 正式升级到 r13；升级后写接口、硬件供电和电池策略
+仍保持关闭，凭据文件保持 `0600 root`，crontab 摘要未变化。唯一一次匿名只读
+probe 返回：
+
+```json
+{"ok":true,"mode":"probe","active_target":"sim2","modem_ready":true,"network_registered":true,"ppp_ready":true}
+```
+
+该结果只证明读取和执行前置条件成立。主路由器没有执行 SIM 写或 USB 断电测试；
+真实写入与恢复验收仍必须转移到备用 U25S。

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v0.1.0-rc1-r13'
+      - 'v0.1.0-rc1-r14'
 
 permissions:
   contents: read
@@ -108,7 +108,7 @@ jobs:
         run: |
           printf '%s\n' \
             'Safety-gated developer preview for OpenWrt 25.12.5 and 24.10.7.' \
-            'Backend r13 accepts the target U25S modem_init_complete ready state while preserving the r12 HAS_LOGIN:false anonymous-auth contract, bounded readback, and calibration gates; production device writes and USB power remain calibration-gated.' \
+            'Backend r14 accepts the target U25S modem_init_complete ready state and its battery_charging=2 full-battery enum while preserving the HAS_LOGIN:false anonymous-auth contract, bounded readback, and calibration gates; production device writes and USB power remain calibration-gated.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md

@@ -111,6 +111,20 @@ expected='{"online":true,"model":"U25S","modem_state":"connected","cellular":{"t
 assert_eq "$expected" "$(zte_adapter_normalize "$raw")"
 assert_success node -e 'JSON.parse(process.argv[1])' "$expected"
 
+# The target U25S WebUI treats battery_charging=2 as fully charged, not an
+# invalid state. It must normalize to false so a full battery cannot make the
+# daemon enter fail-safe or be reported as actively charging.
+full_battery_out=$(zte_adapter_normalize \
+    '{"battery_exist":"1","battery_vol_percent":"100","battery_charging":"2"}')
+assert_eq false \
+    "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).battery.charging))' \
+        "$full_battery_out")"
+charging_battery_out=$(zte_adapter_normalize \
+    '{"battery_exist":"1","battery_vol_percent":"99","battery_charging":"1"}')
+assert_eq true \
+    "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).battery.charging))' \
+        "$charging_battery_out")"
+
 # Escaped strings and JSON whitespace survive extraction and normalization.
 escaped_raw=$(printf '{\n"network_provider_fullname"\n:\n"ACME \\"5G\\""\n}')
 escaped_out=$(zte_adapter_normalize "$escaped_raw")

@@ -73,7 +73,10 @@ r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登
 `config.js` 和 `service.js` 的被动复核确认 `HAS_LOGIN:false`：原生 WebUI 根本
 不会执行 LOGIN。backend r12 按该契约改为匿名读取后，实机 probe 已越过认证并
 准确停在 modem 状态检查；只读响应确认目标枚举为 `modem_init_complete`。backend
-r13 已纳入实机 modem 状态，同时保留密码入口给需要认证的固件变体。记录见
+r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。随后守护进程
+暴露出目标固件在满电时返回 `battery_charging=2`；backend r14 已修复实机满电状态枚举，
+按原生 WebUI 语义将该值规范化为“已充满、未主动充电”，同时保留密码入口给需要
+认证的固件变体。记录见
 [r9 登录摘要校准](docs/validation/2026-07-31-r9-login-digest.md)。
 实机部署与会话锁记录见
 [r10 会话锁验证](docs/validation/2026-07-31-r10-session-lock.md)。
@@ -81,8 +84,10 @@ r13 已纳入实机 modem 状态，同时保留密码入口给需要认证的固
 [r12 认证契约校准](docs/validation/2026-07-31-r12-auth-contract.md)。
 实机 modem 状态枚举校准见
 [r13 modem 状态校准](docs/validation/2026-07-31-r13-modem-state.md)。
+满电枚举修复与实机状态恢复见
+[r14 电池充电枚举校准](docs/validation/2026-07-31-r14-battery-charging.md)。
 
-backend r13 的预发布入口预留为 `v0.1.0-rc1-r13`；只有维护者显式创建并推送该
+backend r14 的预发布入口预留为 `v0.1.0-rc1-r14`；只有维护者显式创建并推送该
 tag 时才会触发 prerelease 工作流。当前 SDK/QEMU 验证通过不代表该 tag 已发布，
 也不代表真实设备写接口、USB 供电或 72 小时稳定性验收已经完成。
 
