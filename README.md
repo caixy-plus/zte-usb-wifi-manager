@@ -60,8 +60,9 @@
 | OpenWrt 25.12.5 | `.apk` | QEMU 安装验证通过 |
 | OpenWrt 24.10.7 | `.ipk` | QEMU 安装验证通过 |
 
-backend r7 / LuCI r3 的真实 SDK 构建和实机安装已完成；当前 backend r8 的
-本地检查已通过，GitHub SDK、QEMU 升级及实机只读 probe 正在补证。进度见
+backend r8 / LuCI r3 的本地检查、GitHub 双版本真实 SDK 构建、官方 OpenWrt
+双版本 QEMU 安装/卸载验证，以及 OpenWrt 25.12.5 Cudy TR3000 实机正式升级和
+只读 probe 均已完成。进度见
 [验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
 backend r8 的预发布入口预留为 `v0.1.0-rc1-r8`；只有维护者显式创建并推送该

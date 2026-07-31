@@ -224,7 +224,7 @@ assert_file_contains README.md \
     '/usr/libexec/zte-u25s-sim-calibrate recover'
 assert_file_contains README.md '只能在备用 U25S'
 assert_file_contains README.md \
-    '当前 backend r8 的'
+    'backend r8 / LuCI r3 的本地检查'
 assert_file_contains README.md \
     'docs/validation/2026-07-31-r8-r3-qemu\.md'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
