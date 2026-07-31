@@ -65,7 +65,11 @@ backend r8 / LuCI r3 的本地检查、GitHub 双版本真实 SDK 构建、官�
 只读 probe 均已完成。进度见
 [验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
-backend r8 的预发布入口预留为 `v0.1.0-rc1-r8`；只有维护者显式创建并推送该
+目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；修复版
+backend r9 正在重新构建和实机验证。根因与测试记录见
+[r9 登录摘要校准](docs/validation/2026-07-31-r9-login-digest.md)。
+
+backend r9 的预发布入口预留为 `v0.1.0-rc1-r9`；只有维护者显式创建并推送该
 tag 时才会触发 prerelease 工作流。当前 SDK/QEMU 验证通过不代表该 tag 已发布，
 也不代表真实设备写接口、USB 供电或 72 小时稳定性验收已经完成。
 

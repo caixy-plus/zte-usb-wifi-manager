@@ -16,9 +16,9 @@ mkdir -p "$work"
 
 assert_eq 'ecd71870d1963316a97e3ac3408c9835ad8cf0f3c1bc703527c30265534f75ae' \
     "$(zte_sha256_hex test123)"
-assert_eq '3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078' \
+assert_eq '9677B188078A8ABD861E7FFD312B35BC7EA176616DF6BF0BA2AC7F22764710A7' \
     "$(zte_session_digest test123 LD-abc123)"
-assert_eq '1AF5BB73CFA199DB1C17EB9FFE782A23B496E2128D7D74EE688C6FF575B9A471' \
+assert_eq 'BB0BCCC1797AF4B9132536CAE0CD0E4E580DC4D043F386F848C79C4A559CD83A' \
     "$(zte_session_digest admin 0000000000)"
 
 # successful login posts the expected digest (stub writes body to a file
@@ -35,7 +35,7 @@ _zte_step1=unchanged-step1
 _zte_step2=unchanged-step2
 _zte_hash=unchanged-hash
 assert_success zte_session_login 192.168.0.1 test123 "$work/cookies"
-assert_eq 'goformId=LOGIN&password=3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078' \
+assert_eq 'goformId=LOGIN&password=9677B188078A8ABD861E7FFD312B35BC7EA176616DF6BF0BA2AC7F22764710A7' \
     "$(cat "$post_log")"
 assert_eq unchanged-digest "$_zte_digest"
 assert_eq unchanged-step1 "$_zte_step1"

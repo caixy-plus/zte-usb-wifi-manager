@@ -18,8 +18,12 @@ zte_sha256_hex() {
 }
 
 # $1 password, $2 LD challenge -> uppercase double-SHA-256 login digest.
+# The target WebUI's SHA256() returns uppercase hex after both rounds, so the
+# first digest must be uppercased before appending the LD challenge.
 zte_session_digest() {
     _zte_step1=$(zte_sha256_hex "$1") || return 1
+    _zte_step1=$(printf '%s\n' "$_zte_step1" |
+        tr '[:lower:]' '[:upper:]') || return 1
     _zte_step2=$(zte_sha256_hex "$_zte_step1$2") || return 1
     printf '%s\n' "$_zte_step2" | tr '[:lower:]' '[:upper:]'
 }

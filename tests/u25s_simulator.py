@@ -89,7 +89,9 @@ class SimulatorState:
         )
 
     def expected_digest(self):
-        first = hashlib.sha256(self.login_secret.encode("utf-8")).hexdigest()
+        first = hashlib.sha256(
+            self.login_secret.encode("utf-8")
+        ).hexdigest().upper()
         return hashlib.sha256((first + CHALLENGE).encode("utf-8")).hexdigest().upper()
 
     def create_session(self):
