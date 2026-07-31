@@ -12,7 +12,7 @@ luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=5$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=6$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -45,16 +45,79 @@ assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
     "option probe_settle_seconds '15'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "config schedule 'work'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option enabled '0'"
-assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" '^USE_PROCD=1$'
-assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" \
+init_script="$backend/files/etc/init.d/zte-usb-wifi-manager"
+assert_file_contains "$init_script" '^USE_PROCD=1$'
+assert_file_contains "$init_script" \
     'procd_open_instance manager'
-assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" \
+assert_file_contains "$init_script" \
     'procd_open_instance recovery-coordinator'
-assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" \
+assert_file_contains "$init_script" \
     'zte-usb-recovery-coordinatord run'
+
+# start_service must gate both procd instances on persistent SIM recovery
+# artifacts. Exercise behavior rather than accepting matching source strings.
+init_gate_root=$(mktemp -d /tmp/zte-test-init-gate.XXXXXX)
+init_gate_log=$init_gate_root/procd-instances
+init_gate_state=$init_gate_root/sim-calibration
+init_gate_lock=$init_gate_root/sim-calibration.lock
+run_gated_start() {
+    (
+        ZTE_SIM_CALIBRATION_STATE_DIR=$init_gate_state
+        ZTE_SIM_CALIBRATION_LOCK_DIR=$init_gate_lock
+        export ZTE_SIM_CALIBRATION_STATE_DIR
+        export ZTE_SIM_CALIBRATION_LOCK_DIR
+        procd_open_instance() {
+            printf '%s\n' "$1" >>"$init_gate_log"
+        }
+        procd_set_param() { :; }
+        procd_close_instance() { :; }
+        procd_add_reload_trigger() { :; }
+        # shellcheck source=/dev/null
+        . "$init_script"
+        start_service
+    )
+}
+
+: >"$init_gate_log"
+assert_success run_gated_start
+assert_eq 'manager
+recovery-coordinator' "$(cat "$init_gate_log")"
+
+mkdir "$init_gate_state"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+rmdir "$init_gate_state"
+
+mkdir "$init_gate_lock"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+rmdir "$init_gate_lock"
+
+ln -s "$init_gate_root/missing-state-target" "$init_gate_state"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+rm "$init_gate_state"
+
+ln -s "$init_gate_root/missing-lock-target" "$init_gate_lock"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+rm "$init_gate_lock"
+rm -rf "$init_gate_root"
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabilities"'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" '^ZTE_CAP_SIM_SWITCH=0$'
+sim_calibration_tool="$backend/files/usr/libexec/zte-u25s-sim-calibrate"
+assert_success test -x "$sim_calibration_tool"
+assert_file_contains "$sim_calibration_tool" \
+    'ZTE_SIM_CALIBRATION_STATE_DIR=.*:-/etc/zte-usb-wifi-manager/sim-calibration}'
+assert_file_contains "$sim_calibration_tool" \
+    'ZTE_SIM_CALIBRATION_LOCK_DIR=.*:-/etc/zte-usb-wifi-manager/sim-calibration\.lock}'
+assert_file_contains "$sim_calibration_tool" \
+    'ZTE_SIM_CALIBRATION_SYNC=.*:-/bin/sync}'
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
@@ -126,6 +189,16 @@ assert_file_contains README.md 'hardware Power Adapter'
 # shellcheck disable=SC2016
 assert_file_contains README.md '默认仍以 `calibrated=0` 锁定'
 assert_file_contains README.md 'zte-usb-power-calibrate'
+assert_file_contains README.md '^### 备用 U25S SIM 写接口校准$'
+assert_file_contains README.md \
+    '/usr/libexec/zte-u25s-sim-calibrate probe'
+assert_file_contains README.md \
+    '/usr/libexec/zte-u25s-sim-calibrate execute I_AM_ON_SPARE_U25S <不同目标>'
+assert_file_contains README.md \
+    '/usr/libexec/zte-u25s-sim-calibrate recover'
+assert_file_contains README.md '只能在备用 U25S'
+assert_file_contains README.md \
+    '当前 backend r5 / LuCI r3 的真实 SDK 构建'
 assert_file_contains README.md 'zte-usb-soak'
 assert_file_contains README.md '原子动作队列'
 assert_file_contains README.md '加速稳定性测试'

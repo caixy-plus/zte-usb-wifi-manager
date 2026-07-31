@@ -1,0 +1,746 @@
+#!/bin/sh
+set -eu
+
+if [ "${0##*/}" = zte-u25s-sim-calibrate ]; then
+	_zte_sim_calibration_cli_uid=$(/usr/bin/id -u 2>/dev/null) || exit 1
+	[ "$_zte_sim_calibration_cli_uid" = 0 ] || exit 1
+fi
+
+ZTE_SIM_CALIBRATION_LIB_DIR=${ZTE_SIM_CALIBRATION_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+ZTE_SIM_CALIBRATION_CREDENTIAL_FILE=${ZTE_SIM_CALIBRATION_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/credentials}
+ZTE_SIM_CALIBRATION_HOST=${ZTE_SIM_CALIBRATION_HOST:-192.168.0.1}
+ZTE_SIM_CALIBRATION_COOKIE_FILE=${ZTE_SIM_CALIBRATION_COOKIE_FILE:-/var/run/zte-usb-wifi-manager/sim-calibration.cookies}
+ZTE_SIM_CALIBRATION_STATE_DIR=${ZTE_SIM_CALIBRATION_STATE_DIR:-/etc/zte-usb-wifi-manager/sim-calibration}
+ZTE_SIM_CALIBRATION_LOCK_DIR=${ZTE_SIM_CALIBRATION_LOCK_DIR:-/etc/zte-usb-wifi-manager/sim-calibration.lock}
+ZTE_SIM_CALIBRATION_MANAGER_SERVICE=${ZTE_SIM_CALIBRATION_MANAGER_SERVICE:-/etc/init.d/zte-usb-wifi-manager}
+ZTE_SIM_CALIBRATION_SYNC=${ZTE_SIM_CALIBRATION_SYNC:-/bin/sync}
+ZTE_SIM_CALIBRATION_STOP_ATTEMPTS=${ZTE_SIM_CALIBRATION_STOP_ATTEMPTS:-10}
+ZTE_SIM_CALIBRATION_STOP_INTERVAL=${ZTE_SIM_CALIBRATION_STOP_INTERVAL:-1}
+
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/validation.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/json.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/credentials.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/http.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/session.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/adapter-zte-u25s-metadata.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/adapter-zte-u25s.sh"
+. "$ZTE_SIM_CALIBRATION_LIB_DIR/action-executor.sh"
+
+zte_sim_calibration_active_target() {
+	case ${1-} in
+		0) printf '%s\n' physical ;;
+		1) printf '%s\n' sim1 ;;
+		2) printf '%s\n' sim2 ;;
+		3) printf '%s\n' sim3 ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_sim_calibration_require_root() {
+	_zte_sim_calibration_uid=$(/usr/bin/id -u 2>/dev/null) || return 1
+	[ "$_zte_sim_calibration_uid" = 0 ]
+}
+
+zte_sim_calibration_read_ready_target() {
+	_zte_sim_calibration_read_password=$1
+	_zte_sim_calibration_raw=$(
+		zte_adapter_fetch "$ZTE_SIM_CALIBRATION_HOST" \
+			"$_zte_sim_calibration_read_password" \
+			"$ZTE_SIM_CALIBRATION_COOKIE_FILE"
+	) || return 1
+	zte_json_is_flat_object "$_zte_sim_calibration_raw" || return 1
+
+	for _zte_sim_calibration_field in \
+		simcard_active_slot_temp mc_modem_main_state \
+		network_provider_fullname ppp_status; do
+		zte_json_flat_has "$_zte_sim_calibration_raw" \
+			"$_zte_sim_calibration_field" || return 1
+	done
+
+	_zte_sim_calibration_read_target=$(zte_sim_calibration_active_target \
+		"$(zte_json_flat_get "$_zte_sim_calibration_raw" \
+			simcard_active_slot_temp)") || return 1
+	[ "$(zte_json_flat_get "$_zte_sim_calibration_raw" \
+		mc_modem_main_state)" = connected ] || return 1
+	_zte_sim_calibration_provider=$(zte_json_flat_get \
+		"$_zte_sim_calibration_raw" network_provider_fullname)
+	case $_zte_sim_calibration_provider in
+		*[![:space:]]*) ;;
+		*) return 1 ;;
+	esac
+	[ "$(zte_json_flat_get "$_zte_sim_calibration_raw" \
+		ppp_status)" = ipv4_ipv6_connected ] || return 1
+
+	printf '%s\n' "$_zte_sim_calibration_read_target"
+}
+
+zte_sim_calibration_probe() {
+	zte_sim_calibration_require_root || return 1
+	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" || return 1
+	_zte_sim_calibration_password=$(
+		zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
+	) || return 1
+	_zte_sim_calibration_target=$(
+		zte_sim_calibration_read_ready_target \
+			"$_zte_sim_calibration_password"
+	) || return 1
+	printf '%s\n' \
+		"{\"ok\":true,\"mode\":\"probe\",\"active_target\":\"$_zte_sim_calibration_target\",\"modem_ready\":true,\"network_registered\":true,\"ppp_ready\":true}"
+}
+
+zte_sim_calibration_target_valid() {
+	case ${1-} in
+		physical|sim1|sim2|sim3) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_sim_calibration_stop_settings_valid() {
+	zte_is_uint "$ZTE_SIM_CALIBRATION_STOP_ATTEMPTS" &&
+		[ "$ZTE_SIM_CALIBRATION_STOP_ATTEMPTS" -ge 1 ] &&
+		[ "$ZTE_SIM_CALIBRATION_STOP_ATTEMPTS" -le 120 ] &&
+		zte_is_uint "$ZTE_SIM_CALIBRATION_STOP_INTERVAL" &&
+		[ "$ZTE_SIM_CALIBRATION_STOP_INTERVAL" -le 60 ]
+}
+
+zte_sim_calibration_state_dir_root_owned() {
+	zte_sim_calibration_path_root_owned "$ZTE_SIM_CALIBRATION_STATE_DIR"
+}
+
+zte_sim_calibration_path_root_owned() {
+	[ "$(zte_file_owner_uid "$1")" = 0 ]
+}
+
+zte_sim_calibration_state_dir_secure() {
+	[ -d "$ZTE_SIM_CALIBRATION_STATE_DIR" ] &&
+		[ ! -L "$ZTE_SIM_CALIBRATION_STATE_DIR" ] &&
+		[ "$(zte_file_mode "$ZTE_SIM_CALIBRATION_STATE_DIR")" = 700 ] &&
+		zte_sim_calibration_state_dir_root_owned
+}
+
+zte_sim_calibration_lock_secure() {
+	[ -d "$ZTE_SIM_CALIBRATION_LOCK_DIR" ] &&
+		[ ! -L "$ZTE_SIM_CALIBRATION_LOCK_DIR" ] &&
+		[ "$(zte_file_mode "$ZTE_SIM_CALIBRATION_LOCK_DIR")" = 700 ] &&
+		zte_sim_calibration_path_root_owned \
+			"$ZTE_SIM_CALIBRATION_LOCK_DIR"
+}
+
+zte_sim_calibration_state_file_secure() {
+	_zte_sim_calibration_state_file=$ZTE_SIM_CALIBRATION_STATE_DIR/state.json
+	[ -f "$_zte_sim_calibration_state_file" ] &&
+		[ ! -L "$_zte_sim_calibration_state_file" ] &&
+		[ "$(zte_file_mode "$_zte_sim_calibration_state_file")" = 600 ] &&
+		zte_sim_calibration_path_root_owned \
+			"$_zte_sim_calibration_state_file"
+}
+
+zte_sim_calibration_dir_entry_count() {
+	find "$1" -mindepth 1 -maxdepth 1 -print 2>/dev/null |
+		wc -l | tr -d ' '
+}
+
+zte_sim_calibration_load_state() {
+	zte_sim_calibration_lock_secure || return 1
+	zte_sim_calibration_state_dir_secure || return 1
+	zte_sim_calibration_state_file_secure || return 1
+	[ "$(zte_sim_calibration_dir_entry_count \
+		"$ZTE_SIM_CALIBRATION_STATE_DIR")" = 1 ] || return 1
+	_zte_sim_calibration_state_file=$ZTE_SIM_CALIBRATION_STATE_DIR/state.json
+	_zte_sim_calibration_state_lines=$(
+		wc -l <"$_zte_sim_calibration_state_file" | tr -d ' '
+	) || return 1
+	[ "$_zte_sim_calibration_state_lines" = 1 ] || return 1
+	IFS= read -r _zte_sim_calibration_state_json \
+		<"$_zte_sim_calibration_state_file" || return 1
+	_zte_sim_calibration_state_bytes=$(
+		wc -c <"$_zte_sim_calibration_state_file" | tr -d ' '
+	) || return 1
+	[ "$_zte_sim_calibration_state_bytes" -eq \
+		$((${#_zte_sim_calibration_state_json} + 1)) ] || return 1
+
+	case $_zte_sim_calibration_state_json in
+		'{"original_target":null,"manager_was_running":true}')
+			_zte_sim_calibration_loaded_original=null
+			_zte_sim_calibration_loaded_manager=true
+			;;
+		'{"original_target":null,"manager_was_running":false}')
+			_zte_sim_calibration_loaded_original=null
+			_zte_sim_calibration_loaded_manager=false
+			;;
+		'{"original_target":"physical","manager_was_running":true}')
+			_zte_sim_calibration_loaded_original=physical
+			_zte_sim_calibration_loaded_manager=true
+			;;
+		'{"original_target":"physical","manager_was_running":false}')
+			_zte_sim_calibration_loaded_original=physical
+			_zte_sim_calibration_loaded_manager=false
+			;;
+		'{"original_target":"sim1","manager_was_running":true}')
+			_zte_sim_calibration_loaded_original=sim1
+			_zte_sim_calibration_loaded_manager=true
+			;;
+		'{"original_target":"sim1","manager_was_running":false}')
+			_zte_sim_calibration_loaded_original=sim1
+			_zte_sim_calibration_loaded_manager=false
+			;;
+		'{"original_target":"sim2","manager_was_running":true}')
+			_zte_sim_calibration_loaded_original=sim2
+			_zte_sim_calibration_loaded_manager=true
+			;;
+		'{"original_target":"sim2","manager_was_running":false}')
+			_zte_sim_calibration_loaded_original=sim2
+			_zte_sim_calibration_loaded_manager=false
+			;;
+		'{"original_target":"sim3","manager_was_running":true}')
+			_zte_sim_calibration_loaded_original=sim3
+			_zte_sim_calibration_loaded_manager=true
+			;;
+		'{"original_target":"sim3","manager_was_running":false}')
+			_zte_sim_calibration_loaded_original=sim3
+			_zte_sim_calibration_loaded_manager=false
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+zte_sim_calibration_write_state() {
+	_zte_sim_calibration_state_original=$1
+	_zte_sim_calibration_state_manager=$2
+	_zte_sim_calibration_state_tmp=$ZTE_SIM_CALIBRATION_STATE_DIR/state.json.tmp.$$
+	_zte_sim_calibration_active_state_tmp=$_zte_sim_calibration_state_tmp
+
+	umask 077
+	case $_zte_sim_calibration_state_original in
+		null)
+			_zte_sim_calibration_state_original_json=null
+			;;
+		physical|sim1|sim2|sim3)
+			_zte_sim_calibration_state_original_json="\"$_zte_sim_calibration_state_original\""
+			;;
+		*)
+			_zte_sim_calibration_active_state_tmp=
+			return 1
+			;;
+	esac
+	[ ! -e "$_zte_sim_calibration_state_tmp" ] &&
+		[ ! -L "$_zte_sim_calibration_state_tmp" ] || {
+		_zte_sim_calibration_active_state_tmp=
+		return 1
+	}
+	if ! {
+		printf \
+			'{"original_target":%s,"manager_was_running":%s}\n' \
+			"$_zte_sim_calibration_state_original_json" \
+			"$_zte_sim_calibration_state_manager" \
+			>"$_zte_sim_calibration_state_tmp"
+	} 2>/dev/null; then
+		rm -f "$_zte_sim_calibration_state_tmp"
+		_zte_sim_calibration_active_state_tmp=
+		return 1
+	fi
+	if ! chmod 600 "$_zte_sim_calibration_state_tmp" 2>/dev/null ||
+		! mv "$_zte_sim_calibration_state_tmp" \
+			"$ZTE_SIM_CALIBRATION_STATE_DIR/state.json"; then
+		rm -f "$_zte_sim_calibration_state_tmp"
+		_zte_sim_calibration_active_state_tmp=
+		return 1
+	fi
+	_zte_sim_calibration_active_state_tmp=
+}
+
+zte_sim_calibration_sync_checkpoint() {
+	"$ZTE_SIM_CALIBRATION_SYNC" >/dev/null 2>&1
+}
+
+zte_sim_calibration_cleanup_owned_state() {
+	rm -f "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" 2>/dev/null &&
+		rmdir "$ZTE_SIM_CALIBRATION_STATE_DIR" 2>/dev/null &&
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null
+}
+
+zte_sim_calibration_wait_stopped() {
+	_zte_sim_calibration_stop_attempt=1
+	while [ "$_zte_sim_calibration_stop_attempt" -le \
+		"$ZTE_SIM_CALIBRATION_STOP_ATTEMPTS" ]; do
+		if ! "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" running \
+			>/dev/null 2>&1; then
+			return 0
+		fi
+		if [ "$_zte_sim_calibration_stop_attempt" -lt \
+			"$ZTE_SIM_CALIBRATION_STOP_ATTEMPTS" ]; then
+			sleep "$ZTE_SIM_CALIBRATION_STOP_INTERVAL"
+		fi
+		_zte_sim_calibration_stop_attempt=$((_zte_sim_calibration_stop_attempt + 1))
+	done
+	return 1
+}
+
+_zte_sim_calibration_traps_armed=0
+_zte_sim_calibration_recovery_attempted=0
+_zte_sim_calibration_active_state_tmp=
+_zte_sim_calibration_owned_state_dir=0
+
+zte_sim_calibration_clear_traps() {
+	trap - 0 1 2 15
+	_zte_sim_calibration_traps_armed=0
+}
+
+zte_sim_calibration_disarm_traps() {
+	if [ "$_zte_sim_calibration_traps_armed" = 1 ]; then
+		zte_sim_calibration_clear_traps
+	fi
+	_zte_sim_calibration_owned_state_dir=0
+}
+
+zte_sim_calibration_attempt_automatic_recovery() {
+	[ "$_zte_sim_calibration_recovery_attempted" = 0 ] || return 1
+	_zte_sim_calibration_recovery_attempted=1
+	zte_sim_calibration_recover_after_interruption >/dev/null
+}
+
+zte_sim_calibration_on_exit() {
+	_zte_sim_calibration_exit_status=$?
+	[ "$_zte_sim_calibration_traps_armed" = 1 ] ||
+		exit "$_zte_sim_calibration_exit_status"
+	zte_sim_calibration_clear_traps
+	if zte_sim_calibration_attempt_automatic_recovery; then
+		_zte_sim_calibration_owned_state_dir=0
+		exit "$_zte_sim_calibration_exit_status"
+	fi
+	_zte_sim_calibration_owned_state_dir=0
+	printf '%s\n' automatic_recovery_failed
+	exit 1
+}
+
+zte_sim_calibration_on_signal() {
+	_zte_sim_calibration_signal_status=$1
+	zte_sim_calibration_clear_traps
+	if zte_sim_calibration_attempt_automatic_recovery; then
+		_zte_sim_calibration_owned_state_dir=0
+		exit "$_zte_sim_calibration_signal_status"
+	fi
+	_zte_sim_calibration_owned_state_dir=0
+	printf '%s\n' automatic_recovery_failed
+	exit 1
+}
+
+zte_sim_calibration_arm_traps() {
+	_zte_sim_calibration_recovery_attempted=0
+	_zte_sim_calibration_traps_armed=1
+	trap zte_sim_calibration_on_exit 0
+	trap 'zte_sim_calibration_on_signal 129' 1
+	trap 'zte_sim_calibration_on_signal 130' 2
+	trap 'zte_sim_calibration_on_signal 143' 15
+}
+
+zte_sim_calibration_handle_write_failure() {
+	_zte_sim_calibration_action_failure=$1
+	zte_sim_calibration_clear_traps
+	if zte_sim_calibration_attempt_automatic_recovery; then
+		_zte_sim_calibration_owned_state_dir=0
+		printf '%s\n' "$_zte_sim_calibration_action_failure"
+		return 1
+	fi
+	_zte_sim_calibration_owned_state_dir=0
+	printf '%s\n' automatic_recovery_failed
+	return 1
+}
+
+zte_sim_calibration_fail_after_state() {
+	_zte_sim_calibration_failure_code=$1
+	_zte_sim_calibration_failure_manager=$_zte_sim_calibration_manager_was_running
+	zte_sim_calibration_finalize_owned_state \
+		"$_zte_sim_calibration_failure_manager" >/dev/null 2>&1 || :
+	printf '%s\n' "$_zte_sim_calibration_failure_code"
+	return 1
+}
+
+zte_sim_calibration_recover_after_interruption() {
+	zte_sim_calibration_lock_secure || return 1
+	if [ "$_zte_sim_calibration_owned_state_dir" != 1 ]; then
+		[ "$(zte_sim_calibration_dir_entry_count \
+			"$ZTE_SIM_CALIBRATION_LOCK_DIR")" = 0 ] || return 1
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null
+		return $?
+	fi
+	if [ ! -e "$ZTE_SIM_CALIBRATION_STATE_DIR" ] &&
+		[ ! -L "$ZTE_SIM_CALIBRATION_STATE_DIR" ]; then
+		[ "$(zte_sim_calibration_dir_entry_count \
+			"$ZTE_SIM_CALIBRATION_LOCK_DIR")" = 0 ] || return 1
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null
+		return $?
+	fi
+	zte_sim_calibration_state_dir_secure || return 1
+	if [ -n "$_zte_sim_calibration_active_state_tmp" ]; then
+		[ "$_zte_sim_calibration_active_state_tmp" = \
+			"$ZTE_SIM_CALIBRATION_STATE_DIR/state.json.tmp.$$" ] ||
+			return 1
+		if [ -e "$_zte_sim_calibration_active_state_tmp" ] ||
+			[ -L "$_zte_sim_calibration_active_state_tmp" ]; then
+			[ -f "$_zte_sim_calibration_active_state_tmp" ] &&
+				[ ! -L "$_zte_sim_calibration_active_state_tmp" ] &&
+				[ "$(zte_file_mode \
+					"$_zte_sim_calibration_active_state_tmp")" = 600 ] &&
+				zte_sim_calibration_path_root_owned \
+					"$_zte_sim_calibration_active_state_tmp" ||
+				return 1
+			rm -f "$_zte_sim_calibration_active_state_tmp" \
+				2>/dev/null || return 1
+		fi
+		_zte_sim_calibration_active_state_tmp=
+	fi
+	if [ -e "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" ] ||
+		[ -L "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" ]; then
+		zte_sim_calibration_recover_owned_state
+		return $?
+	fi
+	[ "$(zte_sim_calibration_dir_entry_count \
+		"$ZTE_SIM_CALIBRATION_STATE_DIR")" = 0 ] || return 1
+	[ "$(zte_sim_calibration_dir_entry_count \
+		"$ZTE_SIM_CALIBRATION_LOCK_DIR")" = 0 ] || return 1
+	rmdir "$ZTE_SIM_CALIBRATION_STATE_DIR" 2>/dev/null &&
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null
+}
+
+zte_sim_calibration_ensure_secure_dir() {
+	_zte_sim_calibration_ensure_path=$1
+	if [ -e "$_zte_sim_calibration_ensure_path" ] ||
+		[ -L "$_zte_sim_calibration_ensure_path" ]; then
+		[ -d "$_zte_sim_calibration_ensure_path" ] &&
+			[ ! -L "$_zte_sim_calibration_ensure_path" ] &&
+			[ "$(zte_file_mode \
+				"$_zte_sim_calibration_ensure_path")" = 700 ] &&
+			zte_sim_calibration_path_root_owned \
+				"$_zte_sim_calibration_ensure_path"
+		return $?
+	fi
+	umask 077
+	mkdir "$_zte_sim_calibration_ensure_path" 2>/dev/null &&
+		chmod 700 "$_zte_sim_calibration_ensure_path" 2>/dev/null &&
+		zte_sim_calibration_path_root_owned \
+			"$_zte_sim_calibration_ensure_path"
+}
+
+zte_sim_calibration_preserve_null_state() {
+	_zte_sim_calibration_preserve_manager=$1
+	if "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" running \
+		>/dev/null 2>&1; then
+		"$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" stop \
+			>/dev/null 2>&1 || :
+		zte_sim_calibration_wait_stopped || return 1
+	fi
+
+	zte_sim_calibration_ensure_secure_dir \
+		"$ZTE_SIM_CALIBRATION_LOCK_DIR" || return 1
+	[ "$(zte_sim_calibration_dir_entry_count \
+		"$ZTE_SIM_CALIBRATION_LOCK_DIR")" = 0 ] || return 1
+	zte_sim_calibration_ensure_secure_dir \
+		"$ZTE_SIM_CALIBRATION_STATE_DIR" || return 1
+
+	if [ -e "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" ] ||
+		[ -L "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" ]; then
+		[ "$(zte_sim_calibration_dir_entry_count \
+			"$ZTE_SIM_CALIBRATION_STATE_DIR")" = 1 ] || return 1
+		zte_sim_calibration_load_state || return 1
+		[ "$_zte_sim_calibration_loaded_original" = null ] &&
+			[ "$_zte_sim_calibration_loaded_manager" = \
+				"$_zte_sim_calibration_preserve_manager" ] &&
+			zte_sim_calibration_sync_checkpoint
+		return $?
+	fi
+	[ "$(zte_sim_calibration_dir_entry_count \
+		"$ZTE_SIM_CALIBRATION_STATE_DIR")" = 0 ] || return 1
+	zte_sim_calibration_write_state \
+		null "$_zte_sim_calibration_preserve_manager" &&
+		zte_sim_calibration_sync_checkpoint
+}
+
+zte_sim_calibration_recover_owned_state() {
+	zte_sim_calibration_stop_settings_valid || {
+		printf '%s\n' invalid_stop_settings
+		return 1
+	}
+	zte_sim_calibration_load_state || {
+		printf '%s\n' invalid_state
+		return 1
+	}
+	_zte_sim_calibration_recovery_original=$_zte_sim_calibration_loaded_original
+	_zte_sim_calibration_recovery_manager=$_zte_sim_calibration_loaded_manager
+	_zte_sim_calibration_recovery_claim=$ZTE_SIM_CALIBRATION_LOCK_DIR/recovery-active
+	[ "$(zte_sim_calibration_dir_entry_count \
+		"$ZTE_SIM_CALIBRATION_LOCK_DIR")" = 0 ] || {
+		printf '%s\n' recovery_busy
+		return 1
+	}
+	if ! mkdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null; then
+		printf '%s\n' recovery_busy
+		return 1
+	fi
+	if ! chmod 700 "$_zte_sim_calibration_recovery_claim" 2>/dev/null; then
+		rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
+		printf '%s\n' recovery_busy
+		return 1
+	fi
+
+	if "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" running \
+		>/dev/null 2>&1; then
+		_zte_sim_calibration_recovery_stop_status=0
+		"$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" stop \
+			>/dev/null 2>&1 ||
+			_zte_sim_calibration_recovery_stop_status=$?
+		if [ "$_zte_sim_calibration_recovery_stop_status" -ne 0 ] ||
+			! zte_sim_calibration_wait_stopped; then
+			rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
+			printf '%s\n' recovery_stop_failed
+			return 1
+		fi
+	fi
+
+	_zte_sim_calibration_original_restored=false
+	if [ "$_zte_sim_calibration_recovery_original" != null ]; then
+		_zte_sim_calibration_recovery_password=$(
+			zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
+		) || {
+			rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
+			printf '%s\n' credentials_missing
+			return 1
+		}
+		if ! zte_execute_switch_sim \
+			"$ZTE_SIM_CALIBRATION_HOST" \
+			"$_zte_sim_calibration_recovery_password" \
+			"$ZTE_SIM_CALIBRATION_COOKIE_FILE" \
+			"$_zte_sim_calibration_recovery_original" >/dev/null; then
+			rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
+			printf '%s\n' recovery_switch_failed
+			return 1
+		fi
+		_zte_sim_calibration_original_restored=true
+		if ! zte_sim_calibration_write_state \
+			null "$_zte_sim_calibration_recovery_manager"; then
+			rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
+			printf '%s\n' state_write_failed
+			return 1
+		fi
+	fi
+
+	if ! zte_sim_calibration_sync_checkpoint; then
+		rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
+		printf '%s\n' state_sync_failed
+		return 1
+	fi
+	if ! rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null; then
+		rmdir "$_zte_sim_calibration_recovery_claim" 2>/dev/null || :
+		zte_sim_calibration_preserve_null_state \
+			"$_zte_sim_calibration_recovery_manager" || :
+		printf '%s\n' cleanup_failed
+		return 1
+	fi
+	if ! zte_sim_calibration_cleanup_owned_state; then
+		zte_sim_calibration_preserve_null_state \
+			"$_zte_sim_calibration_recovery_manager" || :
+		printf '%s\n' cleanup_failed
+		return 1
+	fi
+	if [ "$_zte_sim_calibration_recovery_manager" = true ] &&
+		! "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" start \
+			>/dev/null 2>&1; then
+		zte_sim_calibration_preserve_null_state \
+			"$_zte_sim_calibration_recovery_manager" || :
+		printf '%s\n' manager_restore_failed
+		return 1
+	fi
+	printf \
+		'{"ok":true,"mode":"recover","original_restored":%s,"manager_restored":true}\n' \
+		"$_zte_sim_calibration_original_restored"
+}
+
+zte_sim_calibration_finalize_owned_state() {
+	_zte_sim_calibration_finalize_manager=$1
+	if ! zte_sim_calibration_write_state \
+		null "$_zte_sim_calibration_finalize_manager"; then
+		if [ -d "$ZTE_SIM_CALIBRATION_STATE_DIR" ] &&
+			[ ! -L "$ZTE_SIM_CALIBRATION_STATE_DIR" ] &&
+			zte_sim_calibration_state_dir_root_owned &&
+			chmod 700 "$ZTE_SIM_CALIBRATION_STATE_DIR" &&
+			zte_sim_calibration_load_state &&
+			zte_sim_calibration_write_state \
+				null "$_zte_sim_calibration_finalize_manager"; then
+			:
+		else
+			zte_sim_calibration_disarm_traps
+			printf '%s\n' state_write_failed
+			return 1
+		fi
+	fi
+	zte_sim_calibration_disarm_traps
+	zte_sim_calibration_recover_owned_state
+}
+
+zte_sim_calibration_recover() {
+	zte_sim_calibration_require_root || return 1
+	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" || return 1
+	[ -x "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" ] || return 1
+	zte_sim_calibration_stop_settings_valid || return 1
+	zte_sim_calibration_recover_owned_state
+}
+
+zte_sim_calibration_execute() {
+	_zte_sim_calibration_confirmation=${1-}
+	_zte_sim_calibration_requested=${2-}
+
+	zte_sim_calibration_require_root || return 1
+	[ "$_zte_sim_calibration_confirmation" = I_AM_ON_SPARE_U25S ] ||
+		return 2
+	zte_sim_calibration_target_valid \
+		"$_zte_sim_calibration_requested" || return 2
+	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" || return 1
+	[ -x "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" ] || return 1
+	zte_sim_calibration_stop_settings_valid || return 1
+	_zte_sim_calibration_password=$(
+		zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
+	) || return 1
+
+	_zte_sim_calibration_owned_state_dir=0
+	umask 077
+	mkdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null || return 1
+	if ! chmod 700 "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null ||
+		! zte_sim_calibration_lock_secure; then
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	fi
+	zte_sim_calibration_arm_traps
+
+	if [ -e "$ZTE_SIM_CALIBRATION_STATE_DIR" ] ||
+		[ -L "$ZTE_SIM_CALIBRATION_STATE_DIR" ]; then
+		zte_sim_calibration_disarm_traps
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	fi
+	if ! mkdir "$ZTE_SIM_CALIBRATION_STATE_DIR" 2>/dev/null ||
+		! chmod 700 "$ZTE_SIM_CALIBRATION_STATE_DIR" 2>/dev/null ||
+		! zte_sim_calibration_state_dir_secure; then
+		zte_sim_calibration_disarm_traps
+		rmdir "$ZTE_SIM_CALIBRATION_STATE_DIR" 2>/dev/null || :
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+			return 1
+		fi
+	_zte_sim_calibration_owned_state_dir=1
+
+	_zte_sim_calibration_manager_was_running=false
+	if "$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" running \
+		>/dev/null 2>&1; then
+		_zte_sim_calibration_manager_was_running=true
+	fi
+
+	if ! zte_sim_calibration_write_state \
+		null \
+		"$_zte_sim_calibration_manager_was_running"; then
+		zte_sim_calibration_disarm_traps
+		rm -f "$ZTE_SIM_CALIBRATION_STATE_DIR/state.json" 2>/dev/null || :
+		rmdir "$ZTE_SIM_CALIBRATION_STATE_DIR" 2>/dev/null || :
+		rmdir "$ZTE_SIM_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	fi
+
+	_zte_sim_calibration_manager_stopped=false
+	if [ "$_zte_sim_calibration_manager_was_running" = true ]; then
+		_zte_sim_calibration_stop_status=0
+		"$ZTE_SIM_CALIBRATION_MANAGER_SERVICE" stop \
+			>/dev/null 2>&1 ||
+			_zte_sim_calibration_stop_status=$?
+		if zte_sim_calibration_wait_stopped; then
+			_zte_sim_calibration_manager_stopped=true
+		fi
+		if [ "$_zte_sim_calibration_stop_status" -ne 0 ]; then
+			zte_sim_calibration_fail_after_state \
+				manager_stop_failed \
+				"$_zte_sim_calibration_manager_stopped"
+			return $?
+		fi
+		if [ "$_zte_sim_calibration_manager_stopped" != true ]; then
+			zte_sim_calibration_fail_after_state \
+				manager_stop_timeout false
+			return $?
+		fi
+	fi
+
+	_zte_sim_calibration_original=$(
+		zte_sim_calibration_read_ready_target \
+			"$_zte_sim_calibration_password"
+	) || {
+		zte_sim_calibration_fail_after_state read_failed \
+			"$_zte_sim_calibration_manager_stopped"
+		return $?
+	}
+	if ! zte_sim_calibration_write_state \
+		"$_zte_sim_calibration_original" \
+		"$_zte_sim_calibration_manager_was_running"; then
+		zte_sim_calibration_fail_after_state state_write_failed \
+			"$_zte_sim_calibration_manager_stopped"
+		return $?
+	fi
+	if ! zte_sim_calibration_sync_checkpoint; then
+		zte_sim_calibration_disarm_traps
+		printf '%s\n' state_sync_failed
+		return 1
+	fi
+	if [ "$_zte_sim_calibration_original" = \
+		"$_zte_sim_calibration_requested" ]; then
+		zte_sim_calibration_fail_after_state same_target \
+			"$_zte_sim_calibration_manager_stopped"
+		return $?
+	fi
+
+	if ! zte_execute_switch_sim \
+		"$ZTE_SIM_CALIBRATION_HOST" \
+		"$_zte_sim_calibration_password" \
+		"$ZTE_SIM_CALIBRATION_COOKIE_FILE" \
+		"$_zte_sim_calibration_requested" >/dev/null; then
+		zte_sim_calibration_handle_write_failure switch_target_failed
+		return $?
+	fi
+	if ! zte_execute_switch_sim \
+		"$ZTE_SIM_CALIBRATION_HOST" \
+		"$_zte_sim_calibration_password" \
+		"$ZTE_SIM_CALIBRATION_COOKIE_FILE" \
+		"$_zte_sim_calibration_original" >/dev/null; then
+		zte_sim_calibration_handle_write_failure restore_failed
+		return $?
+	fi
+
+	if ! zte_sim_calibration_finalize_owned_state \
+		"$_zte_sim_calibration_manager_was_running" >/dev/null; then
+		printf '%s\n' cleanup_failed
+		return 1
+	fi
+
+	printf '%s\n' \
+		"{\"ok\":true,\"mode\":\"execute\",\"target\":\"$_zte_sim_calibration_requested\",\"target_verified\":true,\"original_restored\":true}"
+}
+
+zte_sim_calibration_main() {
+	case ${1-} in
+		probe)
+			[ "$#" -eq 1 ] || return 2
+			zte_sim_calibration_probe
+			;;
+		execute)
+			[ "$#" -eq 3 ] || return 2
+			zte_sim_calibration_execute "$2" "$3"
+			;;
+		recover)
+			[ "$#" -eq 1 ] || return 2
+			zte_sim_calibration_recover
+			;;
+		*)
+			return 2
+			;;
+	esac
+}
+
+if [ "${0##*/}" = zte-u25s-sim-calibrate ]; then
+	zte_sim_calibration_main "$@"
+fi

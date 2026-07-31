@@ -138,12 +138,12 @@ IFS= read -r sdk_dir <"$sdk_list"
 
 case $format in
     apk)
-        backend_pattern='zte-usb-wifi-manager-0.1.0_rc1-r5.apk'
+        backend_pattern='zte-usb-wifi-manager-0.1.0_rc1-r6.apk'
         luci_pattern='luci-app-zte-usb-wifi-manager-0.1.0_rc1-r3.apk'
         package_architecture=noarch
         ;;
     ipk)
-        backend_pattern='zte-usb-wifi-manager_0.1.0_rc1-r5_all.ipk'
+        backend_pattern='zte-usb-wifi-manager_0.1.0_rc1-r6_all.ipk'
         luci_pattern='luci-app-zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk'
         package_architecture=all
         ;;
@@ -188,7 +188,7 @@ case $format in
             grep -Fqx '  name: zte-usb-wifi-manager' ||
             die "$backend_package has unexpected APK metadata"
         printf '%s\n' "$backend_metadata" |
-            grep -Fqx '  version: 0.1.0_rc1-r5' ||
+            grep -Fqx '  version: 0.1.0_rc1-r6' ||
             die "$backend_package has unexpected APK metadata"
         printf '%s\n' "$backend_metadata" |
             grep -Fqx '  arch: noarch' ||
@@ -212,7 +212,7 @@ case $format in
             grep -Fqx 'Package: zte-usb-wifi-manager' ||
             die "$backend_package has unexpected IPK metadata"
         printf '%s\n' "$backend_metadata" |
-            grep -Fqx 'Version: 0.1.0_rc1-r5' ||
+            grep -Fqx 'Version: 0.1.0_rc1-r6' ||
             die "$backend_package has unexpected IPK metadata"
         printf '%s\n' "$backend_metadata" |
             grep -Fqx 'Architecture: all' ||

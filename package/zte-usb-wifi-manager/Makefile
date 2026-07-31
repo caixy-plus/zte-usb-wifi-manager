@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
@@ -32,6 +32,12 @@ endef
 define Package/zte-usb-wifi-manager/prerm
 #!/bin/sh
 if [ -z "$${IPKG_INSTROOT}" ]; then
+	if [ -e /etc/zte-usb-wifi-manager/sim-calibration ] ||
+		[ -L /etc/zte-usb-wifi-manager/sim-calibration ] ||
+		[ -e /etc/zte-usb-wifi-manager/sim-calibration.lock ] ||
+		[ -L /etc/zte-usb-wifi-manager/sim-calibration.lock ]; then
+		exit 1
+	fi
 	/etc/init.d/zte-usb-wifi-manager stop >/dev/null 2>&1 || :
 	stop_attempt=0
 	while /etc/init.d/zte-usb-wifi-manager running \
@@ -59,6 +65,10 @@ define Package/zte-usb-wifi-manager/postrm
 #!/bin/sh
 if [ -z "$${IPKG_INSTROOT}" ]; then
 	if [ ! -e /var/run/zte-usb-wifi-manager/inhibit-recovery ] &&
+		[ ! -e /etc/zte-usb-wifi-manager/sim-calibration ] &&
+		[ ! -L /etc/zte-usb-wifi-manager/sim-calibration ] &&
+		[ ! -e /etc/zte-usb-wifi-manager/sim-calibration.lock ] &&
+		[ ! -L /etc/zte-usb-wifi-manager/sim-calibration.lock ] &&
 		[ ! -d /var/run/zte-usb-wifi-manager/actions/power-transition ]; then
 		rm -rf /var/run/zte-usb-wifi-manager
 	fi

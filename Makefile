@@ -16,6 +16,7 @@ test:
 		tests/test_u25s_simulator.sh \
 		tests/test_actions.sh \
 		tests/test_action_executor.sh \
+		tests/test_sim_calibration.sh \
 		tests/test_daemon_actions.sh \
 		tests/test_daemon_power_cycle.sh \
 		tests/test_power_adapter.sh \

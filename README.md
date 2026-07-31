@@ -61,6 +61,10 @@
 当前 backend r5 / LuCI r3 的真实 SDK 构建、运行中重装和卸载证据见
 [验证记录](docs/validation/2026-07-31-r5-r3-qemu.md)。
 
+backend r6 的预发布入口预留为 `v0.1.0-rc1-r6`；只有维护者显式创建并推送该
+tag 时才会触发 prerelease 工作流。当前说明不代表 r6 已完成 SDK 构建或 QEMU
+安装验证，验证完成前仍以上述 r5 / r3 记录为最新构建证据。
+
 两个包均为纯脚本和静态资源，发布时标记为 `all` 架构。这里的 `all` 只表示不受
 CPU 架构限制，不表示可以跨 OpenWrt 软件包格式或发行系列安装。未列出的 OpenWrt
 版本目前不受支持，请勿强制安装。
@@ -233,6 +237,42 @@ uci commit zte-usb-wifi-manager
 /etc/init.d/zte-usb-wifi-manager restart
 ```
 
+### 备用 U25S SIM 写接口校准
+
+以下命令只能在备用 U25S 上执行，不能用于主路由器或任何正在承担上网任务的设备。
+`execute` 会真实切换 SIM 卡槽，完成验证后自动切回原槽。
+
+先确认设备状态可读并记录当前活动目标：
+
+```sh
+/usr/libexec/zte-u25s-sim-calibrate probe
+```
+
+确认连接的是备用 U25S 后，选择一个不同于当前活动目标的
+`physical`、`sim1`、`sim2` 或 `sim3`：
+
+```sh
+/usr/libexec/zte-u25s-sim-calibrate execute I_AM_ON_SPARE_U25S <不同目标>
+```
+
+如果执行、恢复或清理失败，工具会保持 manager stopped，并保留 canonical state
+和 calibration lock，避免在恢复状态不明确时继续访问设备。修复外部条件后使用
+有界重试恢复原槽和 manager 状态：
+
+```sh
+/usr/libexec/zte-u25s-sim-calibrate recover
+```
+
+恢复记录与锁分别持久保存在
+`/etc/zte-usb-wifi-manager/sim-calibration` 和
+`/etc/zte-usb-wifi-manager/sim-calibration.lock`，目录权限为 `0700`、状态文件
+权限为 `0600`，并在真实切卡前和清理前使用 `/bin/sync` 落盘。路由器重启后只要
+任一恢复路径仍存在（包括符号链接），init 就会拒绝启动 manager 和 recovery
+coordinator；必须人工运行上述 `recover`，不会自动触发真实切卡。
+
+校准工具不改变生产 capability；`ZTE_CAP_SIM_SWITCH=0` 仍保持关闭。只有备用
+U25S 实机验收全部通过后，才会在后续独立变更中开放生产 SIM 切换能力。
+
 ### 72 小时稳定性验收
 
 备用硬件校准通过后，在路由器运行：
@@ -293,9 +333,13 @@ OpenWrt 24.10.7 生成 `.ipk`。编译环境路径中不要包含空格，也不
 
 ### 卸载
 
-包管理器会先停止管理器并运行 `/usr/libexec/zte-usb-power-restore`。如果无法
-确认 USB 已恢复上电或恢复服务状态已处理，卸载会失败并保留运行时安全标记，
-避免把设备留在无协调的断电状态。
+包管理器会先检查 SIM 校准恢复状态；如果
+`/etc/zte-usb-wifi-manager/sim-calibration` 或
+`/etc/zte-usb-wifi-manager/sim-calibration.lock` 仍存在，升级或卸载会 fail-closed，
+且不会自动调用真实 SIM `recover`。请先按“备用 U25S SIM 写接口校准”完成有界
+恢复。没有 SIM 恢复状态时，包管理器才会停止管理器并运行
+`/usr/libexec/zte-usb-power-restore`。如果无法确认 USB 已恢复上电或恢复服务
+状态已处理，卸载仍会失败并保留运行时安全标记，避免把设备留在无协调状态。
 
 ```sh
 /etc/init.d/zte-usb-wifi-manager stop

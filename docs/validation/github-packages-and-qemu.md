@@ -257,7 +257,7 @@ test ! -e /www/luci-static/resources/view/zte-usb-wifi-manager/index.js
 
 ```sh
 release_dir=$(mktemp -d)
-gh release download v0.1.0-rc1 --dir "$release_dir"
+gh release download v0.1.0-rc1-r6 --dir "$release_dir"
 (cd "$release_dir" && "$sha256sum_cmd" -c SHA256SUMS)
 ```
 

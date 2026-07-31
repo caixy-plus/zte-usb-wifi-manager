@@ -35,13 +35,110 @@ else
     pass
 fi
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r5\\.apk"
+    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r6\\.apk"
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r5_all\\.ipk"
+    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r6_all\\.ipk"
 backend_package_definition="$work/backend-package-definition"
 sed -n '/^define Package\/zte-usb-wifi-manager$/,/^endef$/p' \
     package/zte-usb-wifi-manager/Makefile >"$backend_package_definition"
 assert_file_contains "$backend_package_definition" '  PKGARCH:=all'
+if grep -Fq 'zte-u25s-sim-calibrate recover' \
+    package/zte-usb-wifi-manager/Makefile; then
+    fail 'package hooks must not automatically run real SIM recovery'
+else
+    pass
+fi
+
+# APK and IPK use the same package hooks. Exercise both rendered hook paths:
+# live removal fails closed around either SIM recovery marker, postrm preserves
+# the runtime tree, ordinary removal still cleans it, and staged roots are inert.
+hook_manager="$work/hook-manager"
+hook_restore="$work/hook-power-restore"
+hook_log="$work/hook-log"
+cat >"$hook_manager" <<'EOF'
+#!/bin/sh
+printf 'manager:%s\n' "$1" >>"$HOOK_LOG"
+[ "$1" != running ]
+EOF
+cat >"$hook_restore" <<'EOF'
+#!/bin/sh
+printf '%s\n' power-restore >>"$HOOK_LOG"
+EOF
+chmod +x "$hook_manager" "$hook_restore"
+
+render_package_hook() {
+    hook_name=$1
+    hook_output=$2
+    hook_runtime=$3
+    hook_persistent=$4
+    {
+        printf '%s\n' '#!/bin/sh' 'set -eu'
+        sed -n \
+            "/^define Package\\/zte-usb-wifi-manager\\/$hook_name\$/,/^endef\$/p" \
+            package/zte-usb-wifi-manager/Makefile |
+            sed -e '1d' -e '$d' -e 's/\$\$/\$/g' \
+                -e "s|/etc/zte-usb-wifi-manager|$hook_persistent|g" \
+                -e "s|/var/run/zte-usb-wifi-manager|$hook_runtime|g" \
+                -e "s|/etc/init.d/zte-usb-wifi-manager|$hook_manager|g" \
+                -e "s|/usr/libexec/zte-usb-power-restore|$hook_restore|g"
+    } >"$hook_output"
+    chmod +x "$hook_output"
+}
+
+for hook_format in apk ipk; do
+    hook_runtime="$work/$hook_format-runtime"
+    hook_persistent="$work/$hook_format-persistent"
+    hook_state="$hook_persistent/sim-calibration"
+    hook_lock="$hook_persistent/sim-calibration.lock"
+    hook_prerm="$work/$hook_format-prerm"
+    hook_postrm="$work/$hook_format-postrm"
+    render_package_hook prerm "$hook_prerm" "$hook_runtime" "$hook_persistent"
+    render_package_hook postrm "$hook_postrm" "$hook_runtime" "$hook_persistent"
+
+    : >"$hook_log"
+    mkdir -p "$hook_state"
+    printf '%s\n' keep >"$hook_state/state.json"
+    assert_failure env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_prerm"
+    assert_eq '' "$(cat "$hook_log")"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_postrm"
+    assert_success test -f "$hook_state/state.json"
+
+    rm -rf "$hook_runtime" "$hook_persistent"
+    mkdir -p "$hook_runtime"
+    printf '%s\n' keep >"$hook_runtime/keep"
+    mkdir -p "$hook_persistent"
+    mkdir "$hook_lock"
+    assert_failure env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_prerm"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_postrm"
+    assert_success test -f "$hook_runtime/keep"
+    assert_success test -d "$hook_lock"
+
+    rm -rf "$hook_runtime" "$hook_persistent"
+    mkdir -p "$hook_runtime"
+    printf '%s\n' remove >"$hook_runtime/remove"
+    : >"$hook_log"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_prerm"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_postrm"
+    assert_failure test -e "$hook_runtime"
+
+    mkdir -p "$hook_state" "$hook_lock"
+    printf '%s\n' keep >"$hook_state/state.json"
+    : >"$hook_log"
+    assert_success env HOOK_LOG="$hook_log" \
+        IPKG_INSTROOT="$work/$hook_format-root" sh "$hook_prerm"
+    assert_success env HOOK_LOG="$hook_log" \
+        IPKG_INSTROOT="$work/$hook_format-root" sh "$hook_postrm"
+    assert_eq '' "$(cat "$hook_log")"
+    assert_success test -f "$hook_state/state.json"
+    assert_success test -d "$hook_lock"
+done
+
 # Internal architecture must be read from the built packages, not assumed.
 assert_file_contains "$builder" 'adbdump'
 assert_file_contains "$builder" 'Architecture: all'
@@ -150,7 +247,7 @@ case $(basename "$package_file") in
         ;;
     *)
         package_name=zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r5
+        package_version=0.1.0_rc1-r6
         ;;
 esac
 [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] || package_name=wrong-package
@@ -173,7 +270,7 @@ SCRIPT
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r5
+                package_version=0.1.0_rc1-r6
                 ;;
         esac
         [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] ||
@@ -205,9 +302,9 @@ case " $* " in
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
         [ ! -e package/feeds/packages/curl ] || exit 1
         printf 'apk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r5.apk
+            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r6.apk
         printf 'ipk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r5_all.ipk
+            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r6_all.ipk
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
@@ -260,9 +357,9 @@ assert_failure env PATH="$fake_bin:$PATH" \
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
-printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r5.apk"
+printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r6.apk"
 printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r3.apk"
-printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r5_all.ipk"
+printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r6_all.ipk"
 printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
@@ -335,6 +432,19 @@ if (manifest.project_ref !== "main" || manifest.project_tag !== null ||
     process.exit(1);
 ' "$work/dist" "$source_sha"
 
+assert_success node scripts/assemble-openwrt-packages.js \
+    "$work/incoming" "$work/dist-r6-tag" "$source_sha" v0.1.0-rc1-r6
+assert_success node -e '
+const fs = require("fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[1]));
+if (manifest.project_ref !== "v0.1.0-rc1-r6" ||
+    manifest.project_tag !== "v0.1.0-rc1-r6")
+    process.exit(1);
+' "$work/dist-r6-tag/build-manifest.json"
+assert_failure node scripts/assemble-openwrt-packages.js \
+    "$work/incoming" "$work/dist-old-tag" "$source_sha" v0.1.0-rc1 \
+    >/dev/null 2>&1
+
 : >"$work/incoming/packages-25.12.5/unexpected.txt"
 assert_failure node scripts/assemble-openwrt-packages.js \
     "$work/incoming" "$work/dist-unexpected" "$source_sha" main \
@@ -342,7 +452,7 @@ assert_failure node scripts/assemble-openwrt-packages.js \
 
 rm "$work/incoming/packages-25.12.5/unexpected.txt"
 cp -R "$work/incoming" "$work/wrong-version-incoming"
-mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r5.apk" \
+mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r6.apk" \
     "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-9.9.9-r1.apk"
 node - "$work/wrong-version-incoming/packages-25.12.5/build-manifest.json" <<'NODE'
 const fs = require('fs');
@@ -369,11 +479,24 @@ assert_file_contains "$workflow" 'scripts/build-openwrt-packages\.sh'
 assert_file_contains "$workflow" 'SHA256SUMS'
 assert_file_contains "$workflow" 'gh release create'
 assert_file_contains "$workflow" '\-\-prerelease'
-assert_file_contains "$workflow" "v0\\.1\\.0-rc1"
+assert_file_contains "$workflow" "      - 'v0\\.1\\.0-rc1-r6'"
+if grep -Fqx "      - 'v0.1.0-rc1'" "$workflow"; then
+    fail 'r6 workflow must not publish the historical release tag'
+else
+    pass
+fi
+if grep -Fiq 'read-only developer preview' "$workflow"; then
+    fail 'r6 release notes must not claim the package is read-only'
+else
+    pass
+fi
 assert_file_contains "$workflow" 'scripts/assemble-openwrt-packages\.js'
 assert_file_contains "$workflow" '11d5960a326750d5838078e36cf38b85af677262'
 assert_file_contains "$workflow" 'ea165f8d65b6e75b540449e92b4886f43607fa02'
 assert_file_contains "$workflow" 'd3f86a106a0bac45b974a628896c90dbdf5c8093'
+assert_file_contains docs/validation/github-packages-and-qemu.md \
+    'gh release download v0\.1\.0-rc1-r6'
+assert_file_contains README.md 'v0\.1\.0-rc1-r6'
 
 if grep -Eq 'pull_request:|--force-depends|--force-architecture' \
     "$workflow" 2>/dev/null; then

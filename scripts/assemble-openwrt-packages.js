@@ -16,7 +16,7 @@ const expectedBuilds = {
             '0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c',
         feedsSha256:
             'e11279b01e7fea7f7d399e25e969d9382be6891071cbc1225804195224b27b52',
-        backend: /^zte-usb-wifi-manager-0\.1\.0_rc1-r5\.apk$/,
+        backend: /^zte-usb-wifi-manager-0\.1\.0_rc1-r6\.apk$/,
         luci: /^luci-app-zte-usb-wifi-manager-0\.1\.0_rc1-r3\.apk$/
     },
     '24.10.7': {
@@ -29,7 +29,7 @@ const expectedBuilds = {
             '996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb',
         feedsSha256:
             'fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148',
-        backend: /^zte-usb-wifi-manager_0\.1\.0_rc1-r5_all\.ipk$/,
+        backend: /^zte-usb-wifi-manager_0\.1\.0_rc1-r6_all\.ipk$/,
         luci: /^luci-app-zte-usb-wifi-manager_0\.1\.0_rc1-r3_all\.ipk$/
     }
 };
@@ -107,7 +107,7 @@ function main() {
         die('source commit must be a full 40-character Git SHA');
     if (!/^[A-Za-z0-9._/-]+$/.test(projectRef))
         die('project ref contains unsupported characters');
-    if (projectRef.startsWith('v') && projectRef !== 'v0.1.0-rc1')
+    if (projectRef.startsWith('v') && projectRef !== 'v0.1.0-rc1-r6')
         die(`release tag does not match package version: ${projectRef}`);
 
     const rootEntries = fs.readdirSync(inputDirectory).sort();

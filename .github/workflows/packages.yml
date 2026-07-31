@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v0.1.0-rc1'
+      - 'v0.1.0-rc1-r6'
 
 permissions:
   contents: read
@@ -107,7 +107,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           printf '%s\n' \
-            'Read-only developer preview for OpenWrt 25.12.5 and 24.10.7.' \
+            'Safety-gated developer preview for OpenWrt 25.12.5 and 24.10.7.' \
+            'Backend r6 adds spare-device SIM calibration; production SIM switching remains disabled.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md
