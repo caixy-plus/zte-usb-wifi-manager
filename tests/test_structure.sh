@@ -198,7 +198,13 @@ assert_file_contains README.md \
     '/usr/libexec/zte-u25s-sim-calibrate recover'
 assert_file_contains README.md '只能在备用 U25S'
 assert_file_contains README.md \
-    '当前 backend r5 / LuCI r3 的真实 SDK 构建'
+    '当前 backend r6 / LuCI r3 的真实 SDK 构建'
+assert_file_contains README.md \
+    'docs/validation/2026-07-31-r6-r3-qemu\.md'
+assert_file_contains docs/validation/2026-07-31-r6-r3-qemu.md \
+    '30607714699'
+assert_file_contains docs/validation/2026-07-31-r6-r3-qemu.md \
+    'd6dc45fb1c5e1d88f0043aacb379b0a3c8763b65'
 assert_file_contains README.md 'zte-usb-soak'
 assert_file_contains README.md '原子动作队列'
 assert_file_contains README.md '加速稳定性测试'
