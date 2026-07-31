@@ -138,13 +138,13 @@ IFS= read -r sdk_dir <"$sdk_list"
 
 case $format in
     apk)
-        backend_pattern='zte-usb-wifi-manager-0.1.0_rc1-r2.apk'
-        luci_pattern='luci-app-zte-usb-wifi-manager-0.1.0_rc1-r1.apk'
+        backend_pattern='zte-usb-wifi-manager-0.1.0_rc1-r3.apk'
+        luci_pattern='luci-app-zte-usb-wifi-manager-0.1.0_rc1-r2.apk'
         package_architecture=noarch
         ;;
     ipk)
-        backend_pattern='zte-usb-wifi-manager_0.1.0_rc1-r2_all.ipk'
-        luci_pattern='luci-app-zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk'
+        backend_pattern='zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk'
+        luci_pattern='luci-app-zte-usb-wifi-manager_0.1.0_rc1-r2_all.ipk'
         package_architecture=all
         ;;
     *)
@@ -188,7 +188,7 @@ case $format in
             grep -Fqx '  name: zte-usb-wifi-manager' ||
             die "$backend_package has unexpected APK metadata"
         printf '%s\n' "$backend_metadata" |
-            grep -Fqx '  version: 0.1.0_rc1-r2' ||
+            grep -Fqx '  version: 0.1.0_rc1-r3' ||
             die "$backend_package has unexpected APK metadata"
         printf '%s\n' "$backend_metadata" |
             grep -Fqx '  arch: noarch' ||
@@ -197,7 +197,7 @@ case $format in
             grep -Fqx '  name: luci-app-zte-usb-wifi-manager' ||
             die "$luci_package has unexpected APK metadata"
         printf '%s\n' "$luci_metadata" |
-            grep -Fqx '  version: 0.1.0_rc1-r1' ||
+            grep -Fqx '  version: 0.1.0_rc1-r2' ||
             die "$luci_package has unexpected APK metadata"
         printf '%s\n' "$luci_metadata" |
             grep -Fqx '  arch: noarch' ||
@@ -212,7 +212,7 @@ case $format in
             grep -Fqx 'Package: zte-usb-wifi-manager' ||
             die "$backend_package has unexpected IPK metadata"
         printf '%s\n' "$backend_metadata" |
-            grep -Fqx 'Version: 0.1.0_rc1-r2' ||
+            grep -Fqx 'Version: 0.1.0_rc1-r3' ||
             die "$backend_package has unexpected IPK metadata"
         printf '%s\n' "$backend_metadata" |
             grep -Fqx 'Architecture: all' ||
@@ -221,7 +221,7 @@ case $format in
             grep -Fqx 'Package: luci-app-zte-usb-wifi-manager' ||
             die "$luci_package has unexpected IPK metadata"
         printf '%s\n' "$luci_metadata" |
-            grep -Fqx 'Version: 0.1.0_rc1-r1' ||
+            grep -Fqx 'Version: 0.1.0_rc1-r2' ||
             die "$luci_package has unexpected IPK metadata"
         printf '%s\n' "$luci_metadata" |
             grep -Fqx 'Architecture: all' ||

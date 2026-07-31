@@ -35,9 +35,9 @@ else
     pass
 fi
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r2\\.apk"
+    "zte-usb-wifi-manager-0\\.1\\.0_rc1-r3\\.apk"
 assert_file_contains "$builder" \
-    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r2_all\\.ipk"
+    "zte-usb-wifi-manager_0\\.1\\.0_rc1-r3_all\\.ipk"
 backend_package_definition="$work/backend-package-definition"
 sed -n '/^define Package\/zte-usb-wifi-manager$/,/^endef$/p' \
     package/zte-usb-wifi-manager/Makefile >"$backend_package_definition"
@@ -146,11 +146,11 @@ package_file=$2
 case $(basename "$package_file") in
     luci-app-*)
         package_name=luci-app-zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r1
+        package_version=0.1.0_rc1-r2
         ;;
     *)
         package_name=zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r2
+        package_version=0.1.0_rc1-r3
         ;;
 esac
 [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] || package_name=wrong-package
@@ -169,11 +169,11 @@ SCRIPT
         case $(basename "$package_file") in
             luci-app-*)
                 package_name=luci-app-zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r1
+                package_version=0.1.0_rc1-r2
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r2
+                package_version=0.1.0_rc1-r3
                 ;;
         esac
         [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] ||
@@ -205,15 +205,15 @@ case " $* " in
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
         [ ! -e package/feeds/packages/curl ] || exit 1
         printf 'apk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r2.apk
+            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r3.apk
         printf 'ipk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r2_all.ipk
+            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
-            >bin/packages/fixture/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r1.apk
+            >bin/packages/fixture/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r2.apk
         printf 'ipk-luci\n' \
-            >bin/packages/fixture/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk
+            >bin/packages/fixture/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r2_all.ipk
         ;;
 esac
 EOF
@@ -260,10 +260,10 @@ assert_failure env PATH="$fake_bin:$PATH" \
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
-printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r2.apk"
-printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r1.apk"
-printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r2_all.ipk"
-printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r1_all.ipk"
+printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r3.apk"
+printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r2.apk"
+printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r3_all.ipk"
+printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r2_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
 const fs = require('fs');
@@ -342,7 +342,7 @@ assert_failure node scripts/assemble-openwrt-packages.js \
 
 rm "$work/incoming/packages-25.12.5/unexpected.txt"
 cp -R "$work/incoming" "$work/wrong-version-incoming"
-mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r2.apk" \
+mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r3.apk" \
     "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-9.9.9-r1.apk"
 node - "$work/wrong-version-incoming/packages-25.12.5/build-manifest.json" <<'NODE'
 const fs = require('fs');
