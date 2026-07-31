@@ -101,8 +101,8 @@ zte_sim_calibration_probe_readiness() {
 		zte_sim_calibration_probe_fail invalid_active_slot
 		return 1
 	}
-	[ "$(zte_json_flat_get "$_zte_sim_calibration_probe_raw" \
-		mc_modem_main_state)" = connected ] || {
+	zte_adapter_modem_ready "$(zte_json_flat_get \
+		"$_zte_sim_calibration_probe_raw" mc_modem_main_state)" || {
 		zte_sim_calibration_probe_fail modem_not_connected
 		return 1
 	}
@@ -147,8 +147,8 @@ zte_sim_calibration_read_ready_target() {
 	_zte_sim_calibration_read_target=$(zte_sim_calibration_active_target \
 		"$(zte_json_flat_get "$_zte_sim_calibration_raw" \
 			simcard_active_slot_temp)") || return 1
-	[ "$(zte_json_flat_get "$_zte_sim_calibration_raw" \
-		mc_modem_main_state)" = connected ] || return 1
+	zte_adapter_modem_ready "$(zte_json_flat_get \
+		"$_zte_sim_calibration_raw" mc_modem_main_state)" || return 1
 	_zte_sim_calibration_provider=$(zte_json_flat_get \
 		"$_zte_sim_calibration_raw" network_provider_fullname)
 	case $_zte_sim_calibration_provider in

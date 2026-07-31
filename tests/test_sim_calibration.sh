@@ -62,6 +62,12 @@ zte_session_login() {
 }
 EOF
 cat >"$lib/adapter-zte-u25s.sh" <<'EOF'
+zte_adapter_modem_ready() {
+    case ${1-} in
+        connected|modem_init_complete) return 0 ;;
+        *) return 1 ;;
+    esac
+}
 zte_adapter_fetch() {
     printf '%s\n' fetch >>"$ZTE_TEST_EVENT_LOG"
     printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$ZTE_TEST_FETCH_LOG"
@@ -401,6 +407,16 @@ for slot_target in \
         "$(cat "$login_log")"
     assert_eq "192.168.0.1|test-password|$cookie_file" "$(cat "$fetch_log")"
 done
+
+# Real target firmware reports modem_init_complete when cellular registration
+# and PPP are healthy.
+real_modem_status=0
+result=$(sim_call \
+    '{"simcard_active_slot_temp":"2","mc_modem_main_state":"modem_init_complete","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}') || real_modem_status=$?
+assert_eq 0 "$real_modem_status"
+assert_eq \
+    '{"ok":true,"mode":"probe","active_target":"sim2","modem_ready":true,"network_registered":true,"ppp_ready":true}' \
+    "$result"
 
 # The target firmware advertises HAS_LOGIN:false. Its readiness probe must use
 # the anonymous status path without requiring a credential or calling LOGIN.

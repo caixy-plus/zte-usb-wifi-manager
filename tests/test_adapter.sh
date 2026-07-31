@@ -42,6 +42,13 @@ assert_eq false "$(zte_adapter_bool 0)"
 assert_eq null "$(zte_adapter_bool '')"
 assert_eq null "$(zte_adapter_bool maybe)"
 
+# The target firmware reports modem_init_complete while fully registered and
+# online; authenticated fixtures also use connected.
+assert_success zte_adapter_modem_ready connected
+assert_success zte_adapter_modem_ready modem_init_complete
+assert_failure zte_adapter_modem_ready offline
+assert_failure zte_adapter_modem_ready ''
+
 # known-field gate
 assert_success zte_adapter_has_any_field "$(cat "$fixtures/read_ok.json")"
 assert_failure zte_adapter_has_any_field "$(cat "$fixtures/read_session_expired.json")"

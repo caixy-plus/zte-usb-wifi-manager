@@ -46,7 +46,7 @@ zte_adapter_switch_sim() {
 zte_adapter_fetch() {
     printf '%s|%s\n' "$1" "$3" >>"$fetch_log"
     printf '%s\n' \
-        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"modem_init_complete","network_provider_fullname":"中国移动","ppp_status":"ipv4_ipv6_connected"}'
 }
 
 sleep() {

@@ -71,15 +71,18 @@ r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登
 不是该认证失败的根因。backend r11 对齐了登录 POST 和成功码并在同一设备正式
 升级，但唯一一次 probe 仍返回 `authentication_failed`。随后对目标固件
 `config.js` 和 `service.js` 的被动复核确认 `HAS_LOGIN:false`：原生 WebUI 根本
-不会执行 LOGIN，而插件的校准器却无条件强制认证。backend r12 已按目标固件认证契约
-改为匿名读取和校准门控写入；密码入口继续保留给需要认证的固件变体。记录见
+不会执行 LOGIN。backend r12 按该契约改为匿名读取后，实机 probe 已越过认证并
+准确停在 modem 状态检查；只读响应确认目标枚举为 `modem_init_complete`。backend
+r13 已纳入实机 modem 状态，同时保留密码入口给需要认证的固件变体。记录见
 [r9 登录摘要校准](docs/validation/2026-07-31-r9-login-digest.md)。
 实机部署与会话锁记录见
 [r10 会话锁验证](docs/validation/2026-07-31-r10-session-lock.md)。
-目标固件免登录契约与 r12 修复见
+目标固件免登录契约与 r12 实机结果见
 [r12 认证契约校准](docs/validation/2026-07-31-r12-auth-contract.md)。
+实机 modem 状态枚举校准见
+[r13 modem 状态校准](docs/validation/2026-07-31-r13-modem-state.md)。
 
-backend r12 的预发布入口预留为 `v0.1.0-rc1-r12`；只有维护者显式创建并推送该
+backend r13 的预发布入口预留为 `v0.1.0-rc1-r13`；只有维护者显式创建并推送该
 tag 时才会触发 prerelease 工作流。当前 SDK/QEMU 验证通过不代表该 tag 已发布，
 也不代表真实设备写接口、USB 供电或 72 小时稳定性验收已经完成。
 

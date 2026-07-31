@@ -9,6 +9,13 @@ zte_adapter_bool() {
 	esac
 }
 
+zte_adapter_modem_ready() {
+	case ${1-} in
+		connected|modem_init_complete) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
 # Print one flat JSON field as a JSON string, or null when it is absent.
 zte_adapter_json_field() {
 	if zte_json_flat_has "$1" "$2"; then

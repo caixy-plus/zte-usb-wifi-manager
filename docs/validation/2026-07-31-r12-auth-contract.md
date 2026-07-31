@@ -41,8 +41,25 @@ TDD 红灯证据：
 - `test_sim_calibration`：417 assertions PASS；
 - `test_rpcd`：59 assertions PASS。
 
-## 尚未完成
+## 构建、正式升级与实机结论
 
-r12 仍需全量检查、双 SDK 构建、正式升级和一次新的匿名只读 probe。只有它返回
-`ok:true`，才允许转移到备用 U25S 执行 SIM 切换校准。主路由器不会用于探索性
-写测试；USB 断电与恢复协调仍必须在备用 TR3000 台架验证。
+- 全量 `make check`：PASS；
+- GitHub Actions run：`30623348907`；
+- source commit：`fac31a63e978914f7b6a28290fb32f2b6796a6dd`；
+- OpenWrt 25.12.5 APK 与 24.10.7 IPK 的真实 SDK 构建均通过；
+- r12 APK SHA-256：
+  `7af6450f36b4107227ebc4b207257bccf31c660ff3241f1c5fb560ed368f21fc`；
+- Cudy TR3000 正式升级：`0.1.0_rc1-r11 -> 0.1.0_rc1-r12`。
+
+安装后守护进程正常，写、电池策略和硬件供电全部保持关闭，凭据权限保持
+`0600/root`，计划任务 SHA-256 未变。唯一一次匿名只读 probe 返回：
+
+```json
+{"ok":false,"mode":"probe","code":"modem_not_connected"}
+```
+
+这证明认证门槛已经消失，失败点前进到后续就绪校验。随后带与插件一致请求头的
+匿名只读接口返回：SIM 槽位有效、`mc_modem_main_state=modem_init_complete`、运营商
+非空、`ppp_status=ipv4_ipv6_connected`。目标固件 `status/statusBar.js` 也明确把
+`modem_init_complete` 用作正常信号状态。原测试只接受人工 fixture 中的
+`connected`，转入 r13 校准真实枚举。没有执行 SIM 写操作。

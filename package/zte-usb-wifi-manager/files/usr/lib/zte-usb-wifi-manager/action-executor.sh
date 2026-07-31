@@ -99,7 +99,7 @@ zte_execute_switch_sim() {
 				_zte_execute_failure=readback_failed
 			elif [ "$_zte_execute_active" != "$_zte_execute_index" ]; then
 				_zte_execute_failure=readback_mismatch
-			elif [ "$_zte_execute_modem" != connected ]; then
+			elif ! zte_adapter_modem_ready "$_zte_execute_modem"; then
 				_zte_execute_failure=modem_not_ready
 			else
 				case $_zte_execute_provider in
