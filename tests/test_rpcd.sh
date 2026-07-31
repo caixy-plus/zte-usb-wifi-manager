@@ -13,6 +13,7 @@ work=$(mktemp -d /tmp/zte-test-rpcd.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 status_file=$work/status.json
 state_dir=$work/state
+credential_file=$work/credentials
 write_lib=$work/write-lib
 test_bin=$work/bin
 
@@ -40,6 +41,7 @@ rpcd_call() {
     ZTE_USB_WIFI_LIB_DIR=${RPCD_TEST_LIB_DIR:-$(dirname "$metadata")} \
     ZTE_USB_WIFI_STATUS_FILE=$status_file \
     ZTE_USB_WIFI_STATE_DIR=$state_dir \
+    ZTE_USB_WIFI_CREDENTIAL_FILE=$credential_file \
     PATH="$test_bin:$PATH" \
         sh "$rpcd" "$@"
 }
@@ -55,9 +57,9 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
+assert_eq '{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
     "$list_output" \
-    'rpcd list must expose status, capabilities, and operation status'
+    'rpcd list must expose status, credentials, and operation status'
 
 capabilities=$(rpcd_call call capabilities)
 assert_success assert_json "$capabilities"
@@ -78,6 +80,22 @@ status=$(rpcd_call call status)
 assert_success assert_json "$status"
 assert_eq '{"online":true,"state":"ok","updated":1722345678}' "$status" \
     'rpcd status must return the cached snapshot byte-for-byte'
+
+assert_eq '{"configured":false}' "$(rpcd_call call credential_status)"
+credential_reply=$(printf '%s\n' '{"password":"local test value"}' |
+    rpcd_call call set_credentials)
+assert_eq '{"ok":true,"configured":true}' "$credential_reply"
+case $credential_reply in
+    *'local test value'*) fail 'credential RPC echoed the submitted password' ;;
+    *) pass ;;
+esac
+assert_eq 600 "$(test_file_mode "$credential_file")"
+assert_eq 'password=local test value' "$(cat "$credential_file")"
+assert_eq '{"configured":true}' "$(rpcd_call call credential_status)"
+assert_eq '{"ok":false,"error":"invalid_password"}' \
+    "$(printf '%s\n' '{"password":""}' | rpcd_call call set_credentials)"
+assert_eq '{"ok":false,"error":"invalid_password"}' \
+    "$(printf '%s\n' 'not-json' | rpcd_call call set_credentials)"
 
 mkdir -p "$state_dir/actions/pending"
 operation_id=op-1722345678-1234
@@ -129,7 +147,7 @@ else
 fi
 
 mkdir -p "$write_lib" "$test_bin"
-for library in validation.sh json.sh actions.sh event-log.sh; do
+for library in validation.sh json.sh credentials.sh actions.sh event-log.sh; do
     ln -s "$(pwd)/package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/$library" \
         "$write_lib/$library"
 done

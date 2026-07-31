@@ -6,6 +6,7 @@
         "zte_usb_wifi": [
           "status",
           "capabilities",
+          "credential_status",
           "operation_status",
           "logs"
         ]
@@ -14,6 +15,7 @@
     "write": {
       "ubus": {
         "zte_usb_wifi": [
+          "set_credentials",
           "cellular_action",
           "wifi_action",
           "traffic_action",

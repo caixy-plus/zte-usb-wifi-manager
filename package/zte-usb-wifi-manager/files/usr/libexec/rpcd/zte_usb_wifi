@@ -4,16 +4,18 @@ set -eu
 ZTE_USB_WIFI_LIB_DIR=${ZTE_USB_WIFI_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 . "$ZTE_USB_WIFI_LIB_DIR/validation.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/json.sh"
+. "$ZTE_USB_WIFI_LIB_DIR/credentials.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/actions.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/event-log.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/adapter-zte-u25s-metadata.sh"
 
 STATUS_FILE=${ZTE_USB_WIFI_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
 STATE_DIR=${ZTE_USB_WIFI_STATE_DIR:-/var/run/zte-usb-wifi-manager}
+CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/credentials}
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"capabilities":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
+		'{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
 }
 
 get_status() {
@@ -22,6 +24,37 @@ get_status() {
 	else
 		zte_adapter_framework_status_json
 	fi
+}
+
+get_credential_status() {
+	if _zte_password=$(zte_read_password "$CREDENTIAL_FILE" 2>/dev/null); then
+		_zte_password=''
+		printf '%s\n' '{"configured":true}'
+	else
+		printf '%s\n' '{"configured":false}'
+	fi
+}
+
+set_credentials() {
+	_zte_request='{}'
+	IFS= read -r _zte_request || :
+	if ! zte_json_is_flat_object "$_zte_request"; then
+		printf '%s\n' '{"ok":false,"error":"invalid_password"}'
+		return
+	fi
+	_zte_password=$(zte_json_flat_get "$_zte_request" password)
+	if ! zte_password_valid "$_zte_password"; then
+		_zte_password=''
+		printf '%s\n' '{"ok":false,"error":"invalid_password"}'
+		return
+	fi
+	if ! zte_write_password "$CREDENTIAL_FILE" "$_zte_password"; then
+		_zte_password=''
+		printf '%s\n' '{"ok":false,"error":"credential_write_failed"}'
+		return
+	fi
+	_zte_password=''
+	printf '%s\n' '{"ok":true,"configured":true}'
 }
 
 get_logs() {
@@ -136,6 +169,8 @@ case ${1-} in
 		case ${2-} in
 			status) get_status ;;
 			capabilities) zte_adapter_capabilities_json ;;
+			credential_status) get_credential_status ;;
+			set_credentials) set_credentials ;;
 			operation_status) get_operation_status ;;
 			logs) get_logs ;;
 			cellular_action|wifi_action|traffic_action|sms_action)
