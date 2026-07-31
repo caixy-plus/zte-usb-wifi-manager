@@ -159,19 +159,48 @@ sed \
 # shellcheck disable=SC2016
 printf '%s\n' \
     '#!/bin/sh' \
-    'if [ "$*" = "-q get zte-usb-wifi-manager.main.write_enabled" ]; then' \
-    '    printf "%s\n" "${ZTE_TEST_WRITE_ENABLED:-0}"' \
-    '    exit 0' \
-    'fi' \
-    'exit 1' >"$test_bin/uci"
+    'case "$*" in' \
+    '  "-q get zte-usb-wifi-manager.main.write_enabled") value=${ZTE_TEST_WRITE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.sim_switch_enabled") value=${ZTE_TEST_SIM_SWITCH_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.cellular_write_enabled") value=${ZTE_TEST_CELLULAR_WRITE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.wifi_write_enabled") value=${ZTE_TEST_WIFI_WRITE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.traffic_write_enabled") value=${ZTE_TEST_TRAFFIC_WRITE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.sms_write_enabled") value=${ZTE_TEST_SMS_WRITE_ENABLED:-0} ;;' \
+    '  *) exit 1 ;;' \
+    'esac' \
+    'printf "%s\n" "$value"' >"$test_bin/uci"
 chmod +x "$test_bin/uci"
 RPCD_TEST_LIB_DIR=$write_lib
 export RPCD_TEST_LIB_DIR
+
+effective_capabilities=$(
+    ZTE_TEST_WRITE_ENABLED=1 \
+    ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+    ZTE_TEST_WIFI_WRITE_ENABLED=0 \
+        rpcd_call call capabilities
+)
+assert_eq true "$(printf '%s' "$effective_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
+assert_eq false "$(printf '%s' "$effective_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).wifi_write)))')"
+globally_disabled_capabilities=$(
+    ZTE_TEST_WRITE_ENABLED=0 \
+    ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+        rpcd_call call capabilities
+)
+assert_eq false "$(printf '%s' "$globally_disabled_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
 
 sim_write_disabled=$(printf '%s\n' \
     '{"action":"switch_sim","target":"sim2"}' |
     ZTE_TEST_WRITE_ENABLED=0 rpcd_call call cellular_action)
 assert_eq '{"ok":false,"error":"write_not_enabled"}' "$sim_write_disabled"
+sim_feature_disabled=$(printf '%s\n' \
+    '{"action":"switch_sim","target":"sim2"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=0 \
+        rpcd_call call cellular_action)
+assert_eq '{"ok":false,"error":"write_not_enabled"}' \
+    "$sim_feature_disabled"
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
     printf '%s\n' '{"action":"switch_sim"}' |
         ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action
@@ -182,7 +211,8 @@ assert_eq '{"ok":false,"error":"invalid_action"}' "$(
 )"
 sim_queued=$(printf '%s\n' \
     '{"action":"switch_sim","target":"physical"}' |
-    ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action)
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+        rpcd_call call cellular_action)
 assert_success assert_json "$sim_queued"
 sim_queued_id=$(zte_json_flat_get "$sim_queued" operation_id)
 assert_success zte_operation_id_valid "$sim_queued_id"

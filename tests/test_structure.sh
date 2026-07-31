@@ -39,6 +39,11 @@ assert_file_contains "$backend/Makefile" \
 assert_file_contains "$backend/Makefile" \
     'rm -rf /var/run/zte-usb-wifi-manager'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option sim_switch_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option cellular_write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option wifi_write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option traffic_write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option sms_write_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
     "option off_probe_interval '900'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
@@ -652,6 +657,11 @@ config_get() {
     case $1 in
         enabled) enabled=1 ;;
         write_enabled) write_enabled=$_zte_test_write_enabled ;;
+        sim_switch_enabled) sim_switch_enabled=$_zte_test_action_flag ;;
+        cellular_write_enabled) cellular_write_enabled=0 ;;
+        wifi_write_enabled) wifi_write_enabled=0 ;;
+        traffic_write_enabled) traffic_write_enabled=0 ;;
+        sms_write_enabled) sms_write_enabled=0 ;;
         poll_interval) poll_interval=30 ;;
         failure_threshold) failure_threshold=3 ;;
         host) host=192.168.0.1 ;;
@@ -682,6 +692,7 @@ _zte_test_interface='bad/name'
 _zte_test_netdev=eth2
 _zte_test_power_backend=unconfigured
 _zte_test_write_enabled=0
+_zte_test_action_flag=0
 _zte_test_power_control_path=/sys/class/gpio/modem_power/value
 _zte_test_power_calibrated=0
 _zte_test_power_off_probe_interval=900
@@ -696,6 +707,9 @@ _zte_test_power_backend=invalid
 assert_failure load_config
 _zte_test_power_backend=unconfigured
 assert_success load_config
+_zte_test_action_flag=2
+assert_failure load_config
+_zte_test_action_flag=0
 _zte_test_write_enabled=2
 assert_failure load_config
 _zte_test_write_enabled=0

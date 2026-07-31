@@ -18,6 +18,7 @@ extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
 eval "$(extract_daemon_function process_actions)"
+eval "$(extract_daemon_function configured_action_enabled)"
 
 work=$(mktemp -d /tmp/zte-test-daemon-actions.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
@@ -39,6 +40,15 @@ record_event() {
 zte_read_password() { printf '%s\n' secret; }
 zte_adapter_login_required() { return 0; }
 zte_adapter_action_supported() { [ "$1" = switch_sim ]; }
+zte_adapter_action_effectively_enabled() {
+    [ "$1" = switch_sim ] && [ "$2" = 1 ] && [ "$3" = 1 ]
+}
+write_enabled=1
+sim_switch_enabled=1
+cellular_write_enabled=0
+wifi_write_enabled=0
+traffic_write_enabled=0
+sms_write_enabled=0
 zte_execute_switch_sim() {
     printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$execute_log"
     printf '%s\n' ok
@@ -56,6 +66,17 @@ assert_eq \
     "$(cat "$execute_log")"
 assert_eq 'info|action|action_succeeded|1722345680' \
     "$(cat "$event_log")"
+
+# A queued action cannot bypass a feature flag disabled before execution.
+sim_switch_enabled=0
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345679-1240 switch_sim \
+    '{"action":"switch_sim","target":"sim2"}' 1722345679
+assert_success process_actions
+assert_eq \
+    '{"operation_id":"op-1722345679-1240","type":"switch_sim","state":"failed","code":"write_not_enabled","updated":1722345680}' \
+    "$(zte_action_get "$STATE_DIR" op-1722345679-1240)"
+sim_switch_enabled=1
 
 # A valid write response without matching readback is a failed operation.
 : >"$event_log"

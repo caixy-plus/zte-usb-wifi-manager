@@ -35,6 +35,34 @@ get_credential_status() {
 	fi
 }
 
+get_capabilities() {
+	_zte_cap_write=$(
+		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
+	) || _zte_cap_write=0
+	_zte_cap_sim=$(
+		uci -q get zte-usb-wifi-manager.writes.sim_switch_enabled 2>/dev/null
+	) || _zte_cap_sim=0
+	_zte_cap_cellular=$(
+		uci -q get \
+			zte-usb-wifi-manager.writes.cellular_write_enabled \
+			2>/dev/null
+	) || _zte_cap_cellular=0
+	_zte_cap_wifi=$(
+		uci -q get zte-usb-wifi-manager.writes.wifi_write_enabled 2>/dev/null
+	) || _zte_cap_wifi=0
+	_zte_cap_traffic=$(
+		uci -q get \
+			zte-usb-wifi-manager.writes.traffic_write_enabled \
+			2>/dev/null
+	) || _zte_cap_traffic=0
+	_zte_cap_sms=$(
+		uci -q get zte-usb-wifi-manager.writes.sms_write_enabled 2>/dev/null
+	) || _zte_cap_sms=0
+	zte_adapter_effective_capabilities_json \
+		"$_zte_cap_write" "$_zte_cap_sim" "$_zte_cap_cellular" \
+		"$_zte_cap_wifi" "$_zte_cap_traffic" "$_zte_cap_sms"
+}
+
 set_credentials() {
 	_zte_request='{}'
 	IFS= read -r _zte_request || :
@@ -118,6 +146,21 @@ device_writes_enabled() {
 	[ "$_zte_write_enabled" = 1 ]
 }
 
+device_action_enabled() {
+	_zte_action=$1
+	device_writes_enabled || return 1
+	_zte_feature_option=$(
+		zte_adapter_action_feature_option "$_zte_action"
+	) || return 1
+	_zte_feature_enabled=$(
+		uci -q get \
+			"zte-usb-wifi-manager.writes.$_zte_feature_option" \
+			2>/dev/null
+	) || return 1
+	zte_adapter_action_effectively_enabled \
+		"$_zte_action" 1 "$_zte_feature_enabled"
+}
+
 handle_action() {
 	_zte_method=$1
 	_zte_request='{}'
@@ -141,7 +184,7 @@ handle_action() {
 		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
 		return
 	fi
-	if ! device_writes_enabled; then
+	if ! device_action_enabled "$_zte_action"; then
 		printf '%s\n' '{"ok":false,"error":"write_not_enabled"}'
 		return
 	fi
@@ -173,7 +216,7 @@ case ${1-} in
 	call)
 		case ${2-} in
 			status) get_status ;;
-			capabilities) zte_adapter_capabilities_json ;;
+			capabilities) get_capabilities ;;
 			credential_status) get_credential_status ;;
 			set_credentials) set_credentials ;;
 			operation_status) get_operation_status ;;

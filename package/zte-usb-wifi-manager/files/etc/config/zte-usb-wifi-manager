@@ -4,6 +4,13 @@ config core 'main'
 	option poll_interval '30'
 	option failure_threshold '3'
 
+config actions 'writes'
+	option sim_switch_enabled '0'
+	option cellular_write_enabled '0'
+	option wifi_write_enabled '0'
+	option traffic_write_enabled '0'
+	option sms_write_enabled '0'
+
 config device 'zte'
 	option host '192.168.0.1'
 	option interface 'usbwan'

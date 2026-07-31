@@ -44,6 +44,18 @@ assert_eq false "$(
 )"
 assert_failure zte_adapter_action_supported switch_sim
 
+ZTE_CAP_SIM_SWITCH=1
+assert_success zte_adapter_action_effectively_enabled \
+    switch_sim 1 1
+assert_failure zte_adapter_action_effectively_enabled \
+    switch_sim 0 1
+assert_failure zte_adapter_action_effectively_enabled \
+    switch_sim 1 0
+assert_eq sim_switch_enabled "$(zte_adapter_action_feature_option switch_sim)"
+assert_eq wifi_write_enabled "$(zte_adapter_action_feature_option set_wifi)"
+assert_failure zte_adapter_action_feature_option unknown
+ZTE_CAP_SIM_SWITCH=0
+
 fixtures=./tests/fixtures/u25s
 work=/tmp/zte-test-adapter.$$
 mkdir -p "$work"

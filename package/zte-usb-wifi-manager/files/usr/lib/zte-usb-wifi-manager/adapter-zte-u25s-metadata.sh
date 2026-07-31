@@ -38,7 +38,21 @@ zte_adapter_capability_bool() {
 	fi
 }
 
-zte_adapter_capabilities_json() {
+zte_adapter_effective_capability_bool() {
+	if [ "${1-}" = 1 ] && [ "${2-}" = 1 ] && [ "${3-}" = 1 ]; then
+		printf '%s' true
+	else
+		printf '%s' false
+	fi
+}
+
+zte_adapter_effective_capabilities_json() {
+	_zte_metadata_write_enabled=${1-0}
+	_zte_metadata_sim_enabled=${2-0}
+	_zte_metadata_cellular_enabled=${3-0}
+	_zte_metadata_wifi_enabled=${4-0}
+	_zte_metadata_traffic_enabled=${5-0}
+	_zte_metadata_sms_enabled=${6-0}
 	if zte_adapter_login_required; then
 		_zte_metadata_login_required=true
 	else
@@ -46,11 +60,15 @@ zte_adapter_capabilities_json() {
 	fi
 	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s}\n' \
 		"$_zte_metadata_login_required" \
-		"$(zte_adapter_capability_bool "$ZTE_CAP_SIM_SWITCH")" \
-		"$(zte_adapter_capability_bool "$ZTE_CAP_CELLULAR_WRITE")" \
-		"$(zte_adapter_capability_bool "$ZTE_CAP_WIFI_WRITE")" \
-		"$(zte_adapter_capability_bool "$ZTE_CAP_TRAFFIC_WRITE")" \
-		"$(zte_adapter_capability_bool "$ZTE_CAP_SMS_WRITE")"
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SIM_SWITCH" "$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled")" \
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_CELLULAR_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_cellular_enabled")" \
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_WIFI_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_wifi_enabled")" \
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_TRAFFIC_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_traffic_enabled")" \
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SMS_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_sms_enabled")"
+}
+
+zte_adapter_capabilities_json() {
+	zte_adapter_effective_capabilities_json 1 1 1 1 1 1
 }
 
 zte_adapter_action_supported() {
@@ -60,6 +78,27 @@ zte_adapter_action_supported() {
 		set_wifi) [ "$ZTE_CAP_WIFI_WRITE" = 1 ] ;;
 		set_traffic_plan|reset_traffic) [ "$ZTE_CAP_TRAFFIC_WRITE" = 1 ] ;;
 		send_sms|delete_sms|mark_sms_read) [ "$ZTE_CAP_SMS_WRITE" = 1 ] ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_adapter_action_effectively_enabled() {
+	_zte_metadata_action=${1-}
+	_zte_metadata_write_enabled=${2-}
+	_zte_metadata_feature_enabled=${3-}
+
+	[ "$_zte_metadata_write_enabled" = 1 ] || return 1
+	zte_adapter_action_supported "$_zte_metadata_action" || return 1
+	[ "$_zte_metadata_feature_enabled" = 1 ]
+}
+
+zte_adapter_action_feature_option() {
+	case ${1-} in
+		switch_sim) printf '%s\n' sim_switch_enabled ;;
+		set_apn|set_connection_mode) printf '%s\n' cellular_write_enabled ;;
+		set_wifi) printf '%s\n' wifi_write_enabled ;;
+		set_traffic_plan|reset_traffic) printf '%s\n' traffic_write_enabled ;;
+		send_sms|delete_sms|mark_sms_read) printf '%s\n' sms_write_enabled ;;
 		*) return 1 ;;
 	esac
 }
