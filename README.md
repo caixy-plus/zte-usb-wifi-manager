@@ -99,6 +99,10 @@ USB 供电或 72 小时稳定性验收已经完成。
 当前候选安装包已发布到
 [v0.1.0-rc1-r15 prerelease](https://github.com/caixy-plus/zte-usb-wifi-manager/releases/tag/v0.1.0-rc1-r15)，
 Release 原文件已在两套全新 QEMU overlay 中再次完成安装、服务和卸载验证。
+同一份 APK 已在目标 Cudy TR3000 v1 / OpenWrt 25.12.5 上从 backend r14、
+LuCI r3 正式升级到 r15/r4；服务、rpcd/ubus、在线快照、文件权限和只读供电探测
+均通过，所有真实写入门控保持关闭。实机记录见
+[r15/r4 正式部署验证](docs/validation/2026-08-01-r15-r4-formal-deployment.md)。
 
 两个包均为纯脚本和静态资源，发布时标记为 `all` 架构。这里的 `all` 只表示不受
 CPU 架构限制，不表示可以跨 OpenWrt 软件包格式或发行系列安装。未列出的 OpenWrt

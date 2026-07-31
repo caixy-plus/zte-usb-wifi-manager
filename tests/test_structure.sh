@@ -244,6 +244,14 @@ assert_file_contains docs/validation/2026-07-31-r15-r4-qemu.md \
     'r14/r3→r15/r4'
 assert_file_contains README.md \
     'releases/tag/v0\.1\.0-rc1-r15'
+assert_file_contains README.md \
+    'docs/validation/2026-08-01-r15-r4-formal-deployment\.md'
+assert_file_contains docs/validation/2026-08-01-r15-r4-formal-deployment.md \
+    '^# r15/r4 目标路由器正式部署验证（2026-08-01）$'
+assert_file_contains docs/validation/2026-08-01-r15-r4-formal-deployment.md \
+    'write_enabled=0'
+assert_file_contains docs/validation/2026-08-01-r15-r4-formal-deployment.md \
+    '重新连接返回认证失败'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
     'probe'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
