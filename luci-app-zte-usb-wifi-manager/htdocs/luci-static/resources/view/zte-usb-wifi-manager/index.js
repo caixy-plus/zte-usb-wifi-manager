@@ -178,6 +178,50 @@ function chargingLabel(value) {
 	return null;
 }
 
+function powerExecutionReasonLabel(reason) {
+	var labels = {
+		ready: _('就绪'),
+		mock: _('模拟后端'),
+		dry_run: _('影子执行，不写硬件'),
+		backend_unconfigured: _('供电后端未配置'),
+		write_disabled: _('全局写操作未启用'),
+		not_calibrated: _('硬件尚未校准'),
+		board_unsupported: _('路由器型号不受支持'),
+		control_unresolved: _('供电控制路径无法解析'),
+		recovery_unavailable: _('恢复服务不可用'),
+		unavailable: _('不可用')
+	};
+
+	return labels[reason] || null;
+}
+
+function operationOutcomeLabel(outcome) {
+	if (outcome === 'succeeded')
+		return _('成功');
+	if (outcome === 'failed')
+		return _('失败');
+	return null;
+}
+
+function powerExecutionLabel(power) {
+	var execution = power.execution && typeof power.execution === 'object'
+		? power.execution : {};
+	var reason = powerExecutionReasonLabel(execution.reason);
+
+	if (!power.backend)
+		return _('供电状态未知');
+	if (power.backend === 'hardware') {
+		if (execution.available === true)
+			return _('硬件控制已启用');
+		return _('硬件控制不可执行') + (reason ? '（' + reason + '）' : '');
+	}
+	if (power.backend === 'dry-run')
+		return _('影子执行（不写硬件）');
+	if (power.backend === 'mock')
+		return _('模拟执行');
+	return _('供电控制未启用');
+}
+
 function rpcResult(call) {
 	var request;
 
@@ -269,6 +313,7 @@ function renderOverview(status, capabilities) {
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 	var network = status.network && typeof status.network === 'object' ? status.network : {};
 	var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
+	var power = status.power && typeof status.power === 'object' ? status.power : {};
 	var hasDevice = Object.keys(device).length > 0;
 
 	return panelRoot('overview', _('只读状态总览'), [
@@ -281,7 +326,7 @@ function renderOverview(status, capabilities) {
 		row(_('电量'), batteryLabel(battery)),
 		row(_('USB 上联'), uplinkLabel(network)),
 		row(_('默认出口'), yesNoLabel(network.is_default_route)),
-		row(_('电池策略'), _('仅监控，不控制供电') +
+		row(_('电池策略'), powerExecutionLabel(power) +
 			(policy.state ? ' (' + policy.state + ')' : '')),
 		row(_('状态快照时间'), updatedLabel(status.updated))
 	]);
@@ -313,6 +358,13 @@ function renderUnavailableModule(tabId, title) {
 function renderBattery(status) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
+	var power = status.power && typeof status.power === 'object' ? status.power : {};
+	var decision = power.decision && typeof power.decision === 'object'
+		? power.decision : {};
+	var recovery = power.recovery && typeof power.recovery === 'object'
+		? power.recovery : {};
+	var execution = power.execution && typeof power.execution === 'object'
+		? power.execution : {};
 
 	return panelRoot('battery', _('电池与供电'), [
 		row(_('电池存在'), yesNoLabel(battery.present)),
@@ -321,7 +373,25 @@ function renderBattery(status) {
 		row(_('充电状态'), chargingLabel(battery.charging)),
 		row(_('电池值'), battery.value),
 		row(_('电池百分比原值'), battery.pers),
-		row(_('温度级别'), battery.temperature_level)
+		row(_('温度级别'), battery.temperature_level),
+		row(_('供电后端'), power.backend),
+		row(_('硬件已校准'), yesNoLabel(power.calibrated)),
+		row(_('写操作已启用'), yesNoLabel(power.write_enabled)),
+		row(_('控制路径'), power.control_path),
+		row(_('控制器读回'), power.control_state),
+		row(_('电源读回'), power.supply_state),
+		row(_('实际供电'), power.observed),
+		row(_('当前可执行'), yesNoLabel(execution.available)),
+		row(execution.available === true ? _('执行状态') : _('不可执行原因'),
+			powerExecutionReasonLabel(execution.reason)),
+		row(_('最近动作'), decision.action),
+		row(_('最近动作已执行'), yesNoLabel(decision.executed)),
+		row(_('最近动作结果'), operationOutcomeLabel(decision.outcome)),
+		row(_('最近动作时间'), updatedLabel(decision.updated)),
+		row(_('动作原因'), decision.reason),
+		row(_('恢复抑制'), yesNoLabel(recovery.inhibited)),
+		row(_('恢复服务可用'), yesNoLabel(recovery.service_available)),
+		row(_('恢复服务运行'), yesNoLabel(recovery.service_running))
 	]);
 }
 
@@ -336,11 +406,12 @@ function renderSms(status) {
 
 function renderSchedule(status) {
 	var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
+	var power = status.power && typeof status.power === 'object' ? status.power : {};
 
 	return panelRoot('schedule', _('充电日程'), [
 		row(_('策略状态'), policy.state),
 		row(_('预期供电动作'), policy.power_action),
-		row(_('执行边界'), _('硬件执行保持禁用，等待板级校准'))
+		row(_('执行边界'), powerExecutionLabel(power))
 	]);
 }
 

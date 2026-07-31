@@ -188,7 +188,7 @@ assert_file_contains "$view" '设备写接口尚未完成实机校准'
 assert_file_contains "$view" 'status\.device'
 assert_file_contains "$view" 'is_default_route'
 assert_file_contains "$view" 'battery'
-assert_file_contains "$view" '仅监控'
+assert_file_contains "$view" '供电控制未启用'
 assert_file_contains "$view" 'status\.online === true'
 assert_file_contains "$view" 'status\.online === false'
 assert_file_contains "$view" 'network\.up === true'
@@ -385,7 +385,9 @@ assert_file_contains docs/design/testing-strategy.md '^## L2：U25S API 模拟�
 
 # Execute the daemon orchestration functions with side-effect-free stubs.
 lib="$backend/files/usr/lib/zte-usb-wifi-manager"
+. "$lib/validation.sh"
 . "$lib/json.sh"
+. "$lib/power-adapter.sh"
 . "$lib/snapshot.sh"
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
@@ -394,6 +396,7 @@ eval "$(extract_daemon_function poll_once)"
 eval "$(extract_daemon_function calculate_policy)"
 eval "$(extract_daemon_function read_current_power_state)"
 eval "$(extract_daemon_function main)"
+eval "$(extract_daemon_function write_power_outcome_record)"
 eval "$(extract_daemon_function apply_policy_action)"
 eval "$(extract_daemon_function power_inhibit_expiry)"
 eval "$(extract_daemon_function restore_power_on)"
@@ -521,6 +524,7 @@ zte_adapter_normalize() {
     printf '%s\n' "$1"
 }
 collect_network() { network_json=$net; }
+collect_power_snapshot() { power_json=''; }
 zte_is_uint() {
     case ${1-} in ''|*[!0-9]*) return 1 ;; esac
 }
@@ -664,6 +668,44 @@ collect_network
 assert_eq 'usbwan|eth2' "$(cat "$collect_args")"
 assert_eq "$net" "$network_json"
 
+# Production power collection publishes controller/supply readback, the last
+# execution record, and recovery coordination state in the cached snapshot.
+eval "$(extract_daemon_function collect_power_snapshot)"
+previous_state_dir=$STATE_DIR
+power_snapshot_state=$work/power-snapshot-state
+mkdir -p "$power_snapshot_state"
+printf '%s\n' \
+    '{"backend":"hardware","action":"ON","executed":true,"reason":"battery_low","outcome":"succeeded","updated":1722345678,"profile":"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value"}' \
+    >"$power_snapshot_state/power-decision.json"
+STATE_DIR=$power_snapshot_state
+RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
+RECOVERY_SERVICE=/etc/init.d/zte-usb-recover
+power_backend=hardware
+power_calibrated=1
+write_enabled=1
+power_control_path=auto
+zte_power_detect_board() { printf '%s\n' cudy,tr3000-v1; }
+zte_power_resolve_control_path() {
+    printf '%s\n' /sys/class/gpio/modem_power/value
+}
+zte_power_hardware_read() { printf '%s\n' 1; }
+zte_power_supply_read() { printf '%s\n' 1; }
+zte_recovery_inhibit_active() { return 0; }
+zte_recovery_service_available() { return 0; }
+zte_recovery_service_running() { return 0; }
+collect_power_snapshot
+assert_eq \
+    '{"backend":"hardware","calibrated":true,"write_enabled":true,"control_path":"/sys/class/gpio/modem_power/value","control_state":1,"supply_state":1,"observed":"ON","execution":{"available":true,"reason":"ready"},"decision":{"backend":"hardware","action":"ON","executed":true,"reason":"battery_low","outcome":"succeeded","updated":1722345678,"profile":"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value"},"recovery":{"inhibited":true,"service_available":true,"service_running":true}}' \
+    "$power_json"
+power_backend=unconfigured
+power_calibrated=0
+write_enabled=0
+collect_power_snapshot
+assert_eq \
+    '{"backend":"unconfigured","calibrated":false,"write_enabled":false,"control_path":null,"control_state":null,"supply_state":null,"observed":"UNKNOWN","execution":{"available":false,"reason":"backend_unconfigured"},"decision":null,"recovery":{"inhibited":true,"service_available":true,"service_running":true}}' \
+    "$power_json"
+STATE_DIR=$previous_state_dir
+
 # Production load_config rejects unsafe names without terminating the shell.
 . "$lib/validation.sh"
 . "$lib/power-adapter.sh"
@@ -751,13 +793,27 @@ assert_success load_config
 
 power_call_log=$work/power-calls
 : >"$power_call_log"
+power_record_log=$work/power-records
+: >"$power_record_log"
 hardware_io_log=$work/hardware-io
 : >"$hardware_io_log"
 _zte_test_power_apply_failure=0
 zte_power_apply() {
-    printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
-        "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" >>"$power_call_log"
-    [ "$_zte_test_power_apply_failure" = 0 ]
+    printf '%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" \
+        >>"$power_call_log"
+    case $_zte_test_power_apply_failure in
+        0) return 0 ;;
+        2)
+            _zte_test_profile=$(zte_power_profile_id \
+                "$1" "$6" "$8" "$7" "$5") || return 1
+            printf \
+                '{"backend":"%s","action":"%s","executed":true,"reason":"%s","outcome":"succeeded","updated":%s,"profile":"%s"}\n' \
+                "$1" "$2" "$3" "$9" "$_zte_test_profile"
+            return 2
+            ;;
+        *) return 1 ;;
+    esac
 }
 zte_power_hardware_apply() {
     printf '%s|%s\n' "$1" "$2" >>"$hardware_io_log"
@@ -765,6 +821,7 @@ zte_power_hardware_apply() {
 }
 _zte_test_power_record_failure=0
 zte_power_write_record() {
+    printf '%s|%s\n' "$1" "$2" >>"$power_record_log"
     [ "$_zte_test_power_record_failure" = 0 ]
 }
 _zte_test_board='cudy,tr3000-v1'
@@ -785,6 +842,7 @@ zte_power_transition_release() {
 }
 _zte_test_recovery_available=1
 _zte_test_recovery_running=1
+_zte_test_recovery_control_failure=0
 zte_recovery_service_available() {
     [ "$_zte_test_recovery_available" = 1 ]
 }
@@ -795,6 +853,7 @@ recovery_service_calls=$work/recovery-service-calls
 : >"$recovery_service_calls"
 zte_recovery_service_control() {
     printf '%s:%s\n' "$1" "$2" >>"$recovery_service_calls"
+    [ "$_zte_test_recovery_control_failure" = 0 ] || return 1
     case $2 in
         start) _zte_test_recovery_running=1 ;;
         stop) _zte_test_recovery_running=0 ;;
@@ -841,8 +900,8 @@ apply_policy_action MAINTAIN_CHARGING ON
 apply_policy_action MAINTAIN_CHARGING ON
 apply_policy_action MAINTAIN_BATTERY OFF
 assert_eq \
-    "dry-run|ON|battery_low|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|0||0
-dry-run|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|0||0" \
+    "dry-run|ON|battery_low|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|0|cudy,tr3000-v1|0|1722345678
+dry-run|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|0|cudy,tr3000-v1|0|1722345678" \
     "$(cat "$power_call_log")"
 RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
 # Read by the eval-defined production apply_policy_action function.
@@ -890,7 +949,7 @@ assert_failure test -e "$RECOVERY_INHIBIT_FILE"
 _zte_test_action_active=0
 apply_policy_action MAINTAIN_BATTERY OFF
 assert_eq \
-    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|1|cudy,tr3000-v1|1" \
+    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|1|cudy,tr3000-v1|1|1722345678" \
     "$(cat "$power_call_log")"
 assert_success zte_recovery_inhibit_active \
     "$RECOVERY_INHIBIT_FILE" 1722346000
@@ -915,7 +974,7 @@ _zte_test_board='cudy,tr3000-v1-ubootmod'
 power_control_path=auto
 apply_policy_action MAINTAIN_BATTERY OFF
 assert_eq \
-    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/bus/platform/drivers/xhci-mtk/11200000.usb|1|cudy,tr3000-v1-ubootmod|1" \
+    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/bus/platform/drivers/xhci-mtk/11200000.usb|1|cudy,tr3000-v1-ubootmod|1|1722345678" \
     "$(cat "$power_call_log")"
 apply_policy_action FAIL_SAFE_ON ON
 _zte_test_board='cudy,tr3000-v1'
@@ -932,6 +991,19 @@ assert_eq '' "$(cat "$power_call_log")"
 assert_failure test -e "$RECOVERY_INHIBIT_FILE"
 _zte_test_recovery_available=1
 
+# Recovery preparation failure happens before the hardware write and must
+# replace any matching old success record with an explicit failed outcome.
+: >"$power_record_log"
+last_power_action=''
+_zte_test_recovery_running=1
+_zte_test_recovery_control_failure=1
+assert_failure apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq 0 "$_zte_test_power_transition"
+assert_eq \
+    "$STATE_DIR/power-decision.json|{\"backend\":\"hardware\",\"action\":\"OFF\",\"executed\":false,\"reason\":\"battery_high\",\"outcome\":\"failed\",\"updated\":1722345678,\"profile\":\"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value\"}" \
+    "$(tail -n 1 "$power_record_log")"
+_zte_test_recovery_control_failure=0
+
 # If OFF might have reached hardware but verification fails, retain the timed
 # inhibit instead of immediately starting a competing USB recovery cycle.
 : >"$power_call_log"
@@ -941,10 +1013,45 @@ assert_failure apply_policy_action MAINTAIN_BATTERY OFF
 assert_success zte_recovery_inhibit_active \
     "$RECOVERY_INHIBIT_FILE" 1722346000
 assert_eq \
-    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|1|cudy,tr3000-v1|1" \
+    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|1|cudy,tr3000-v1|1|1722345678" \
     "$(cat "$power_call_log")"
+assert_eq \
+    "$STATE_DIR/power-decision.json|{\"backend\":\"hardware\",\"action\":\"OFF\",\"executed\":false,\"reason\":\"battery_high\",\"outcome\":\"failed\",\"updated\":1722345678,\"profile\":\"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value\"}" \
+    "$(tail -n 1 "$power_record_log")"
 assert_eq 1 "$planned_power_off"
 assert_eq 1 "$_zte_test_power_transition"
+_zte_test_power_apply_failure=0
+
+# If even the fallback failure record cannot be written, clear the matching
+# stale success record instead of continuing to publish it.
+printf '%s\n' stale-success >"$STATE_DIR/power-decision.json"
+_zte_test_power_record_failure=1
+_zte_test_power_apply_failure=1
+last_power_action=''
+assert_failure apply_policy_action FAIL_SAFE_ON ON
+assert_failure test -e "$STATE_DIR/power-decision.json"
+_zte_test_power_record_failure=0
+_zte_test_power_apply_failure=0
+
+# A confirmed hardware transition remains truthful when only the first audit
+# write fails. The daemon retries the same successful record and still performs
+# OFF/ON recovery coordination.
+apply_policy_action FAIL_SAFE_ON ON
+: >"$power_call_log"
+: >"$power_record_log"
+last_power_action=''
+_zte_test_power_apply_failure=2
+assert_success apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq 1 "$planned_power_off"
+assert_eq \
+    "$STATE_DIR/power-decision.json|{\"backend\":\"hardware\",\"action\":\"OFF\",\"executed\":true,\"reason\":\"battery_high\",\"outcome\":\"succeeded\",\"updated\":1722345678,\"profile\":\"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value\"}" \
+    "$(tail -n 1 "$power_record_log")"
+assert_success apply_policy_action FAIL_SAFE_ON ON
+assert_eq 0 "$planned_power_off"
+assert_eq 0 "$_zte_test_power_transition"
+assert_eq \
+    "$STATE_DIR/power-decision.json|{\"backend\":\"hardware\",\"action\":\"ON\",\"executed\":true,\"reason\":\"fail_safe\",\"outcome\":\"succeeded\",\"updated\":1722345678,\"profile\":\"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value\"}" \
+    "$(tail -n 1 "$power_record_log")"
 _zte_test_power_apply_failure=0
 
 # Stopping or uninstalling the manager must restore VBUS even when normal
@@ -970,6 +1077,22 @@ assert_eq '/etc/init.d/zte-usb-recover:start' \
 assert_failure test -e "$RECOVERY_INHIBIT_FILE"
 assert_eq ON "$last_power_action"
 _zte_test_power_record_failure=0
+assert_eq \
+    "$STATE_DIR/power-decision.json|{\"backend\":\"hardware\",\"action\":\"ON\",\"executed\":true,\"reason\":\"disabled\",\"outcome\":\"succeeded\",\"updated\":1722345678,\"profile\":\"hardware|1|0|cudy,tr3000-v1|/sys/class/gpio/modem_power/value\"}" \
+    "$(tail -n 1 "$power_record_log")"
+
+# A successful ON followed by recovery restart failure is an executed action
+# with a failed overall outcome, never a stale success.
+assert_success zte_recovery_inhibit_write \
+    "$RECOVERY_INHIBIT_FILE" battery_high 1722346000 1722345600 true
+_zte_test_recovery_running=0
+_zte_test_recovery_control_failure=1
+assert_failure restore_power_on
+assert_eq \
+    "$STATE_DIR/power-decision.json|{\"backend\":\"hardware\",\"action\":\"ON\",\"executed\":true,\"reason\":\"disabled\",\"outcome\":\"failed\",\"updated\":1722345678,\"profile\":\"hardware|1|0|cudy,tr3000-v1|/sys/class/gpio/modem_power/value\"}" \
+    "$(tail -n 1 "$power_record_log")"
+_zte_test_recovery_control_failure=0
+zte_recovery_inhibit_clear "$RECOVERY_INHIBIT_FILE"
 
 # A normal startup with no owned transition must not enable a recovery service
 # that the administrator had intentionally disabled.

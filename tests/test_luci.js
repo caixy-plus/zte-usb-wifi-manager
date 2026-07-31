@@ -758,6 +758,33 @@ const completeStatus = {
 	policy: {
 		state: 'PRE_DEPARTURE',
 		power_action: 'ON'
+	},
+	power: {
+		backend: 'hardware',
+		calibrated: true,
+		write_enabled: true,
+		control_path: '/sys/class/gpio/modem_power/value',
+		control_state: 1,
+		supply_state: 1,
+		observed: 'ON',
+		execution: {
+			available: true,
+			reason: 'ready'
+		},
+		decision: {
+			backend: 'hardware',
+			action: 'ON',
+			executed: true,
+			reason: 'pre_departure',
+			outcome: 'succeeded',
+			updated: 1722345678,
+			profile: 'hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value'
+		},
+		recovery: {
+			inhibited: false,
+			service_available: true,
+			service_running: true
+		}
 	}
 };
 
@@ -804,6 +831,41 @@ test('renders the battery panel from normalized battery status', function() {
 	assert.strictEqual(rowValue(tree, '电池值'), '4050');
 	assert.strictEqual(rowValue(tree, '电池百分比原值'), '82');
 	assert.strictEqual(rowValue(tree, '温度级别'), 'normal');
+	assert.strictEqual(rowValue(tree, '供电后端'), 'hardware');
+	assert.strictEqual(rowValue(tree, '硬件已校准'), '是');
+	assert.strictEqual(rowValue(tree, '写操作已启用'), '是');
+	assert.strictEqual(rowValue(tree, '实际供电'), 'ON');
+	assert.strictEqual(rowValue(tree, '当前可执行'), '是');
+	assert.strictEqual(rowValue(tree, '执行状态'), '就绪');
+	assert.strictEqual(rowValue(tree, '控制器读回'), '1');
+	assert.strictEqual(rowValue(tree, '电源读回'), '1');
+	assert.strictEqual(rowValue(tree, '最近动作'), 'ON');
+	assert.strictEqual(rowValue(tree, '最近动作已执行'), '是');
+	assert.strictEqual(rowValue(tree, '最近动作结果'), '成功');
+	assert.notStrictEqual(rowValue(tree, '最近动作时间'), '—');
+	assert.strictEqual(rowValue(tree, '恢复抑制'), '否');
+	assert.strictEqual(rowValue(tree, '恢复服务可用'), '是');
+	assert.strictEqual(rowValue(tree, '恢复服务运行'), '是');
+});
+
+test('shows unknown power state for a legacy snapshot without power data', function() {
+	const status = JSON.parse(JSON.stringify(completeStatus));
+	delete status.power;
+	assert.ok(text(renderPanel(status, 'overview')).indexOf('供电状态未知') !== -1);
+});
+
+test('does not claim hardware execution when recovery is unavailable', function() {
+	const status = JSON.parse(JSON.stringify(completeStatus));
+	status.power.execution = {
+		available: false,
+		reason: 'recovery_unavailable'
+	};
+	status.power.recovery.service_available = false;
+	const tree = renderPanel(status, 'battery');
+	assert.strictEqual(rowValue(tree, '当前可执行'), '否');
+	assert.strictEqual(rowValue(tree, '不可执行原因'), '恢复服务不可用');
+	assert.ok(text(renderPanel(status, 'schedule')).indexOf(
+		'硬件控制不可执行（恢复服务不可用）') !== -1);
 });
 
 test('renders the calculated charging schedule state', function() {
@@ -813,7 +875,7 @@ test('renders the calculated charging schedule state', function() {
 		'PRE_DEPARTURE'
 	);
 	assert.strictEqual(rowValue(tree, '预期供电动作'), 'ON');
-	assert.ok(text(tree).indexOf('硬件执行保持禁用') !== -1);
+	assert.ok(text(tree).indexOf('硬件控制已启用') !== -1);
 });
 
 test('renders device and SIM details from normalized status', function() {

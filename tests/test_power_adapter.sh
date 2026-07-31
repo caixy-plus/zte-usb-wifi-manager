@@ -11,6 +11,8 @@ if [ ! -f "$power_adapter" ]; then
     fail 'power adapter library must exist'
     finish
 fi
+. "$lib/validation.sh"
+. "$lib/json.sh"
 # shellcheck source=../package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/power-adapter.sh
 . "$power_adapter"
 
@@ -87,12 +89,23 @@ assert_success zte_power_calibrated_flag_valid 0
 assert_success zte_power_calibrated_flag_valid 1
 assert_failure zte_power_calibrated_flag_valid ''
 assert_failure zte_power_calibrated_flag_valid 2
+assert_eq \
+    'hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value' \
+    "$(zte_power_profile_id hardware 1 1 cudy,tr3000-v1 \
+        /sys/class/gpio/modem_power/value)"
+assert_eq 'mock|0|0||' \
+    "$(zte_power_profile_id mock 0 0 ignored-board ignored-path)"
 
 mock_result=$(zte_power_apply mock ON battery_low "$record")
 assert_eq \
     '{"backend":"mock","action":"ON","executed":true,"reason":"battery_low"}' \
     "$mock_result"
 assert_eq "$mock_result" "$(cat "$record")"
+timestamped_mock=$(zte_power_apply \
+    mock ON battery_low "$record" ignored-path 0 ignored-board 0 1722345678)
+assert_eq \
+    '{"backend":"mock","action":"ON","executed":true,"reason":"battery_low","outcome":"succeeded","updated":1722345678,"profile":"mock|0|0||"}' \
+    "$timestamped_mock"
 assert_eq 600 "$(test_file_mode "$record")"
 
 dry_run_result=$(zte_power_apply dry-run OFF battery_high "$record")
@@ -123,6 +136,29 @@ zte_power_sysfs_write() {
 zte_power_sysfs_read() {
     cat "$hardware_state"
 }
+
+run_hardware_audit_failure() (
+    zte_power_write_record() { return 1; }
+    set +e
+    _audit_output=$(zte_power_apply \
+        hardware "$1" "$2" "$record" \
+        '/sys/class/gpio/modem_power/value' 1 'cudy,tr3000-v1' 1 \
+        1722345678)
+    _audit_status=$?
+    set -e
+    printf '%s\n%s\n' "$_audit_status" "$_audit_output"
+)
+
+assert_eq \
+    '2
+{"backend":"hardware","action":"OFF","executed":true,"reason":"battery_high","outcome":"succeeded","updated":1722345678,"profile":"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value"}' \
+    "$(run_hardware_audit_failure OFF battery_high)"
+assert_eq 0 "$(cat "$hardware_state")"
+assert_eq \
+    '2
+{"backend":"hardware","action":"ON","executed":true,"reason":"battery_low","outcome":"succeeded","updated":1722345678,"profile":"hardware|1|1|cudy,tr3000-v1|/sys/class/gpio/modem_power/value"}' \
+    "$(run_hardware_audit_failure ON battery_low)"
+assert_eq 1 "$(cat "$hardware_state")"
 
 assert_eq ON "$(zte_power_observed_state \
     '/sys/class/gpio/modem_power/value')"

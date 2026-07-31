@@ -96,6 +96,28 @@ zte_power_calibrated_flag_valid() {
 	esac
 }
 
+zte_power_profile_id() {
+	_zte_power_profile_backend=${1-}
+	_zte_power_profile_calibrated=${2-0}
+	_zte_power_profile_write=${3-0}
+	_zte_power_profile_board=${4-}
+	_zte_power_profile_path=${5-}
+	zte_power_backend_valid "$_zte_power_profile_backend" || return 1
+	zte_power_calibrated_flag_valid \
+		"$_zte_power_profile_calibrated" || return 1
+	zte_power_calibrated_flag_valid "$_zte_power_profile_write" || return 1
+	case $_zte_power_profile_backend in
+		unconfigured|mock)
+			_zte_power_profile_board=''
+			_zte_power_profile_path=''
+			;;
+	esac
+	printf '%s|%s|%s|%s|%s\n' \
+		"$_zte_power_profile_backend" "$_zte_power_profile_calibrated" \
+		"$_zte_power_profile_write" "$_zte_power_profile_board" \
+		"$_zte_power_profile_path"
+}
+
 zte_power_sysfs_write() {
 	_zte_power_sysfs_path=$1
 	_zte_power_sysfs_value=$2
@@ -383,6 +405,7 @@ zte_power_apply() {
 	_zte_power_calibrated=${6-0}
 	_zte_power_board=${7-}
 	_zte_power_write_authorized=${8-0}
+	_zte_power_updated=${9-}
 
 	zte_power_backend_valid "$_zte_power_backend" || return 1
 	zte_power_action_valid "$_zte_power_action" || return 1
@@ -422,11 +445,28 @@ zte_power_apply() {
 		_zte_power_executed=false
 	fi
 
-	_zte_power_result=$(printf \
-		'{"backend":"%s","action":"%s","executed":%s,"reason":"%s"}' \
-		"$_zte_power_backend" "$_zte_power_action" \
-		"$_zte_power_executed" "$_zte_power_reason")
-	zte_power_write_record "$_zte_power_record_file" "$_zte_power_result" ||
-		return 1
+	if [ -n "$_zte_power_updated" ]; then
+		zte_is_uint "$_zte_power_updated" &&
+			[ "$_zte_power_updated" -gt 0 ] || return 1
+		_zte_power_profile=$(zte_power_profile_id \
+			"$_zte_power_backend" "$_zte_power_calibrated" \
+			"$_zte_power_write_authorized" "$_zte_power_board" \
+			"$_zte_power_control_path") || return 1
+		_zte_power_result=$(printf \
+			'{"backend":"%s","action":"%s","executed":%s,"reason":"%s","outcome":"succeeded","updated":%s,"profile":"%s"}' \
+			"$_zte_power_backend" "$_zte_power_action" \
+			"$_zte_power_executed" "$_zte_power_reason" \
+			"$_zte_power_updated" "$(zte_json_escape "$_zte_power_profile")")
+	else
+		_zte_power_result=$(printf \
+			'{"backend":"%s","action":"%s","executed":%s,"reason":"%s"}' \
+			"$_zte_power_backend" "$_zte_power_action" \
+			"$_zte_power_executed" "$_zte_power_reason")
+	fi
+	if ! zte_power_write_record \
+		"$_zte_power_record_file" "$_zte_power_result"; then
+		printf '%s\n' "$_zte_power_result"
+		return 2
+	fi
 	printf '%s\n' "$_zte_power_result"
 }

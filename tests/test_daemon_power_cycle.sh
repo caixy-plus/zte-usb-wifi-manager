@@ -47,6 +47,7 @@ zte_recovery_inhibit_renew() {
     printf '%s:%s\n' "$2" "$3" >"$renew_log"
 }
 collect_network() { :; }
+collect_power_snapshot() { power_json=''; }
 write_status() { printf '%s\n' "$1" >>"$status_log"; }
 record_state_change() {
     printf '%s:%s\n' "$1" "$2" >>"$state_log"
