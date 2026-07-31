@@ -39,6 +39,20 @@ var callSetCredentials = rpc.declare({
 	reject: true
 });
 
+var callCellularAction = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'cellular_action',
+	params: [ 'action', 'target' ],
+	reject: true
+});
+
+var callOperationStatus = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'operation_status',
+	params: [ 'operation_id' ],
+	reject: true
+});
+
 var tabs = [
 	{ id: 'overview', label: _('总览') },
 	{ id: 'network', label: _('移动网络') },
@@ -330,16 +344,62 @@ function renderSchedule(status) {
 	]);
 }
 
-function renderDevice(status, capabilities) {
+function renderSimSwitch(sim, onAction, actionBusy) {
+	var selectedTarget = sim.type === 'sim1' || sim.type === 'sim2' ||
+		sim.type === 'sim3' || sim.type === 'physical' ? sim.type : 'physical';
+	var targetSelect = E('select', { 'class': 'cbi-input-select' }, [
+		E('option', { 'value': 'physical' }, _('实体 SIM')),
+		E('option', { 'value': 'sim1' }, _('eSIM 1')),
+		E('option', { 'value': 'sim2' }, _('eSIM 2')),
+		E('option', { 'value': 'sim3' }, _('eSIM 3'))
+	]);
+	var confirmation = E('input', {
+		'type': 'checkbox',
+		'class': 'cbi-input-checkbox'
+	});
+	var children;
+
+	targetSelect.value = selectedTarget;
+	children = [
+		E('div', { 'class': 'cbi-value' }, [
+			E('div', { 'class': 'cbi-value-title' }, _('目标 SIM')),
+			E('div', { 'class': 'cbi-value-field' }, targetSelect)
+		]),
+		E('div', { 'class': 'cbi-value' }, [
+			E('div', { 'class': 'cbi-value-title' }, _('操作确认')),
+			E('div', { 'class': 'cbi-value-field' }, [
+				confirmation,
+				' ',
+				_('我确认切换过程会短暂中断蜂窝网络')
+			])
+		]),
+		E('button', {
+			'class': 'cbi-button cbi-button-action',
+			'type': 'button',
+			'disabled': actionBusy ? 'disabled' : null,
+			'click': function() {
+				return onAction(targetSelect, confirmation);
+			}
+		}, _('切换 SIM'))
+	];
+	return E('div', { 'class': 'cbi-section zte-sim-action' },
+		[ E('h4', {}, _('SIM 切换')) ].concat(children));
+}
+
+function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sim = device.sim && typeof device.sim === 'object' ? device.sim : {};
-
-	return panelRoot('device', _('设备'), [
+	var children = [
 		row(_('设备型号'), device.model || status.model || capabilities.model),
 		row(_('Modem 状态'), device.modem_state),
 		row(_('SIM 类型'), sim.type),
 		row(_('活动卡槽原始值'), sim.active_slot_raw)
-	]);
+	];
+
+	if (capabilities.sim_switch === true)
+		children.push(renderSimSwitch(sim, onAction, actionBusy));
+
+	return panelRoot('device', _('设备'), children);
 }
 
 function renderDiagnostics(status) {
@@ -382,7 +442,8 @@ function renderLogs(logsResult) {
 	}));
 }
 
-function renderPanel(tabId, status, capabilities, logsResult) {
+function renderPanel(tabId, status, capabilities, logsResult, onAction,
+	actionNotice, actionBusy) {
 	switch (tabId) {
 	case 'network':
 		return renderNetwork(status);
@@ -397,7 +458,7 @@ function renderPanel(tabId, status, capabilities, logsResult) {
 	case 'schedule':
 		return renderSchedule(status);
 	case 'device':
-		return renderDevice(status, capabilities);
+		return renderDevice(status, capabilities, onAction, actionNotice, actionBusy);
 	case 'diagnostics':
 		return renderDiagnostics(status);
 	case 'logs':
@@ -407,7 +468,8 @@ function renderPanel(tabId, status, capabilities, logsResult) {
 	}
 }
 
-function renderStatus(data, selectedTab, onSelect, onCredentialSave, credentialNotice) {
+function renderStatus(data, selectedTab, onSelect, onCredentialSave,
+	credentialNotice, onDeviceAction, actionNotice, actionBusy) {
 		var statusResult = data && data[0] && typeof data[0] === 'object'
 			? data[0] : { ok: false, value: {} };
 		var capabilitiesResult = data && data[1] && typeof data[1] === 'object'
@@ -431,7 +493,14 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave, credentialN
 		if (statusResult.ok && snapshotIsStale(status.updated))
 			alerts.push(E('div', { 'class': 'alert-message warning' },
 				_('状态快照长时间未更新，后台守护进程可能已停止。')));
+		if (actionNotice)
+			alerts.push(E('div', {
+				'class': 'alert-message ' + actionNotice.level
+			}, actionNotice.message));
 
+		var writesAvailable = capabilities.sim_switch === true ||
+			capabilities.cellular_write === true || capabilities.wifi_write === true ||
+			capabilities.traffic_write === true || capabilities.sms_write === true;
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
 			alerts,
@@ -439,9 +508,12 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave, credentialN
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab) {
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
-			renderPanel(selectedTab, status, capabilities, logsResult),
+			renderPanel(selectedTab, status, capabilities, logsResult,
+				onDeviceAction, actionNotice, actionBusy),
 			E('div', { 'class': 'alert-message warning' },
-				_('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
+				writesAvailable
+					? _('仅显示已通过实机校准并由管理员启用的写操作。')
+					: _('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
 		]);
 }
 
@@ -451,6 +523,10 @@ return view.extend({
 	render: function(data) {
 		var currentData = data;
 		var credentialNotice = null;
+		var actionNotice = null;
+		var currentOperationId = null;
+		var actionSubmitting = false;
+		var operationGeneration = 0;
 		var root;
 
 		function renderCurrent() {
@@ -459,7 +535,10 @@ return view.extend({
 				activeTab,
 				selectTab,
 				saveCredentials,
-				credentialNotice
+				credentialNotice,
+				switchSim,
+				actionNotice,
+				actionSubmitting || currentOperationId !== null
 			);
 		}
 
@@ -518,11 +597,151 @@ return view.extend({
 			});
 		}
 
+		function switchSim(targetSelect, confirmation) {
+			var target = targetSelect && typeof targetSelect.value === 'string'
+				? targetSelect.value : '';
+			var requestGeneration;
+			if (actionSubmitting || currentOperationId !== null) {
+				actionNotice = {
+					level: 'info',
+					message: _('已有 SIM 切换请求正在处理，请等待结果。')
+				};
+				replace(renderCurrent());
+				return Promise.resolve();
+			}
+			if (!confirmation || confirmation.checked !== true) {
+				actionNotice = {
+					level: 'error',
+					message: _('请先确认该操作会短暂中断蜂窝网络。')
+				};
+				replace(renderCurrent());
+				return Promise.resolve();
+			}
+			actionSubmitting = true;
+			operationGeneration += 1;
+			requestGeneration = operationGeneration;
+			actionNotice = {
+				level: 'info',
+				message: _('正在提交 SIM 切换请求。')
+			};
+			replace(renderCurrent());
+			return Promise.resolve(callCellularAction('switch_sim', target)).then(function(reply) {
+				if (requestGeneration !== operationGeneration)
+					return;
+				actionSubmitting = false;
+				if (!reply || reply.ok !== true || typeof reply.operation_id !== 'string') {
+					actionNotice = {
+						level: 'error',
+						message: _('SIM 切换请求被拒绝，请检查能力开关和事件日志。')
+					};
+					replace(renderCurrent());
+					return;
+				}
+				currentOperationId = reply.operation_id;
+				actionNotice = {
+					level: 'info',
+					message: _('操作已进入队列，页面将自动刷新执行结果。')
+				};
+				replace(renderCurrent());
+			}, function() {
+				if (requestGeneration !== operationGeneration)
+					return;
+				actionSubmitting = false;
+				actionNotice = {
+					level: 'error',
+					message: _('无法提交 SIM 切换请求，请检查 rpcd 服务。')
+				};
+				replace(renderCurrent());
+			});
+		}
+
+		function refreshOperation() {
+			var operationId;
+			var generation;
+			if (!currentOperationId)
+				return Promise.resolve();
+			operationId = currentOperationId;
+			generation = operationGeneration;
+			return Promise.resolve(callOperationStatus(operationId)).then(function(reply) {
+				if (generation !== operationGeneration ||
+					operationId !== currentOperationId)
+					return;
+				if (!reply || typeof reply !== 'object')
+					throw new Error('invalid operation reply');
+				if (reply.ok === false) {
+					if (reply.error === 'operation_not_found') {
+						actionNotice = {
+							level: 'error',
+							message: _('操作记录不存在，已停止跟踪。')
+						};
+						currentOperationId = null;
+						operationGeneration += 1;
+					}
+					else {
+						actionNotice = {
+							level: 'warning',
+							message: _('暂时无法读取操作状态，将自动重试：') +
+								dash(reply.error)
+						};
+					}
+					return;
+				}
+				switch (reply.state) {
+				case 'succeeded':
+					actionNotice = { level: 'success', message: _('SIM 切换已完成。') };
+					currentOperationId = null;
+					operationGeneration += 1;
+					break;
+				case 'failed':
+					actionNotice = {
+						level: 'error',
+						message: _('SIM 切换失败：') + dash(reply.code)
+					};
+					currentOperationId = null;
+					operationGeneration += 1;
+					break;
+				case 'timed_out':
+					actionNotice = {
+						level: 'error',
+						message: _('SIM 切换超时：') + dash(reply.code)
+					};
+					currentOperationId = null;
+					operationGeneration += 1;
+					break;
+				case 'queued':
+				case 'running':
+				case 'verifying':
+					actionNotice = {
+						level: 'info',
+						message: _('SIM 切换正在执行。')
+					};
+					break;
+				default:
+					actionNotice = {
+						level: 'error',
+						message: _('无法读取操作执行状态：') + dash(reply.state)
+					};
+					currentOperationId = null;
+					operationGeneration += 1;
+				}
+			}, function() {
+				if (generation !== operationGeneration ||
+					operationId !== currentOperationId)
+					return;
+				actionNotice = {
+					level: 'warning',
+					message: _('暂时无法读取操作状态，将自动重试。')
+				};
+			});
+		}
+
 		root = renderCurrent();
 
 		poll.add(function() {
 			return loadData().then(function(nextData) {
 				currentData = nextData;
+				return refreshOperation();
+			}).then(function() {
 				replace(renderCurrent());
 			});
 		}, POLL_INTERVAL_SECONDS);

@@ -26,7 +26,9 @@ const rpcBehavior = {
 	capabilities: function() { return Promise.resolve({}); },
 	logs: function() { return Promise.resolve({ events: [] }); },
 	credential_status: function() { return Promise.resolve({ configured: false }); },
-	set_credentials: function() { return Promise.resolve({ ok: true, configured: true }); }
+	set_credentials: function() { return Promise.resolve({ ok: true, configured: true }); },
+	cellular_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
+	operation_status: function() { return Promise.resolve({ operation_id: 'op-test', state: 'queued' }); }
 };
 const rpcSpecs = {};
 const pollEntries = [];
@@ -134,6 +136,16 @@ function tabById(tree, tabId) {
 	return nodesByClass(tree, 'zte-tab').find(function(tab) {
 		return tab.attrs['data-tab'] === tabId;
 	});
+}
+
+function deferred() {
+	let resolve;
+	let reject;
+	const promise = new Promise(function(resolvePromise, rejectPromise) {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise: promise, resolve: resolve, reject: reject };
 }
 
 function renderPanel(status, tabId) {
@@ -247,6 +259,10 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	assert.strictEqual(rpcSpecs.credential_status.reject, true);
 	assert.strictEqual(rpcSpecs.set_credentials.reject, true);
 	assert.deepStrictEqual(rpcSpecs.set_credentials.params, [ 'password' ]);
+	assert.strictEqual(rpcSpecs.cellular_action.reject, true);
+	assert.deepStrictEqual(rpcSpecs.cellular_action.params, [ 'action', 'target' ]);
+	assert.strictEqual(rpcSpecs.operation_status.reject, true);
+	assert.deepStrictEqual(rpcSpecs.operation_status.params, [ 'operation_id' ]);
 	rpcBehavior.status = function() { return Promise.resolve(4); };
 	rpcBehavior.capabilities = function() { return Promise.resolve({}); };
 	rpcBehavior.logs = function() { return Promise.resolve({ events: [] }); };
@@ -301,6 +317,273 @@ test('submits and clears the password without claiming authentication', async fu
 	assert.strictEqual(passwordInput.value, '');
 	assert.ok(text(current).indexOf('密码已保存，等待设备需要认证时使用') !== -1);
 	assert.strictEqual(text(current).indexOf('登录成功'), -1);
+});
+
+test('gates SIM switching by capability and reports asynchronous completion', async function() {
+	pollEntries.length = 0;
+	let submitted = null;
+	rpcBehavior.cellular_action = function(action, target) {
+		submitted = { action: action, target: target };
+		return Promise.resolve({ ok: true, operation_id: 'op-1722345678-1234', state: 'queued' });
+	};
+	rpcBehavior.operation_status = function(operationId) {
+		assert.strictEqual(operationId, 'op-1722345678-1234');
+		return Promise.resolve({
+			operation_id: operationId,
+			state: 'succeeded',
+			code: 'ok'
+		});
+	};
+
+	let current = app.render([
+		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
+		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: true } }
+	]);
+	const parent = {
+		replaceChild: function(next) {
+			current = next;
+			next.parentNode = parent;
+		}
+	};
+	current.parentNode = parent;
+	tabById(current, 'device').attrs.click();
+
+	let select = nodesByTag(current, 'select')[0];
+	let confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'checkbox';
+	});
+	let actionButton = nodesByTag(current, 'button').find(function(button) {
+		return text(button) === '切换 SIM';
+	});
+	assert.ok(select);
+	assert.ok(confirmation);
+	assert.ok(actionButton);
+	assert.strictEqual(text(current).indexOf('当前版本仅开放只读能力'), -1);
+
+	await actionButton.attrs.click();
+	assert.strictEqual(submitted, null);
+	assert.ok(text(current).indexOf('请先确认该操作会短暂中断蜂窝网络') !== -1);
+
+	select = nodesByTag(current, 'select')[0];
+	confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'checkbox';
+	});
+	actionButton = nodesByTag(current, 'button').find(function(button) {
+		return text(button) === '切换 SIM';
+	});
+	select.value = 'sim2';
+	confirmation.checked = true;
+	await actionButton.attrs.click();
+	assert.deepStrictEqual(submitted, { action: 'switch_sim', target: 'sim2' });
+	assert.ok(text(current).indexOf('操作已进入队列') !== -1);
+
+	await pollEntries[0].callback();
+	assert.ok(text(current).indexOf('SIM 切换已完成') !== -1);
+	tabById(current, 'overview').attrs.click();
+});
+
+test('does not render SIM write controls when the effective capability is false', function() {
+	let current = app.render([
+		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
+		{ ok: true, value: { sim_switch: false } },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: true } }
+	]);
+	const parent = { replaceChild: function(next) { current = next; next.parentNode = parent; } };
+	current.parentNode = parent;
+	tabById(current, 'device').attrs.click();
+	assert.strictEqual(nodesByTag(current, 'select').length, 0);
+	assert.strictEqual(text(current).indexOf('切换 SIM'), -1);
+	assert.ok(text(current).indexOf('当前版本仅开放只读能力') !== -1);
+	tabById(current, 'overview').attrs.click();
+});
+
+test('stops polling and reports timed-out or invalid operation states', async function() {
+	pollEntries.length = 0;
+	let statusCalls = 0;
+	rpcBehavior.cellular_action = function() {
+		return Promise.resolve({ ok: true, operation_id: 'op-timeout', state: 'queued' });
+	};
+	rpcBehavior.operation_status = function() {
+		statusCalls += 1;
+		return Promise.resolve({ operation_id: 'op-timeout', state: 'timed_out', code: 'deadline' });
+	};
+	rpcBehavior.capabilities = function() { return Promise.resolve({ sim_switch: true }); };
+
+	let current = app.render([
+		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
+		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: true } }
+	]);
+	const parent = { replaceChild: function(next) { current = next; next.parentNode = parent; } };
+	current.parentNode = parent;
+	tabById(current, 'device').attrs.click();
+	let select = nodesByTag(current, 'select')[0];
+	let confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'checkbox';
+	});
+	let button = nodesByTag(current, 'button').find(function(candidate) {
+		return text(candidate) === '切换 SIM';
+	});
+	select.value = 'sim1';
+	confirmation.checked = true;
+	await button.attrs.click();
+	await pollEntries[0].callback();
+	assert.ok(text(current).indexOf('SIM 切换超时') !== -1);
+	await pollEntries[0].callback();
+	assert.strictEqual(statusCalls, 1);
+
+	rpcBehavior.cellular_action = function() {
+		return Promise.resolve({ ok: true, operation_id: 'op-invalid', state: 'queued' });
+	};
+	rpcBehavior.operation_status = function() {
+		statusCalls += 1;
+		return Promise.resolve({ ok: false, error: 'operation_not_found' });
+	};
+	tabById(current, 'device').attrs.click();
+	select = nodesByTag(current, 'select')[0];
+	confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'checkbox';
+	});
+	button = nodesByTag(current, 'button').find(function(candidate) {
+		return text(candidate) === '切换 SIM';
+	});
+	select.value = 'sim2';
+	confirmation.checked = true;
+	await button.attrs.click();
+	await pollEntries[0].callback();
+	assert.ok(text(current).indexOf('操作记录不存在，已停止跟踪') !== -1);
+	await pollEntries[0].callback();
+	assert.strictEqual(statusCalls, 2);
+	tabById(current, 'overview').attrs.click();
+});
+
+test('guards duplicate submissions and ignores a late status from an old operation', async function() {
+	pollEntries.length = 0;
+	const submission = deferred();
+	const statusRequests = [];
+	let submitCalls = 0;
+	rpcBehavior.status = function() { return Promise.resolve({ state: 'ok' }); };
+	rpcBehavior.capabilities = function() { return Promise.resolve({ sim_switch: true }); };
+	rpcBehavior.cellular_action = function() {
+		submitCalls += 1;
+		return submission.promise;
+	};
+	rpcBehavior.operation_status = function(operationId) {
+		const request = deferred();
+		request.operationId = operationId;
+		statusRequests.push(request);
+		return request.promise;
+	};
+
+	let current = app.render([
+		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
+		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: true } }
+	]);
+	const parent = { replaceChild: function(next) { current = next; next.parentNode = parent; } };
+	current.parentNode = parent;
+	tabById(current, 'device').attrs.click();
+	let select = nodesByTag(current, 'select')[0];
+	let confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'checkbox';
+	});
+	let button = nodesByTag(current, 'button').find(function(candidate) {
+		return text(candidate) === '切换 SIM';
+	});
+	select.value = 'sim1';
+	confirmation.checked = true;
+	const firstSubmit = button.attrs.click();
+	await button.attrs.click();
+	assert.strictEqual(submitCalls, 1);
+	assert.ok(text(current).indexOf('已有 SIM 切换请求正在处理') !== -1);
+	submission.resolve({ ok: true, operation_id: 'op-old', state: 'queued' });
+	await firstSubmit;
+	button = nodesByTag(current, 'button').find(function(candidate) {
+		return text(candidate) === '切换 SIM';
+	});
+	assert.strictEqual(button.attrs.disabled, 'disabled');
+	await button.attrs.click();
+	assert.strictEqual(submitCalls, 1);
+
+	const oldPoll1 = pollEntries[0].callback();
+	const oldPoll2 = pollEntries[0].callback();
+	await new Promise(function(resolve) { setImmediate(resolve); });
+	assert.strictEqual(statusRequests.length, 2);
+	statusRequests[0].resolve({ operation_id: 'op-old', state: 'succeeded', code: 'ok' });
+	await oldPoll1;
+
+	rpcBehavior.cellular_action = function() {
+		submitCalls += 1;
+		return Promise.resolve({ ok: true, operation_id: 'op-new', state: 'queued' });
+	};
+	select = nodesByTag(current, 'select')[0];
+	confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'checkbox';
+	});
+	button = nodesByTag(current, 'button').find(function(candidate) {
+		return text(candidate) === '切换 SIM';
+	});
+	select.value = 'sim2';
+	confirmation.checked = true;
+	await button.attrs.click();
+	assert.ok(text(current).indexOf('操作已进入队列') !== -1);
+
+	statusRequests[1].resolve({ operation_id: 'op-old', state: 'running' });
+	await oldPoll2;
+	assert.ok(text(current).indexOf('操作已进入队列') !== -1);
+	assert.strictEqual(text(current).indexOf('SIM 切换正在执行'), -1);
+	tabById(current, 'overview').attrs.click();
+});
+
+test('keeps an active operation guarded across a transient status RPC failure', async function() {
+	pollEntries.length = 0;
+	let statusCalls = 0;
+	rpcBehavior.status = function() { return Promise.resolve({ state: 'ok' }); };
+	rpcBehavior.capabilities = function() { return Promise.resolve({ sim_switch: true }); };
+	rpcBehavior.cellular_action = function() {
+		return Promise.resolve({ ok: true, operation_id: 'op-retry', state: 'queued' });
+	};
+	rpcBehavior.operation_status = function() {
+		statusCalls += 1;
+		if (statusCalls === 1)
+			return Promise.reject(new Error('temporary ubus failure'));
+		return Promise.resolve({ operation_id: 'op-retry', state: 'succeeded', code: 'ok' });
+	};
+
+	let current = app.render([
+		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
+		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: true } }
+	]);
+	const parent = { replaceChild: function(next) { current = next; next.parentNode = parent; } };
+	current.parentNode = parent;
+	tabById(current, 'device').attrs.click();
+	let select = nodesByTag(current, 'select')[0];
+	let confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs.type === 'checkbox';
+	});
+	let button = nodesByTag(current, 'button').find(function(candidate) {
+		return text(candidate) === '切换 SIM';
+	});
+	select.value = 'sim1';
+	confirmation.checked = true;
+	await button.attrs.click();
+	await pollEntries[0].callback();
+	assert.ok(text(current).indexOf('暂时无法读取操作状态，将自动重试') !== -1);
+	button = nodesByTag(current, 'button').find(function(candidate) {
+		return text(candidate) === '切换 SIM';
+	});
+	assert.strictEqual(button.attrs.disabled, 'disabled');
+	await pollEntries[0].callback();
+	assert.strictEqual(statusCalls, 2);
+	assert.ok(text(current).indexOf('SIM 切换已完成') !== -1);
+	tabById(current, 'overview').attrs.click();
 });
 
 test('shows a visible backend error instead of an empty dashboard', function() {
