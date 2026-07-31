@@ -59,10 +59,10 @@
 | OpenWrt 25.12.5 | `.apk` | QEMU 安装验证通过 |
 | OpenWrt 24.10.7 | `.ipk` | QEMU 安装验证通过 |
 
-当前 backend r6 / LuCI r3 的真实 SDK 构建、r5→r6 升级、持久恢复门禁和卸载
-证据见 [验证记录](docs/validation/2026-07-31-r6-r3-qemu.md)。
+当前 backend r7 / LuCI r3 的真实 SDK 构建、升级、持久恢复门禁和卸载
+证据见 [验证记录](docs/validation/2026-07-31-r7-r3-qemu.md)。
 
-backend r6 的预发布入口预留为 `v0.1.0-rc1-r6`；只有维护者显式创建并推送该
+backend r7 的预发布入口预留为 `v0.1.0-rc1-r7`；只有维护者显式创建并推送该
 tag 时才会触发 prerelease 工作流。当前 SDK/QEMU 验证通过不代表该 tag 已发布，
 也不代表真实设备写接口、USB 供电或 72 小时稳定性验收已经完成。
 

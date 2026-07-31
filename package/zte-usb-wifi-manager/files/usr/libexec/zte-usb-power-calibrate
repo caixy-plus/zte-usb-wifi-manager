@@ -28,29 +28,45 @@ zte_calibration_device_reachable() {
 	esac
 }
 
+zte_calibration_probe_fail() {
+	_zte_calibration_probe_code=$1
+	case $_zte_calibration_probe_code in
+		board_file_unreadable|board_read_failed|unsupported_board|invalid_control_path|power_read_failed|invalid_power_value|recovery_service_unavailable|device_unreachable) ;;
+		*) _zte_calibration_probe_code=probe_failed ;;
+	esac
+	printf \
+		'{"ok":false,"mode":"probe","code":"%s"}\n' \
+		"$_zte_calibration_probe_code"
+	return 1
+}
+
 zte_calibration_probe() {
-	[ -r "$ZTE_CALIBRATION_BOARD_FILE" ] || return 1
-	_zte_calibration_board=$(cat "$ZTE_CALIBRATION_BOARD_FILE") ||
-		return 1
-	zte_power_board_supported "$_zte_calibration_board" || return 1
+	[ -r "$ZTE_CALIBRATION_BOARD_FILE" ] ||
+		zte_calibration_probe_fail board_file_unreadable
+	_zte_calibration_board=$(cat "$ZTE_CALIBRATION_BOARD_FILE" 2>/dev/null) ||
+		zte_calibration_probe_fail board_read_failed
+	zte_power_board_supported "$_zte_calibration_board" ||
+		zte_calibration_probe_fail unsupported_board
 	zte_power_control_path_valid "$ZTE_CALIBRATION_CONTROL_PATH" ||
-		return 1
+		zte_calibration_probe_fail invalid_control_path
 	_zte_calibration_power=$(
-		zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH"
-	) || return 1
+		zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH" 2>/dev/null
+	) || zte_calibration_probe_fail power_read_failed
 	case $_zte_calibration_power in
 		0|1) ;;
-		*) return 1 ;;
+		*) zte_calibration_probe_fail invalid_power_value ;;
 	esac
 	zte_recovery_service_available \
-		"$ZTE_CALIBRATION_RECOVERY_SERVICE" || return 1
+		"$ZTE_CALIBRATION_RECOVERY_SERVICE" ||
+		zte_calibration_probe_fail recovery_service_unavailable
 
 	if [ -e "$ZTE_CALIBRATION_NETDEV_PATH" ]; then
 		_zte_calibration_netdev_present=true
 	else
 		_zte_calibration_netdev_present=false
 	fi
-	zte_calibration_device_reachable || return 1
+	zte_calibration_device_reachable ||
+		zte_calibration_probe_fail device_unreachable
 	printf \
 		'{"ok":true,"mode":"probe","board":"%s","power":%s,"recovery_service":true,"netdev_present":%s,"device_reachable":true}\n' \
 		"$_zte_calibration_board" "$_zte_calibration_power" \

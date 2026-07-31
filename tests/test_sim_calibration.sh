@@ -268,6 +268,17 @@ sim_call() {
     zte_sim_calibration_main probe
 }
 
+assert_probe_failure() {
+    expected_code=$1
+    shift
+    probe_status=0
+    probe_output=$(sim_call "$@") || probe_status=$?
+    assert_eq 1 "$probe_status"
+    assert_eq \
+        "{\"ok\":false,\"mode\":\"probe\",\"code\":\"$expected_code\"}" \
+        "$probe_output"
+}
+
 ready_raw() {
     case $1 in
         physical) slot=0 ;;
@@ -377,35 +388,38 @@ done
 # Missing or non-0600 credentials are rejected before the adapter is called.
 rm "$credential_file"
 : >"$fetch_log"
-assert_failure sim_call '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' >/dev/null 2>&1
+assert_probe_failure credentials_unavailable \
+    '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'
 assert_eq '' "$(cat "$fetch_log")"
 printf '%s\n' 'password=test-password' >"$credential_file"
 chmod 644 "$credential_file"
-assert_failure sim_call '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' >/dev/null 2>&1
+assert_probe_failure credentials_unavailable \
+    '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'
 chmod 600 "$credential_file"
 
-# Each readiness field is required; a valid slot alone cannot pass probe.
-for raw in \
-    '{"simcard_active_slot_temp":"0","mc_modem_main_state":"offline","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' \
-    '{"simcard_active_slot_temp":"1","mc_modem_main_state":"connected","network_provider_fullname":"   ","ppp_status":"ipv4_ipv6_connected"}' \
-    '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"disconnected"}' \
-    '{"simcard_active_slot_temp":"9","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'; do
-    assert_failure sim_call "$raw" >/dev/null 2>&1
-done
-
-assert_failure sim_call \
+# Each readiness failure has a stable, non-secret diagnostic code.
+assert_probe_failure modem_not_connected \
+    '{"simcard_active_slot_temp":"0","mc_modem_main_state":"offline","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'
+assert_probe_failure network_unregistered \
+    '{"simcard_active_slot_temp":"1","mc_modem_main_state":"connected","network_provider_fullname":"   ","ppp_status":"ipv4_ipv6_connected"}'
+assert_probe_failure ppp_not_ready \
+    '{"simcard_active_slot_temp":"2","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"disconnected"}'
+assert_probe_failure invalid_active_slot \
+    '{"simcard_active_slot_temp":"9","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}'
+assert_probe_failure device_fetch_failed \
     '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' \
-    1 >/dev/null 2>&1
+    1
 
 for raw in \
     '{"mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' \
     '{"simcard_active_slot_temp":"0","network_provider_fullname":"Carrier Secret","ppp_status":"ipv4_ipv6_connected"}' \
     '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","ppp_status":"ipv4_ipv6_connected"}' \
     '{"simcard_active_slot_temp":"0","mc_modem_main_state":"connected","network_provider_fullname":"Carrier Secret"}'; do
-    assert_failure sim_call "$raw" >/dev/null 2>&1
+    assert_probe_failure missing_field "$raw"
 done
 
-assert_failure sim_call '{"simcard_active_slot_temp":"0"' >/dev/null 2>&1
+assert_probe_failure invalid_device_response \
+    '{"simcard_active_slot_temp":"0"'
 
 # Probe takes no extra arguments and never leaks credential, cookie, or provider.
 assert_failure zte_sim_calibration_main probe extra >/dev/null 2>&1

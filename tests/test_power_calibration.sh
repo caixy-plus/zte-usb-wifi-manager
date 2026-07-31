@@ -60,7 +60,7 @@ cat >"$lib/recovery-inhibit.sh" <<'EOF'
 EOF
 cat >"$lib/recovery-adapter.sh" <<'EOF'
 zte_recovery_service_available() {
-    return 0
+    [ "${ZTE_TEST_RECOVERY_UNAVAILABLE:-0}" = 0 ]
 }
 zte_recovery_prepare_off() {
     printf '%s\n' stop >>"$ZTE_TEST_SERVICE_CALLS"
@@ -94,6 +94,7 @@ esac
 EOF
 cat >"$bin/curl" <<'EOF'
 #!/bin/sh
+[ "${ZTE_TEST_CURL_FAIL:-0}" = 0 ] || exit 1
 printf '%s\n' '{"modem_main_state":"modem_init_complete"}'
 EOF
 cat >"$bin/manager-service" <<'EOF'
@@ -119,11 +120,43 @@ calibration_call() {
         sh "$tool" "$@"
 }
 
+assert_power_probe_failure() {
+    expected_code=$1
+    probe_status=0
+    probe_output=$(calibration_call probe) || probe_status=$?
+    assert_eq 1 "$probe_status"
+    assert_eq \
+        "{\"ok\":false,\"mode\":\"probe\",\"code\":\"$expected_code\"}" \
+        "$probe_output"
+}
+
 probe_result=$(calibration_call probe)
 assert_eq \
     '{"ok":true,"mode":"probe","board":"cudy,tr3000-v1","power":1,"recovery_service":true,"netdev_present":true,"device_reachable":true}' \
     "$probe_result"
 assert_eq '' "$(cat "$state/service-calls")"
+
+mv "$state/board" "$state/board.saved"
+assert_power_probe_failure board_file_unreadable
+mv "$state/board.saved" "$state/board"
+
+printf '%s\n' unsupported,board >"$state/board"
+assert_power_probe_failure unsupported_board
+printf '%s\n' 'cudy,tr3000-v1' >"$state/board"
+
+mv "$state/power" "$state/power.saved"
+assert_power_probe_failure power_read_failed
+mv "$state/power.saved" "$state/power"
+
+ZTE_TEST_RECOVERY_UNAVAILABLE=1
+export ZTE_TEST_RECOVERY_UNAVAILABLE
+assert_power_probe_failure recovery_service_unavailable
+ZTE_TEST_RECOVERY_UNAVAILABLE=0
+
+ZTE_TEST_CURL_FAIL=1
+export ZTE_TEST_CURL_FAIL
+assert_power_probe_failure device_unreachable
+ZTE_TEST_CURL_FAIL=0
 
 assert_failure calibration_call execute WRONG_ACK >/dev/null 2>&1
 assert_eq 1 "$(cat "$state/power")"

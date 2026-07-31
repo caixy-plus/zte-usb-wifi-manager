@@ -41,6 +41,72 @@ zte_sim_calibration_require_root() {
 	[ "$_zte_sim_calibration_uid" = 0 ]
 }
 
+zte_sim_calibration_probe_fail() {
+	_zte_sim_calibration_probe_code=$1
+	case $_zte_sim_calibration_probe_code in
+		not_root|invalid_host|credentials_unavailable|device_fetch_failed|invalid_device_response|missing_field|invalid_active_slot|modem_not_connected|network_unregistered|ppp_not_ready) ;;
+		*) _zte_sim_calibration_probe_code=probe_failed ;;
+	esac
+	printf \
+		'{"ok":false,"mode":"probe","code":"%s"}\n' \
+		"$_zte_sim_calibration_probe_code"
+	return 1
+}
+
+zte_sim_calibration_probe_readiness() {
+	_zte_sim_calibration_probe_password=$1
+	_zte_sim_calibration_probe_raw=$(
+		zte_adapter_fetch "$ZTE_SIM_CALIBRATION_HOST" \
+			"$_zte_sim_calibration_probe_password" \
+			"$ZTE_SIM_CALIBRATION_COOKIE_FILE"
+	) || {
+		zte_sim_calibration_probe_fail device_fetch_failed
+		return 1
+	}
+	zte_json_is_flat_object "$_zte_sim_calibration_probe_raw" || {
+		zte_sim_calibration_probe_fail invalid_device_response
+		return 1
+	}
+
+	for _zte_sim_calibration_probe_field in \
+		simcard_active_slot_temp mc_modem_main_state \
+		network_provider_fullname ppp_status; do
+		zte_json_flat_has "$_zte_sim_calibration_probe_raw" \
+			"$_zte_sim_calibration_probe_field" || {
+			zte_sim_calibration_probe_fail missing_field
+			return 1
+		}
+	done
+
+	_zte_sim_calibration_probe_target=$(
+		zte_sim_calibration_active_target \
+			"$(zte_json_flat_get "$_zte_sim_calibration_probe_raw" \
+				simcard_active_slot_temp)"
+	) || {
+		zte_sim_calibration_probe_fail invalid_active_slot
+		return 1
+	}
+	[ "$(zte_json_flat_get "$_zte_sim_calibration_probe_raw" \
+		mc_modem_main_state)" = connected ] || {
+		zte_sim_calibration_probe_fail modem_not_connected
+		return 1
+	}
+	_zte_sim_calibration_probe_provider=$(zte_json_flat_get \
+		"$_zte_sim_calibration_probe_raw" network_provider_fullname)
+	case $_zte_sim_calibration_probe_provider in
+		*[![:space:]]*) ;;
+		*)
+			zte_sim_calibration_probe_fail network_unregistered
+			return 1
+			;;
+	esac
+	[ "$(zte_json_flat_get "$_zte_sim_calibration_probe_raw" \
+		ppp_status)" = ipv4_ipv6_connected ] || {
+		zte_sim_calibration_probe_fail ppp_not_ready
+		return 1
+	}
+}
+
 zte_sim_calibration_read_ready_target() {
 	_zte_sim_calibration_read_password=$1
 	_zte_sim_calibration_raw=$(
@@ -75,17 +141,17 @@ zte_sim_calibration_read_ready_target() {
 }
 
 zte_sim_calibration_probe() {
-	zte_sim_calibration_require_root || return 1
-	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" || return 1
+	zte_sim_calibration_require_root ||
+		zte_sim_calibration_probe_fail not_root
+	zte_validate_host "$ZTE_SIM_CALIBRATION_HOST" ||
+		zte_sim_calibration_probe_fail invalid_host
 	_zte_sim_calibration_password=$(
 		zte_read_password "$ZTE_SIM_CALIBRATION_CREDENTIAL_FILE"
-	) || return 1
-	_zte_sim_calibration_target=$(
-		zte_sim_calibration_read_ready_target \
-			"$_zte_sim_calibration_password"
-	) || return 1
+	) || zte_sim_calibration_probe_fail credentials_unavailable
+	zte_sim_calibration_probe_readiness \
+		"$_zte_sim_calibration_password" || return 1
 	printf '%s\n' \
-		"{\"ok\":true,\"mode\":\"probe\",\"active_target\":\"$_zte_sim_calibration_target\",\"modem_ready\":true,\"network_registered\":true,\"ppp_ready\":true}"
+		"{\"ok\":true,\"mode\":\"probe\",\"active_target\":\"$_zte_sim_calibration_probe_target\",\"modem_ready\":true,\"network_registered\":true,\"ppp_ready\":true}"
 }
 
 zte_sim_calibration_target_valid() {

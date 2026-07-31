@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'v0.1.0-rc1-r6'
+      - 'v0.1.0-rc1-r7'
 
 permissions:
   contents: read
@@ -108,7 +108,7 @@ jobs:
         run: |
           printf '%s\n' \
             'Safety-gated developer preview for OpenWrt 25.12.5 and 24.10.7.' \
-            'Backend r6 adds spare-device SIM calibration; production SIM switching remains disabled.' \
+            'Backend r7 adds safe diagnostic failure codes for SIM and USB power calibration probes; production writes remain disabled.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md

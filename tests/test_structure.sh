@@ -12,7 +12,7 @@ luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=6$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=7$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -198,13 +198,13 @@ assert_file_contains README.md \
     '/usr/libexec/zte-u25s-sim-calibrate recover'
 assert_file_contains README.md '只能在备用 U25S'
 assert_file_contains README.md \
-    '当前 backend r6 / LuCI r3 的真实 SDK 构建'
+    '当前 backend r7 / LuCI r3 的真实 SDK 构建'
 assert_file_contains README.md \
-    'docs/validation/2026-07-31-r6-r3-qemu\.md'
-assert_file_contains docs/validation/2026-07-31-r6-r3-qemu.md \
-    '30607714699'
-assert_file_contains docs/validation/2026-07-31-r6-r3-qemu.md \
-    'd6dc45fb1c5e1d88f0043aacb379b0a3c8763b65'
+    'docs/validation/2026-07-31-r7-r3-qemu\.md'
+assert_file_contains docs/validation/2026-07-31-r7-r3-qemu.md \
+    'probe'
+assert_file_contains docs/validation/2026-07-31-r7-r3-qemu.md \
+    '失败码'
 assert_file_contains README.md 'zte-usb-soak'
 assert_file_contains README.md '原子动作队列'
 assert_file_contains README.md '加速稳定性测试'
