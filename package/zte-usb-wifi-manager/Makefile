@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
@@ -18,8 +18,8 @@ define Package/zte-usb-wifi-manager
 endef
 
 define Package/zte-usb-wifi-manager/description
-  Read-only framework and policy service for managing a ZTE U25S connected
-  to OpenWrt over USB.
+  Safety-gated monitoring, device actions, and battery policy service for a
+  ZTE U25S connected to OpenWrt over USB.
 endef
 
 define Build/Compile
@@ -29,10 +29,39 @@ define Package/zte-usb-wifi-manager/conffiles
 /etc/config/zte-usb-wifi-manager
 endef
 
+define Package/zte-usb-wifi-manager/prerm
+#!/bin/sh
+if [ -z "$${IPKG_INSTROOT}" ]; then
+	/etc/init.d/zte-usb-wifi-manager stop >/dev/null 2>&1 || :
+	stop_attempt=0
+	while /etc/init.d/zte-usb-wifi-manager running \
+		>/dev/null 2>&1; do
+		[ "$${stop_attempt}" -lt 10 ] || exit 1
+		sleep 1
+		stop_attempt=$$((stop_attempt + 1))
+	done
+	for pid_file in \
+		/var/run/zte-usb-wifi-manager/manager.pid \
+		/var/run/zte-usb-wifi-manager/coordinator.pid; do
+		[ -s "$${pid_file}" ] || continue
+		pid=$$(cat "$${pid_file}" 2>/dev/null) || exit 1
+		case "$${pid}" in
+			''|*[!0-9]*) exit 1 ;;
+		esac
+		kill -0 "$${pid}" 2>/dev/null && exit 1
+	done
+	/usr/libexec/zte-usb-power-restore || exit 1
+fi
+exit 0
+endef
+
 define Package/zte-usb-wifi-manager/postrm
 #!/bin/sh
 if [ -z "$${IPKG_INSTROOT}" ]; then
-	rm -rf /var/run/zte-usb-wifi-manager
+	if [ ! -e /var/run/zte-usb-wifi-manager/inhibit-recovery ] &&
+		[ ! -d /var/run/zte-usb-wifi-manager/actions/power-transition ]; then
+		rm -rf /var/run/zte-usb-wifi-manager
+	fi
 fi
 exit 0
 endef

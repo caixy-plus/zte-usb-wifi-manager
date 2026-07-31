@@ -29,8 +29,9 @@ assert_success zte_recovery_inhibit_write \
     "$inhibit" battery_high 1722346000 1722345678
 assert_eq 600 "$(test_file_mode "$inhibit")"
 assert_eq \
-    '{"reason":"battery_high","created":1722345678,"expires":1722346000}' \
+    '{"reason":"battery_high","created":1722345678,"expires":1722346000,"restart_service":false}' \
     "$(cat "$inhibit")"
+assert_failure zte_recovery_inhibit_restart_required "$inhibit"
 assert_success zte_recovery_inhibit_active "$inhibit" 1722345999
 assert_failure zte_recovery_inhibit_active "$inhibit" 1722346000
 assert_failure zte_recovery_inhibit_active "$inhibit" 1722346001
@@ -38,6 +39,16 @@ assert_failure zte_recovery_inhibit_write \
     "$inhibit" battery_high 1722345678 1722345678
 assert_failure zte_recovery_inhibit_write \
     "$inhibit" 'bad reason' 1722346000 1722345678
+assert_success zte_recovery_inhibit_write \
+    "$inhibit" battery_high 1722346000 1722345678 true
+assert_success zte_recovery_inhibit_restart_required "$inhibit"
+assert_success zte_recovery_inhibit_renew \
+    "$inhibit" 1722347000 1722345900
+assert_eq \
+    '{"reason":"battery_high","created":1722345900,"expires":1722347000,"restart_service":true}' \
+    "$(cat "$inhibit")"
+assert_failure zte_recovery_inhibit_write \
+    "$inhibit" battery_high 1722347000 1722345900 maybe
 
 assert_success zte_recovery_inhibit_clear "$inhibit"
 assert_failure test -e "$inhibit"

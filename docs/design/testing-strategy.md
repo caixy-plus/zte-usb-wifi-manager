@@ -65,6 +65,18 @@ eth2 消失后重现；默认路由切换；U25S 可管理但不能上网；代�
 USB 真实断电、USB 控制器重新枚举、`zte-usb-recover` 协调这三项无法靠虚拟机证明，
 必须用备用 TR3000（或其他测试路由器）+ 备用 U25S 做硬件在环测试。
 
+包内提供两个只供备用台架使用的工具：
+
+- `/usr/libexec/zte-usb-power-calibrate`：默认只读探测；只有显式确认备用硬件后才
+  短暂切换 `modem_power`，并验证断电/上电读回以及 `eth2` 消失/恢复。
+- `/usr/libexec/zte-usb-soak`：以有界 JSONL 采集 72 小时运行指标；电脑端用
+  `scripts/verify-router-soak.js` 验证时长、状态新鲜度、RSS、文件句柄和恢复互锁。
+
+TR3000 v1 的当前候选入口来自目标固件上游 DTS 中
+`gpio-export,name = "modem_power"`、`GPIO_ACTIVE_LOW` 的定义及其供电默认值修正：
+<https://github.com/padavanonly/immortalwrt-mt798x-6.6/commit/86356f8a2f796e5808fda25ce3e3bf6b3cc3278e>。
+该源码证据只能确定候选控制节点，不能替代备用实机校准。
+
 ## 电池策略：影子执行
 
 Power Adapter 三种后端：

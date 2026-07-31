@@ -1,0 +1,104 @@
+#!/bin/sh
+set -eu
+
+ZTE_RECOVERY_COORDINATOR_LIB_DIR=${ZTE_RECOVERY_COORDINATOR_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE=${ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE:-/var/run/zte-usb-wifi-manager/inhibit-recovery}
+ZTE_RECOVERY_COORDINATOR_SERVICE=${ZTE_RECOVERY_COORDINATOR_SERVICE:-/etc/init.d/zte-usb-recover}
+ZTE_RECOVERY_COORDINATOR_INTERVAL=${ZTE_RECOVERY_COORDINATOR_INTERVAL:-30}
+ZTE_RECOVERY_COORDINATOR_PID_FILE=${ZTE_RECOVERY_COORDINATOR_PID_FILE:-/var/run/zte-usb-wifi-manager/coordinator.pid}
+ZTE_RECOVERY_COORDINATOR_STATE_DIR=${ZTE_RECOVERY_COORDINATOR_STATE_DIR:-/var/run/zte-usb-wifi-manager}
+ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER=${ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER:-/usr/libexec/zte-usb-power-restore}
+
+. "$ZTE_RECOVERY_COORDINATOR_LIB_DIR/validation.sh"
+. "$ZTE_RECOVERY_COORDINATOR_LIB_DIR/json.sh"
+. "$ZTE_RECOVERY_COORDINATOR_LIB_DIR/recovery-inhibit.sh"
+. "$ZTE_RECOVERY_COORDINATOR_LIB_DIR/recovery-adapter.sh"
+. "$ZTE_RECOVERY_COORDINATOR_LIB_DIR/actions.sh"
+
+if [ "${ZTE_RECOVERY_TEST_MODE:-0}" = 1 ]; then
+	zte_recovery_service_available() {
+		[ "${ZTE_RECOVERY_TEST_SERVICE_AVAILABLE:-0}" = 1 ]
+	}
+	zte_recovery_service_running() {
+		[ "${ZTE_RECOVERY_TEST_SERVICE_RUNNING:-0}" = 1 ]
+	}
+	zte_recovery_service_control() {
+		printf '%s:%s\n' "$1" "$2" \
+			>>"$ZTE_RECOVERY_TEST_SERVICE_CALLS"
+		case $2 in
+			start) ZTE_RECOVERY_TEST_SERVICE_RUNNING=1 ;;
+			stop) ZTE_RECOVERY_TEST_SERVICE_RUNNING=0 ;;
+		esac
+	}
+fi
+
+zte_recovery_coordinator_once() {
+	_zte_recovery_coordinator_now=$(date +%s)
+	zte_is_uint "$_zte_recovery_coordinator_now" || return 1
+	if zte_power_transition_active \
+		"$ZTE_RECOVERY_COORDINATOR_STATE_DIR"; then
+		# No marker is the brief safe window between claiming the transition
+		# lock and writing ownership. Never race the manager in that window.
+		[ -e "$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" ] || return 0
+		if zte_recovery_inhibit_active \
+			"$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" \
+			"$_zte_recovery_coordinator_now"; then
+			return 0
+		fi
+		[ -x "$ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER" ] || return 1
+		"$ZTE_RECOVERY_COORDINATOR_RESTORE_HELPER"
+		return
+	fi
+	zte_recovery_reconcile \
+		"$ZTE_RECOVERY_COORDINATOR_INHIBIT_FILE" \
+		"$_zte_recovery_coordinator_now" \
+		"$ZTE_RECOVERY_COORDINATOR_SERVICE"
+}
+
+zte_recovery_coordinator_write_pid() {
+	_zte_recovery_pid_dir=${ZTE_RECOVERY_COORDINATOR_PID_FILE%/*}
+	_zte_recovery_pid_tmp=$ZTE_RECOVERY_COORDINATOR_PID_FILE.tmp.$$
+	umask 077
+	mkdir -p "$_zte_recovery_pid_dir" || return 1
+	printf '%s\n' "$$" >"$_zte_recovery_pid_tmp" || return 1
+	chmod 600 "$_zte_recovery_pid_tmp" || return 1
+	mv "$_zte_recovery_pid_tmp" "$ZTE_RECOVERY_COORDINATOR_PID_FILE"
+}
+
+zte_recovery_coordinator_cleanup() {
+	[ -s "$ZTE_RECOVERY_COORDINATOR_PID_FILE" ] || return 0
+	_zte_recovery_pid_owner=$(
+		cat "$ZTE_RECOVERY_COORDINATOR_PID_FILE" 2>/dev/null
+	) || return 0
+	[ "$_zte_recovery_pid_owner" = "$$" ] || return 0
+	rm -f "$ZTE_RECOVERY_COORDINATOR_PID_FILE"
+}
+
+zte_recovery_coordinator_run() {
+	zte_is_uint "$ZTE_RECOVERY_COORDINATOR_INTERVAL" &&
+		[ "$ZTE_RECOVERY_COORDINATOR_INTERVAL" -ge 10 ] || return 1
+	zte_recovery_coordinator_write_pid || return 1
+	trap zte_recovery_coordinator_cleanup 0
+	trap 'exit 0' 1 2 15
+	while :; do
+		zte_recovery_coordinator_once || {
+			logger -t zte-usb-wifi-manager \
+				'USB recovery coordinator retry pending'
+		}
+		sleep "$ZTE_RECOVERY_COORDINATOR_INTERVAL"
+	done
+}
+
+case ${1-run} in
+	once)
+		[ "$#" -eq 1 ] || exit 2
+		zte_recovery_coordinator_once
+		;;
+	run)
+		[ "$#" -le 1 ] || exit 2
+		zte_recovery_coordinator_run
+		;;
+	*)
+		exit 2
+		;;
+esac

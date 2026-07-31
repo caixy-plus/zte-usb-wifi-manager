@@ -1,7 +1,7 @@
 #!/bin/sh
 # Production orchestration is extracted from the daemon and invokes test
 # doubles defined below.
-# shellcheck disable=SC2218,SC2317,SC2329
+# shellcheck disable=SC2034,SC2218,SC2317,SC2329
 set -eu
 
 TEST_NAME=test_daemon_actions

@@ -17,9 +17,15 @@ test:
 		tests/test_actions.sh \
 		tests/test_action_executor.sh \
 		tests/test_daemon_actions.sh \
+		tests/test_daemon_power_cycle.sh \
 		tests/test_power_adapter.sh \
+		tests/test_power_restore.sh \
+		tests/test_power_calibration.sh \
+		tests/test_soak_collector.sh \
 		tests/test_event_log.sh \
 		tests/test_recovery_inhibit.sh \
+		tests/test_recovery_adapter.sh \
+		tests/test_recovery_coordinator.sh \
 		tests/test_recovery_guard.sh \
 		tests/test_runtime_stability.sh \
 		tests/test_rpcd.sh \
@@ -32,6 +38,7 @@ test:
 		"$$test_file"; \
 	done
 	@node tests/test_luci.js
+	@node tests/test_soak_validation.js
 	@set -e; \
 	find package scripts tests -type f \( -name '*.sh' -o -perm -u+x \) -print | \
 	while IFS= read -r shell_file; do \

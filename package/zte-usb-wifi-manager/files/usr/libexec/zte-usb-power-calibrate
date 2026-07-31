@@ -1,0 +1,229 @@
+#!/bin/sh
+set -eu
+
+ZTE_CALIBRATION_LIB_DIR=${ZTE_CALIBRATION_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+ZTE_CALIBRATION_BOARD_FILE=${ZTE_CALIBRATION_BOARD_FILE:-/tmp/sysinfo/board_name}
+ZTE_CALIBRATION_CONTROL_PATH=${ZTE_CALIBRATION_CONTROL_PATH:-/sys/class/gpio/modem_power/value}
+ZTE_CALIBRATION_STATE_DIR=${ZTE_CALIBRATION_STATE_DIR:-/var/run/zte-usb-wifi-manager/calibration}
+ZTE_CALIBRATION_LOCK_DIR=${ZTE_CALIBRATION_LOCK_DIR:-/var/lock/zte-usb-power-calibration.lock}
+ZTE_CALIBRATION_MANAGER_SERVICE=${ZTE_CALIBRATION_MANAGER_SERVICE:-/etc/init.d/zte-usb-wifi-manager}
+ZTE_CALIBRATION_RECOVERY_SERVICE=${ZTE_CALIBRATION_RECOVERY_SERVICE:-/etc/init.d/zte-usb-recover}
+ZTE_CALIBRATION_OUTAGE_SECONDS=${ZTE_CALIBRATION_OUTAGE_SECONDS:-3}
+ZTE_CALIBRATION_WAIT_ATTEMPTS=${ZTE_CALIBRATION_WAIT_ATTEMPTS:-60}
+
+. "$ZTE_CALIBRATION_LIB_DIR/validation.sh"
+. "$ZTE_CALIBRATION_LIB_DIR/power-adapter.sh"
+. "$ZTE_CALIBRATION_LIB_DIR/recovery-inhibit.sh"
+. "$ZTE_CALIBRATION_LIB_DIR/recovery-adapter.sh"
+
+zte_calibration_device_reachable() {
+	_zte_calibration_response=$(
+		curl --noproxy '*' -fsS \
+			--connect-timeout 3 --max-time 5 \
+			"http://$ZTE_CALIBRATION_DEVICE_HOST/goform/goform_get_cmd_process?cmd=modem_main_state"
+	) || return 1
+	case $_zte_calibration_response in
+		*'"modem_main_state"'*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_calibration_probe() {
+	[ -r "$ZTE_CALIBRATION_BOARD_FILE" ] || return 1
+	_zte_calibration_board=$(cat "$ZTE_CALIBRATION_BOARD_FILE") ||
+		return 1
+	zte_power_board_supported "$_zte_calibration_board" || return 1
+	zte_power_control_path_valid "$ZTE_CALIBRATION_CONTROL_PATH" ||
+		return 1
+	_zte_calibration_power=$(
+		zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH"
+	) || return 1
+	case $_zte_calibration_power in
+		0|1) ;;
+		*) return 1 ;;
+	esac
+	zte_recovery_service_available \
+		"$ZTE_CALIBRATION_RECOVERY_SERVICE" || return 1
+
+	if [ -e "$ZTE_CALIBRATION_NETDEV_PATH" ]; then
+		_zte_calibration_netdev_present=true
+	else
+		_zte_calibration_netdev_present=false
+	fi
+	zte_calibration_device_reachable || return 1
+	printf \
+		'{"ok":true,"mode":"probe","board":"%s","power":%s,"recovery_service":true,"netdev_present":%s,"device_reachable":true}\n' \
+		"$_zte_calibration_board" "$_zte_calibration_power" \
+		"$_zte_calibration_netdev_present"
+}
+
+_zte_calibration_lock_held=0
+_zte_calibration_manager_stopped=0
+_zte_calibration_recovery_prepared=0
+
+zte_calibration_cleanup() {
+	if ! zte_power_hardware_apply \
+		ON "$ZTE_CALIBRATION_CONTROL_PATH" >/dev/null 2>&1; then
+		return 1
+	fi
+	if [ "$_zte_calibration_recovery_prepared" = 1 ]; then
+		if [ -e "$ZTE_CALIBRATION_INHIBIT_FILE" ] &&
+			! zte_recovery_finish_on \
+				"$ZTE_CALIBRATION_INHIBIT_FILE" \
+				"$ZTE_CALIBRATION_RECOVERY_SERVICE" \
+				>/dev/null 2>&1; then
+			return 1
+		fi
+		_zte_calibration_recovery_prepared=0
+	fi
+	if [ "$_zte_calibration_manager_stopped" = 1 ]; then
+		if ! "$ZTE_CALIBRATION_MANAGER_SERVICE" start \
+			>/dev/null 2>&1; then
+			return 1
+		fi
+		_zte_calibration_manager_stopped=0
+	fi
+	if [ "$_zte_calibration_lock_held" = 1 ]; then
+		if ! rmdir "$ZTE_CALIBRATION_LOCK_DIR" 2>/dev/null; then
+			return 1
+		fi
+		_zte_calibration_lock_held=0
+	fi
+}
+
+zte_calibration_on_exit() {
+	_zte_calibration_exit_status=$?
+	trap - 0 1 2 15
+	if ! zte_calibration_cleanup; then
+		_zte_calibration_exit_status=1
+	fi
+	exit "$_zte_calibration_exit_status"
+}
+
+zte_calibration_execute() {
+	[ "${1-}" = I_AM_ON_SPARE_HARDWARE ] || return 2
+	case $ZTE_CALIBRATION_OUTAGE_SECONDS:$ZTE_CALIBRATION_WAIT_ATTEMPTS in
+		*[!0-9:]*|:*|*:) return 1 ;;
+	esac
+	[ "$ZTE_CALIBRATION_WAIT_ATTEMPTS" -ge 1 ] || return 1
+	[ -x "$ZTE_CALIBRATION_MANAGER_SERVICE" ] || return 1
+	zte_calibration_probe >/dev/null || return 1
+	_zte_calibration_initial_power=$(
+		zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH"
+	) || return 1
+	[ "$_zte_calibration_initial_power" = 1 ] || return 1
+	[ -e "$ZTE_CALIBRATION_NETDEV_PATH" ] || return 1
+
+	umask 077
+	mkdir -p "$ZTE_CALIBRATION_STATE_DIR" || return 1
+	chmod 700 "$ZTE_CALIBRATION_STATE_DIR" || return 1
+	mkdir "$ZTE_CALIBRATION_LOCK_DIR" 2>/dev/null || return 1
+	_zte_calibration_lock_held=1
+	trap zte_calibration_on_exit EXIT
+	trap 'exit 130' HUP INT TERM
+
+	_zte_calibration_manager_stopped=1
+	"$ZTE_CALIBRATION_MANAGER_SERVICE" stop || return 1
+	_zte_calibration_now=$(date +%s)
+	_zte_calibration_expires=$((_zte_calibration_now + 300))
+	_zte_calibration_recovery_prepared=1
+	zte_recovery_prepare_off \
+		"$ZTE_CALIBRATION_INHIBIT_FILE" battery_high \
+		"$_zte_calibration_expires" "$_zte_calibration_now" \
+		"$ZTE_CALIBRATION_RECOVERY_SERVICE" || return 1
+
+	zte_power_hardware_apply \
+		OFF "$ZTE_CALIBRATION_CONTROL_PATH" || return 1
+	[ "$(zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 0 ] ||
+		return 1
+	sleep "$ZTE_CALIBRATION_OUTAGE_SECONDS"
+	[ ! -e "$ZTE_CALIBRATION_NETDEV_PATH" ] || return 1
+
+	zte_power_hardware_apply \
+		ON "$ZTE_CALIBRATION_CONTROL_PATH" || return 1
+	[ "$(zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 1 ] ||
+		return 1
+	zte_recovery_finish_on \
+		"$ZTE_CALIBRATION_INHIBIT_FILE" \
+		"$ZTE_CALIBRATION_RECOVERY_SERVICE" || return 1
+	_zte_calibration_recovery_prepared=0
+
+	_zte_calibration_attempt=0
+	_zte_calibration_restored=0
+	while [ "$_zte_calibration_attempt" -lt \
+		"$ZTE_CALIBRATION_WAIT_ATTEMPTS" ]; do
+		if [ -e "$ZTE_CALIBRATION_NETDEV_PATH" ] &&
+			zte_calibration_device_reachable; then
+			_zte_calibration_restored=1
+			break
+		fi
+		sleep 1
+		_zte_calibration_attempt=$((_zte_calibration_attempt + 1))
+	done
+	[ "$_zte_calibration_restored" = 1 ] || return 1
+
+	"$ZTE_CALIBRATION_MANAGER_SERVICE" start || return 1
+	_zte_calibration_manager_stopped=0
+	rmdir "$ZTE_CALIBRATION_LOCK_DIR" || return 1
+	_zte_calibration_lock_held=0
+	printf \
+		'{"ok":true,"mode":"execute","board":"%s","off_readback":true,"netdev_disappeared":true,"on_readback":true,"netdev_restored":true,"device_reachable":true}\n' \
+		"$_zte_calibration_board"
+}
+
+zte_calibration_recover() {
+	[ -d "$ZTE_CALIBRATION_LOCK_DIR" ] || return 1
+	[ -r "$ZTE_CALIBRATION_BOARD_FILE" ] || return 1
+	_zte_calibration_board=$(cat "$ZTE_CALIBRATION_BOARD_FILE") ||
+		return 1
+	zte_power_board_supported "$_zte_calibration_board" || return 1
+	zte_power_control_path_valid "$ZTE_CALIBRATION_CONTROL_PATH" ||
+		return 1
+	[ -x "$ZTE_CALIBRATION_MANAGER_SERVICE" ] || return 1
+	if [ -e "$ZTE_CALIBRATION_INHIBIT_FILE" ]; then
+		zte_recovery_service_available \
+			"$ZTE_CALIBRATION_RECOVERY_SERVICE" || return 1
+		_zte_calibration_recovery_prepared=1
+	fi
+
+	_zte_calibration_lock_held=1
+	_zte_calibration_manager_stopped=1
+	trap zte_calibration_on_exit EXIT
+	trap 'exit 130' HUP INT TERM
+	zte_calibration_cleanup || return 1
+	[ "$(zte_power_sysfs_read "$ZTE_CALIBRATION_CONTROL_PATH")" = 1 ] ||
+		return 1
+	printf '%s\n' \
+		'{"ok":true,"mode":"recover","power":1,"services_restored":true}'
+}
+
+_zte_calibration_netdev=$(
+	uci -q get zte-usb-wifi-manager.zte.netdev 2>/dev/null ||
+		printf '%s\n' eth2
+)
+zte_validate_netdev "$_zte_calibration_netdev" || exit 1
+ZTE_CALIBRATION_DEVICE_HOST=$(
+	uci -q get zte-usb-wifi-manager.zte.host 2>/dev/null ||
+		printf '%s\n' 192.168.0.1
+)
+zte_validate_host "$ZTE_CALIBRATION_DEVICE_HOST" || exit 1
+ZTE_CALIBRATION_NETDEV_PATH=${ZTE_CALIBRATION_NETDEV_PATH:-/sys/class/net/$_zte_calibration_netdev}
+ZTE_CALIBRATION_INHIBIT_FILE=$ZTE_CALIBRATION_STATE_DIR/inhibit-recovery
+
+case ${1-probe} in
+	probe)
+		[ "$#" -le 1 ] || exit 2
+		zte_calibration_probe
+		;;
+	execute)
+		[ "$#" -eq 2 ] || exit 2
+		zte_calibration_execute "$2"
+		;;
+	recover)
+		[ "$#" -eq 1 ] || exit 2
+		zte_calibration_recover
+		;;
+	*)
+		exit 2
+		;;
+esac

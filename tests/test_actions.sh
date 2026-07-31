@@ -151,4 +151,22 @@ assert_success rmdir "$reconcile_state/actions/active"
 assert_success zte_action_reconcile_active "$reconcile_state"
 assert_success test -d "$reconcile_state/actions/active"
 
+transition_state=$work/power-transition
+assert_success zte_power_transition_claim "$transition_state"
+assert_success zte_power_transition_active "$transition_state"
+assert_failure zte_action_enqueue \
+    "$transition_state" op-1722351000-7000 switch_sim \
+    '{"target":"sim1"}' 1722351000
+assert_success zte_power_transition_release "$transition_state"
+assert_failure zte_power_transition_active "$transition_state"
+assert_success zte_action_enqueue \
+    "$transition_state" op-1722351000-7000 switch_sim \
+    '{"target":"sim1"}' 1722351000
+assert_failure zte_power_transition_claim "$transition_state"
+zte_action_claim "$transition_state" >/dev/null
+assert_success zte_action_finish \
+    "$transition_state" op-1722351000-7000 failed unsupported 1722351001
+assert_success zte_power_transition_claim "$transition_state"
+assert_success zte_power_transition_release "$transition_state"
+
 finish

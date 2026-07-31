@@ -90,6 +90,9 @@ function stateLabel(state, hasDevice) {
 	case 'credentials_missing':
 		label = _('缺少设备凭据');
 		break;
+	case 'planned_off':
+		label = _('计划断电');
+		break;
 	case 'framework_ready':
 		label = _('框架已就绪');
 		break;
@@ -230,7 +233,7 @@ function renderCredentialEntry(credentialsResult, onSave, notice) {
 					'click': function() {
 						return onSave(passwordInput);
 					}
-				}, _('保存密码'))
+				}, _('保存登录凭据'))
 			])
 		]),
 		E('div', { 'class': 'cbi-value-description' },

@@ -12,7 +12,7 @@ luci='luci-app-zte-usb-wifi-manager'
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=4$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=5$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -24,20 +24,41 @@ else
     pass
 fi
 assert_file_contains "$backend/Makefile" \
+    '^define Package/zte-usb-wifi-manager/prerm$'
+assert_file_contains "$backend/Makefile" \
+    '/usr/libexec/zte-usb-power-restore \|\| exit 1'
+assert_file_contains "$backend/Makefile" \
+    '/etc/init.d/zte-usb-wifi-manager running'
+assert_file_contains "$backend/Makefile" 'kill -0'
+assert_file_contains "$backend/Makefile" \
     '^define Package/zte-usb-wifi-manager/postrm$'
+assert_file_contains "$backend/Makefile" \
+    'inhibit-recovery'
+assert_file_contains "$backend/Makefile" \
+    'actions/power-transition'
 assert_file_contains "$backend/Makefile" \
     'rm -rf /var/run/zte-usb-wifi-manager'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
+    "option off_probe_interval '900'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
+    "option probe_settle_seconds '15'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "config schedule 'work'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option enabled '0'"
 assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" '^USE_PROCD=1$'
+assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" \
+    'procd_open_instance manager'
+assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" \
+    'procd_open_instance recovery-coordinator'
+assert_file_contains "$backend/files/etc/init.d/zte-usb-wifi-manager" \
+    'zte-usb-recovery-coordinatord run'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabilities"'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" '^ZTE_CAP_SIM_SWITCH=0$'
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=2$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=3$'
 assert_file_contains "$luci/Makefile" '^LUCI_PKGARCH:=all$'
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'
@@ -100,8 +121,12 @@ assert_file_contains README.md 'LuCI 十个标签已可切换'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
 assert_file_contains README.md '短信总数与脱敏事件日志'
 assert_file_contains README.md 'Wi-Fi 与流量仍等待经过验证的 fixture'
-assert_file_contains README.md 'mock/dry-run Power Adapter'
-assert_file_contains README.md 'hardware 后端仍保持禁用'
+assert_file_contains README.md 'hardware Power Adapter'
+# Match literal Markdown backticks.
+# shellcheck disable=SC2016
+assert_file_contains README.md '默认仍以 `calibrated=0` 锁定'
+assert_file_contains README.md 'zte-usb-power-calibrate'
+assert_file_contains README.md 'zte-usb-soak'
 assert_file_contains README.md '原子动作队列'
 assert_file_contains README.md '加速稳定性测试'
 if grep -Fq 'USB Power Adapter 尚未实现' README.md; then
@@ -171,7 +196,7 @@ assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh credentials.sh session.sh snapshot.sh netifd-adapter.sh \
     power-adapter.sh event-log.sh \
-    actions.sh recovery-inhibit.sh schedule.sh
+    actions.sh recovery-inhibit.sh recovery-adapter.sh schedule.sh
 do
     assert_file_contains "$daemon" "$library"
 done
@@ -180,7 +205,9 @@ for function in \
     zte_event_write zte_action_claim zte_action_finish \
     zte_action_prune_results zte_action_reconcile_active \
     zte_recovery_inhibit_write \
-    zte_recovery_inhibit_clear zte_schedule_pre_departure
+    zte_recovery_inhibit_clear zte_recovery_prepare_off \
+    zte_recovery_finish_on zte_recovery_reconcile \
+    zte_schedule_pre_departure
 do
     assert_file_contains "$daemon" "$function"
 done
@@ -204,6 +231,7 @@ assert_file_contains Makefile 'tests/test_daemon_actions.sh'
 assert_file_contains Makefile 'tests/test_power_adapter.sh'
 assert_file_contains Makefile 'tests/test_event_log.sh'
 assert_file_contains Makefile 'tests/test_recovery_inhibit.sh'
+assert_file_contains Makefile 'tests/test_recovery_adapter.sh'
 assert_file_contains Makefile 'tests/test_recovery_guard.sh'
 assert_file_contains Makefile 'tests/test_runtime_stability.sh'
 assert_file_contains \
@@ -226,6 +254,15 @@ assert_file_contains \
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh" \
     '^zte_recovery_inhibit_write\(\) \{$'
+assert_file_contains \
+    "$backend/files/usr/lib/zte-usb-wifi-manager/recovery-adapter.sh" \
+    '^zte_recovery_prepare_off\(\) \{$'
+# Match the literal shell variable expression in the production daemon.
+# shellcheck disable=SC2016
+assert_file_contains "$daemon" '^PID_FILE=\$STATE_DIR/manager\.pid$'
+assert_file_contains \
+    "$backend/files/usr/sbin/zte-usb-recovery-coordinatord" \
+    'coordinator\.pid'
 assert_file_contains docs/design/testing-strategy.md '^## L2：U25S API 模拟器（已实现）$'
 
 # Execute the daemon orchestration functions with side-effect-free stubs.
@@ -239,8 +276,14 @@ eval "$(extract_daemon_function poll_once)"
 eval "$(extract_daemon_function calculate_policy)"
 eval "$(extract_daemon_function main)"
 eval "$(extract_daemon_function apply_policy_action)"
+eval "$(extract_daemon_function power_inhibit_expiry)"
+eval "$(extract_daemon_function restore_power_on)"
+eval "$(extract_daemon_function shutdown_manager)"
+eval "$(extract_daemon_function write_pid_file)"
+eval "$(extract_daemon_function remove_pid_file)"
 eval "$(extract_daemon_function record_event)"
 eval "$(extract_daemon_function record_state_change)"
+handle_planned_power_off() { return 1; }
 
 work=/tmp/zte-test-daemon.$$
 mkdir -p "$work"
@@ -253,6 +296,7 @@ printf 0 >"$fetch_count"
 # Exercise the production atomic writer against an isolated status path.
 eval "$(extract_daemon_function write_status)"
 STATE_DIR=$work/real-state
+PID_FILE=$STATE_DIR/manager.pid
 STATUS_FILE=$STATE_DIR/status.json
 atomic_move_log=$work/atomic-moves
 : >"$atomic_move_log"
@@ -485,6 +529,7 @@ assert_eq "$net" "$network_json"
 . "$lib/validation.sh"
 . "$lib/power-adapter.sh"
 . "$lib/recovery-inhibit.sh"
+. "$lib/recovery-adapter.sh"
 . "$lib/schedule.sh"
 eval "$(extract_daemon_function load_config)"
 config_load() { :; }
@@ -493,6 +538,7 @@ config_load() { :; }
 config_get() {
     case $1 in
         enabled) enabled=1 ;;
+        write_enabled) write_enabled=$_zte_test_write_enabled ;;
         poll_interval) poll_interval=30 ;;
         failure_threshold) failure_threshold=3 ;;
         host) host=192.168.0.1 ;;
@@ -508,12 +554,25 @@ config_get() {
         schedule_departure) schedule_departure=18:00 ;;
         schedule_lead) schedule_lead=90 ;;
         power_backend) power_backend=$_zte_test_power_backend ;;
+        power_control_path) power_control_path=$_zte_test_power_control_path ;;
+        power_calibrated) power_calibrated=$_zte_test_power_calibrated ;;
+        power_off_probe_interval)
+            power_off_probe_interval=$_zte_test_power_off_probe_interval
+            ;;
+        power_probe_settle_seconds)
+            power_probe_settle_seconds=$_zte_test_power_probe_settle_seconds
+            ;;
     esac
 }
 logger() { :; }
 _zte_test_interface='bad/name'
 _zte_test_netdev=eth2
 _zte_test_power_backend=unconfigured
+_zte_test_write_enabled=0
+_zte_test_power_control_path=/sys/class/gpio/modem_power/value
+_zte_test_power_calibrated=0
+_zte_test_power_off_probe_interval=900
+_zte_test_power_probe_settle_seconds=15
 assert_failure load_config
 _zte_test_interface=usbwan
 _zte_test_netdev='bad netdev'
@@ -524,17 +583,103 @@ _zte_test_power_backend=invalid
 assert_failure load_config
 _zte_test_power_backend=unconfigured
 assert_success load_config
+_zte_test_write_enabled=2
+assert_failure load_config
+_zte_test_write_enabled=0
+_zte_test_power_calibrated=2
+assert_failure load_config
+_zte_test_power_calibrated=0
+_zte_test_power_control_path=/tmp/modem_power
+assert_failure load_config
+_zte_test_power_control_path=/sys/class/gpio/modem_power/value
+assert_success load_config
+_zte_test_power_off_probe_interval=59
+assert_failure load_config
+_zte_test_power_off_probe_interval=900
+_zte_test_power_probe_settle_seconds=121
+assert_failure load_config
+_zte_test_power_probe_settle_seconds=15
+assert_success load_config
 
 power_call_log=$work/power-calls
 : >"$power_call_log"
+hardware_io_log=$work/hardware-io
+: >"$hardware_io_log"
+_zte_test_power_apply_failure=0
 zte_power_apply() {
-    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$power_call_log"
+    printf '%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" >>"$power_call_log"
+    [ "$_zte_test_power_apply_failure" = 0 ]
+}
+zte_power_hardware_apply() {
+    printf '%s|%s\n' "$1" "$2" >>"$hardware_io_log"
+    [ "$_zte_test_power_apply_failure" = 0 ]
+}
+_zte_test_power_record_failure=0
+zte_power_write_record() {
+    [ "$_zte_test_power_record_failure" = 0 ]
+}
+zte_power_detect_board() { printf '%s\n' 'cudy,tr3000-v1'; }
+_zte_test_action_active=0
+zte_action_has_active() { [ "$_zte_test_action_active" = 1 ]; }
+_zte_test_power_transition=0
+zte_power_transition_claim() {
+    [ "$_zte_test_power_transition" = 0 ] || return 1
+    [ "$_zte_test_action_active" = 0 ] || return 1
+    _zte_test_power_transition=1
+}
+zte_power_transition_active() {
+    [ "$_zte_test_power_transition" = 1 ]
+}
+zte_power_transition_release() {
+    _zte_test_power_transition=0
+}
+_zte_test_recovery_available=1
+_zte_test_recovery_running=1
+zte_recovery_service_available() {
+    [ "$_zte_test_recovery_available" = 1 ]
+}
+zte_recovery_service_running() {
+    [ "$_zte_test_recovery_running" = 1 ]
+}
+recovery_service_calls=$work/recovery-service-calls
+: >"$recovery_service_calls"
+zte_recovery_service_control() {
+    printf '%s:%s\n' "$1" "$2" >>"$recovery_service_calls"
+    case $2 in
+        start) _zte_test_recovery_running=1 ;;
+        stop) _zte_test_recovery_running=0 ;;
+    esac
 }
 STATE_DIR=$work/power-state
 mkdir -p "$STATE_DIR"
 # Read by the eval-defined production apply_policy_action function.
 # shellcheck disable=SC2034
 power_backend=unconfigured
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+write_enabled=0
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_control_path=/sys/class/gpio/modem_power/value
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_calibrated=0
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_off_probe_interval=900
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+power_probe_settle_seconds=15
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+planned_power_off=0
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+next_power_probe_at=0
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+network_json='{"up":true,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":false}'
 # Read by the eval-defined production apply_policy_action function.
 # shellcheck disable=SC2034
 last_power_action=''
@@ -547,10 +692,13 @@ apply_policy_action MAINTAIN_CHARGING ON
 apply_policy_action MAINTAIN_CHARGING ON
 apply_policy_action MAINTAIN_BATTERY OFF
 assert_eq \
-    "dry-run|ON|battery_low|$STATE_DIR/power-decision.json
-dry-run|OFF|battery_high|$STATE_DIR/power-decision.json" \
+    "dry-run|ON|battery_low|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|0||0
+dry-run|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|0||0" \
     "$(cat "$power_call_log")"
 RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
+# Read by the eval-defined production apply_policy_action function.
+# shellcheck disable=SC2034
+RECOVERY_SERVICE=/etc/init.d/zte-usb-recover
 # Read by the eval-defined production apply_policy_action function.
 # shellcheck disable=SC2034
 RECOVERY_INHIBIT_SECONDS=600
@@ -566,13 +714,131 @@ assert_success zte_recovery_inhibit_active \
 apply_policy_action MAINTAIN_CHARGING ON
 assert_failure test -e "$RECOVERY_INHIBIT_FILE"
 
+# Hardware never runs unless both global writes and the board profile are
+# explicitly enabled. A successful OFF keeps the recovery service inhibited
+# until a verified ON clears it.
+: >"$power_call_log"
+power_backend=hardware
+last_power_action=''
+write_enabled=0
+power_calibrated=1
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq '' "$(cat "$power_call_log")"
+write_enabled=1
+power_calibrated=0
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq '' "$(cat "$power_call_log")"
+power_calibrated=1
+network_json='{"up":true,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":true}'
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq '' "$(cat "$power_call_log")"
+assert_eq 0 "$planned_power_off"
+network_json='{"up":true,"l3_device":"eth2","ipv4":"","gateway":"","is_default_route":false}'
+_zte_test_action_active=1
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq '' "$(cat "$power_call_log")"
+assert_failure test -e "$RECOVERY_INHIBIT_FILE"
+_zte_test_action_active=0
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq \
+    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|1|cudy,tr3000-v1|1" \
+    "$(cat "$power_call_log")"
+assert_success zte_recovery_inhibit_active \
+    "$RECOVERY_INHIBIT_FILE" 1722346000
+assert_eq 1 "$planned_power_off"
+assert_eq 1722346578 "$next_power_probe_at"
+assert_eq 1 "$_zte_test_power_transition"
+assert_eq '/etc/init.d/zte-usb-recover:stop' \
+    "$(tail -n 1 "$recovery_service_calls")"
+apply_policy_action FAIL_SAFE_ON ON
+assert_failure test -e "$RECOVERY_INHIBIT_FILE"
+assert_eq 0 "$planned_power_off"
+assert_eq 0 "$next_power_probe_at"
+assert_eq 0 "$_zte_test_power_transition"
+assert_eq '/etc/init.d/zte-usb-recover:start' \
+    "$(tail -n 1 "$recovery_service_calls")"
+
+# Missing recovery coordination is a hard gate for real hardware writes.
+: >"$power_call_log"
+last_power_action=''
+_zte_test_recovery_available=0
+apply_policy_action MAINTAIN_BATTERY OFF
+assert_eq '' "$(cat "$power_call_log")"
+assert_failure test -e "$RECOVERY_INHIBIT_FILE"
+_zte_test_recovery_available=1
+
+# If OFF might have reached hardware but verification fails, retain the timed
+# inhibit instead of immediately starting a competing USB recovery cycle.
+: >"$power_call_log"
+last_power_action=''
+_zte_test_power_apply_failure=1
+assert_failure apply_policy_action MAINTAIN_BATTERY OFF
+assert_success zte_recovery_inhibit_active \
+    "$RECOVERY_INHIBIT_FILE" 1722346000
+assert_eq \
+    "hardware|OFF|battery_high|$STATE_DIR/power-decision.json|/sys/class/gpio/modem_power/value|1|cudy,tr3000-v1|1" \
+    "$(cat "$power_call_log")"
+assert_eq 1 "$planned_power_off"
+assert_eq 1 "$_zte_test_power_transition"
+_zte_test_power_apply_failure=0
+
+# Stopping or uninstalling the manager must restore VBUS even when normal
+# writes were disabled after an earlier hardware OFF.
+: >"$power_call_log"
+: >"$hardware_io_log"
+: >"$recovery_service_calls"
+last_power_action=OFF
+# Read by the eval-defined production restore_power_on function.
+# shellcheck disable=SC2034
+write_enabled=0
+power_backend=hardware
+power_calibrated=1
+_zte_test_power_record_failure=1
+assert_success zte_recovery_inhibit_write \
+    "$RECOVERY_INHIBIT_FILE" battery_high 1722346000 1722345600 true
+assert_success restore_power_on
+assert_eq \
+    'ON|/sys/class/gpio/modem_power/value' \
+    "$(cat "$hardware_io_log")"
+assert_eq '/etc/init.d/zte-usb-recover:start' \
+    "$(cat "$recovery_service_calls")"
+assert_failure test -e "$RECOVERY_INHIBIT_FILE"
+assert_eq ON "$last_power_action"
+_zte_test_power_record_failure=0
+
+# A normal startup with no owned transition must not enable a recovery service
+# that the administrator had intentionally disabled.
+: >"$hardware_io_log"
+: >"$recovery_service_calls"
+_zte_test_recovery_running=0
+assert_success restore_power_on
+assert_eq \
+    'ON|/sys/class/gpio/modem_power/value' \
+    "$(cat "$hardware_io_log")"
+assert_eq '' "$(cat "$recovery_service_calls")"
+assert_eq 0 "$_zte_test_recovery_running"
+
+: >"$power_call_log"
+power_calibrated=0
+assert_success restore_power_on
+assert_eq '' "$(cat "$power_call_log")"
+# Read by later eval-defined production functions.
+# shellcheck disable=SC2034
+power_calibrated=1
+
 sleep_log=$work/sleep
 : >"$sleep_log"
+startup_order=$work/startup-order
+: >"$startup_order"
 # Assignments are read by the eval-defined production main function.
 # shellcheck disable=SC2034
 load_config() {
+    printf '%s\n' config >>"$startup_order"
     enabled=1
     poll_interval=30
+}
+early_safety_restore() {
+    printf '%s\n' safety >>"$startup_order"
 }
 init_state() { :; }
 main_poll_count=0
@@ -603,7 +869,16 @@ prune_call_log=$work/prune-calls
 zte_action_prune_results() {
     printf '%s|%s\n' "$1" "$2" >>"$prune_call_log"
 }
+zte_recovery_reconcile() { :; }
+# Read by the eval-defined production main function.
+# shellcheck disable=SC2034
+power_backend=unconfigured
 main
+assert_eq \
+    "safety
+config" \
+    "$(cat "$startup_order")"
+assert_eq "$$" "$(cat "$PID_FILE")"
 assert_eq \
     "$work/real-state|info|service|service_started|1722345678|524288" \
     "$(sed -n '1p' "$event_call_log")"
@@ -611,6 +886,8 @@ assert_eq "$work/real-state|50" "$(cat "$prune_call_log")"
 assert_eq '60
 120
 30' "$(cat "$sleep_log")"
+shutdown_manager
+assert_failure test -e "$PID_FILE"
 
 rm -rf "$work"
 finish

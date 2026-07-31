@@ -190,13 +190,20 @@ test('renders safely with missing nested objects', function() {
 });
 
 test('marks retained device data stale for every non-ok backend state', function() {
-	['degraded', 'fail_safe', 'credentials_missing'].forEach(function(state) {
+	['degraded', 'fail_safe', 'credentials_missing', 'planned_off'].forEach(function(state) {
 		const value = rowValue(render({ state: state, device: { model: 'U25S' } }), '后端状态');
 		assert.ok(
 			value.indexOf('设备数据来自最近一次成功读取') !== -1,
 			state + ' does not mark retained device data stale'
 		);
 	});
+});
+
+test('labels planned hardware power-off explicitly', function() {
+	assert.strictEqual(
+		rowValue(render({ state: 'planned_off' }), '后端状态'),
+		'计划断电'
+	);
 });
 
 test('does not claim stale device data when no device is retained', function() {
@@ -254,6 +261,8 @@ test('renders a write-only U25S password entry and credential state', function()
 	});
 	assert.ok(passwordInput, 'missing password input');
 	assert.strictEqual(passwordInput.attrs.autocomplete, 'new-password');
+	assert.ok(text(tree).indexOf('设备登录') !== -1);
+	assert.ok(text(tree).indexOf('保存登录凭据') !== -1);
 	assert.ok(text(tree).indexOf('未保存管理密码') !== -1);
 	assert.strictEqual(source.indexOf('localStorage'), -1);
 	assert.strictEqual(source.indexOf('sessionStorage'), -1);
@@ -282,7 +291,7 @@ test('submits and clears the password without claiming authentication', async fu
 		return input.attrs.type === 'password';
 	});
 	const saveButton = nodesByTag(current, 'button').find(function(button) {
-		return text(button) === '保存密码';
+		return text(button) === '保存登录凭据';
 	});
 	assert.ok(passwordInput);
 	assert.ok(saveButton);

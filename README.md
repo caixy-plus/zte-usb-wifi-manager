@@ -21,12 +21,16 @@
   并接入 daemon 的登录、单次会话恢复重试、写入和操作后状态回读。
 - 模拟器覆盖九类语义写动作的成功、拒绝、超时、会话过期和读回；这些 fixture
   动作不等同于真实 U25S 写接口。
-- 已实现 mock/dry-run Power Adapter，可记录策略决策但不会控制真实 USB 供电；
-  hardware 后端仍保持禁用，等待 TR3000 板级校准。
-- 计划断电的 mock 路径已写入带过期时间的 recovery inhibit，供硬件集成时消费。
+- 已实现严格限定为 Cudy TR3000 v1 的 hardware Power Adapter：
+  固定使用 `/sys/class/gpio/modem_power/value`，OFF 写 `0`、ON 写 `1`，
+  每次写入后必须读回一致；默认仍以 `calibrated=0` 锁定。
+- 真实断电前会写入带期限的 inhibit 并停止 `zte-usb-recover`，恢复供电后再启动；
+  设备动作执行期间禁止断电，守护进程退出时强制恢复供电；独立协调实例会在主
+  守护进程失效时继续处理过期 inhibit。
 - 连续读取失败会触发轮询退避，快照会保留最后可信的设备状态。
-- 已加入加速稳定性测试，覆盖日志轮转、动作结果限额、权限和临时文件清理；
-  真实 72 小时与硬件在环测试仍待备用设备完成。
+- 已加入加速稳定性测试和脱敏 72 小时采样/验证工具，覆盖日志轮转、动作结果限额、
+  权限、临时文件、RSS、文件句柄、状态新鲜度与恢复互锁；
+  真实 72 小时与硬件在环运行仍待备用设备完成。
 - 所有生产设备写能力保持关闭，默认 `write_enabled=0`。
 - SIM 切换仍需在备用 U25S 上完成真实切卡与恢复验收后才会开放。
 
@@ -123,7 +127,7 @@ opkg install \
 ### 4. 配置 U25S 凭据
 
 安装后先打开 LuCI：**服务 → 中兴随身 WiFi → 设备登录**。需要认证的
-U25S 可以在这里保存管理密码。页面只提供写入入口，不会读取、回显或保存在
+U25S 可以在这里输入管理密码并点击“保存登录凭据”。页面只提供写入入口，不会读取、回显或保存在
 浏览器中；后端以 root 身份原子写入权限为 `0600` 的凭据文件。
 
 部分 U25S 固件允许免登录读取状态。插件会先执行只读探测，成功时不强制要求
@@ -187,6 +191,72 @@ cat /var/run/zte-usb-wifi-manager/status.json
 
 请勿在 Issue 中粘贴密码、Cookie、认证摘要、IMEI、IMSI、ICCID、手机号或短信内容。
 
+### 备用硬件供电校准
+
+以下命令会真实关闭 USB 供电，只能在备用 TR3000 v1 与备用 U25S 台架执行，
+不能在承担上网任务的主路由器上运行。
+
+先做只读探测：
+
+```sh
+/usr/libexec/zte-usb-power-calibrate probe
+```
+
+确认使用的是备用硬件后执行一次短暂断电校准：
+
+```sh
+/usr/libexec/zte-usb-power-calibrate execute I_AM_ON_SPARE_HARDWARE
+```
+
+如果校准期间 ON 读回失败，工具会保留 inhibit 和校准锁，并保持 manager/recovery
+停止，避免断电时发生竞争。硬件恢复可写后执行安全重试：
+
+```sh
+/usr/libexec/zte-usb-power-calibrate recover
+```
+
+只有确认 ON 读回并恢复原有服务状态后，`recover` 才会清除标记和锁。
+
+工具会先停止管理守护进程与 `zte-usb-recover`，验证 GPIO 断电读回和 `eth2`
+消失，再恢复供电并等待 `eth2` 重新出现且 U25S 管理接口可读。任一环节失败或收到
+退出信号都会执行 best-effort 上电和服务恢复。只有输出中所有布尔项均为 `true`，
+才可在该备用设备临时启用：
+
+```sh
+uci set zte-usb-wifi-manager.usb.backend='hardware'
+uci set zte-usb-wifi-manager.usb.calibrated='1'
+uci set zte-usb-wifi-manager.main.write_enabled='1'
+uci commit zte-usb-wifi-manager
+/etc/init.d/zte-usb-wifi-manager restart
+```
+
+### 72 小时稳定性验收
+
+备用硬件校准通过后，在路由器运行：
+
+```sh
+ZTE_SOAK_OUTPUT=/var/run/zte-usb-wifi-manager/soak/72h.jsonl \
+    nohup /usr/libexec/zte-usb-soak run 259200 60 \
+    >/tmp/zte-usb-soak.out 2>&1 &
+```
+
+完成后把 `72h.jsonl` 复制回电脑，在仓库根目录验证：
+
+```sh
+node scripts/verify-router-soak.js 72h.jsonl \
+    --duration 259200 \
+    --max-rss-growth-kb 2048 \
+    --max-fd-growth 4 \
+    --max-status-age 180 \
+    --max-event-log-bytes 524288 \
+    --max-sample-gap 180 \
+    --max-pid-changes 0
+```
+
+采样只包含两个守护进程的存活/PID/RSS/文件句柄、恢复服务状态、状态、供电、恢复互锁、网卡存在性和日志大小；
+不读取凭据、Cookie 或设备标识。验证器会拒绝时长不足、资源持续增长、状态陈旧、
+无 inhibit 的断电记录及任何未声明字段。
+
 ### 从源码构建
 
 在 Linux 上下载与目标路由器完全匹配的
@@ -219,6 +289,10 @@ OpenWrt 24.10.7 生成 `.ipk`。编译环境路径中不要包含空格，也不
 的软件包管理器从对应版本的官方签名软件源解析。
 
 ### 卸载
+
+包管理器会先停止管理器并运行 `/usr/libexec/zte-usb-power-restore`。如果无法
+确认 USB 已恢复上电或恢复服务状态已处理，卸载会失败并保留运行时安全标记，
+避免把设备留在无协调的断电状态。
 
 ```sh
 /etc/init.d/zte-usb-wifi-manager stop
@@ -254,6 +328,7 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 - [UI 成品设计稿](docs/design/zte-usb-wifi-manager-ui.html)
 - [详细设计文档](docs/design/zte-usb-wifi-manager-design.md)
 - [四阶段交付与 QEMU 验证](docs/validation/2026-07-30-four-stage-delivery.md)
+- [TR3000 USB 供电与稳定性预检](docs/validation/2026-07-31-power-hardware-preflight.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
 - [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 
@@ -267,7 +342,8 @@ make lint
 ```
 
 `make test` 会运行配置校验、状态机、U25S 模拟器、动作队列、Power Adapter、
-加速稳定性测试、双版本打包、LuCI、Shell/JSON 语法和敏感信息模式检查。
+供电校准与恢复互锁、72 小时采样验证、加速稳定性、双版本打包、LuCI、
+Shell/JSON 语法和敏感信息模式检查。
 
 ## 安全边界
 

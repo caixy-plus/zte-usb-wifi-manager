@@ -1,6 +1,6 @@
 #!/bin/sh
 # Production functions call test doubles defined below.
-# shellcheck disable=SC2317
+# shellcheck disable=SC1090,SC2317,SC2329
 set -eu
 
 TEST_NAME=test_action_executor
@@ -51,8 +51,8 @@ sleep() {
     printf '%s\n' "$1" >>"$sleep_log"
 }
 
-ZTE_SIM_READBACK_ATTEMPTS=3
-ZTE_SIM_READBACK_INTERVAL=2
+export ZTE_SIM_READBACK_ATTEMPTS=3
+export ZTE_SIM_READBACK_INTERVAL=2
 assert_eq ok "$(
     zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim2
 )"
@@ -86,7 +86,7 @@ zte_adapter_fetch() {
     printf '%s\n' '{"simcard_active_slot_temp":"1"}'
 }
 : >"$sleep_log"
-ZTE_SIM_READBACK_ATTEMPTS=2
+export ZTE_SIM_READBACK_ATTEMPTS=2
 assert_eq readback_mismatch "$(
     zte_execute_switch_sim 192.168.0.1 secret "$work/cookies" sim3
 )"

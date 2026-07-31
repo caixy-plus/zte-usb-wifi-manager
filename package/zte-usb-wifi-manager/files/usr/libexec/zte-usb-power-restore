@@ -1,0 +1,78 @@
+#!/bin/sh
+set -eu
+
+ZTE_POWER_RESTORE_LIB_DIR=${ZTE_POWER_RESTORE_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+ZTE_POWER_RESTORE_BOARD_FILE=${ZTE_POWER_RESTORE_BOARD_FILE:-/tmp/sysinfo/board_name}
+ZTE_POWER_RESTORE_CONTROL_PATH=${ZTE_POWER_RESTORE_CONTROL_PATH:-/sys/class/gpio/modem_power/value}
+ZTE_POWER_RESTORE_STATE_DIR=${ZTE_POWER_RESTORE_STATE_DIR:-/var/run/zte-usb-wifi-manager}
+ZTE_POWER_RESTORE_INHIBIT_FILE=${ZTE_POWER_RESTORE_INHIBIT_FILE:-$ZTE_POWER_RESTORE_STATE_DIR/inhibit-recovery}
+ZTE_POWER_RESTORE_RECOVERY_SERVICE=${ZTE_POWER_RESTORE_RECOVERY_SERVICE:-/etc/init.d/zte-usb-recover}
+
+. "$ZTE_POWER_RESTORE_LIB_DIR/validation.sh"
+. "$ZTE_POWER_RESTORE_LIB_DIR/json.sh"
+. "$ZTE_POWER_RESTORE_LIB_DIR/actions.sh"
+. "$ZTE_POWER_RESTORE_LIB_DIR/power-adapter.sh"
+. "$ZTE_POWER_RESTORE_LIB_DIR/recovery-inhibit.sh"
+. "$ZTE_POWER_RESTORE_LIB_DIR/recovery-adapter.sh"
+
+_zte_restore_transition=0
+_zte_restore_power_required=0
+
+if zte_power_transition_active "$ZTE_POWER_RESTORE_STATE_DIR"; then
+	_zte_restore_transition=1
+	_zte_restore_power_required=1
+fi
+
+if [ -r "$ZTE_POWER_RESTORE_CONTROL_PATH" ]; then
+	_zte_restore_value=$(
+		zte_power_sysfs_read "$ZTE_POWER_RESTORE_CONTROL_PATH"
+	) || exit 1
+	case $_zte_restore_value in
+		0) _zte_restore_power_required=1 ;;
+		1) ;;
+		*) exit 1 ;;
+	esac
+elif [ "$_zte_restore_transition" = 1 ]; then
+	exit 1
+fi
+
+if [ "$_zte_restore_power_required" = 1 ]; then
+	[ -r "$ZTE_POWER_RESTORE_BOARD_FILE" ] || exit 1
+	_zte_restore_board=$(cat "$ZTE_POWER_RESTORE_BOARD_FILE") || exit 1
+	zte_power_board_supported "$_zte_restore_board" || exit 1
+	zte_power_control_path_valid "$ZTE_POWER_RESTORE_CONTROL_PATH" || exit 1
+	zte_power_hardware_apply ON "$ZTE_POWER_RESTORE_CONTROL_PATH" || exit 1
+fi
+
+if [ -e "$ZTE_POWER_RESTORE_INHIBIT_FILE" ]; then
+	if ! zte_recovery_finish_on \
+		"$ZTE_POWER_RESTORE_INHIBIT_FILE" \
+		"$ZTE_POWER_RESTORE_RECOVERY_SERVICE"; then
+		# A missing/corrupt marker cannot prove the previous service state.
+		# During an owned or visibly powered-off transition, prefer restoring
+		# recovery over leaving the modem unprotected.
+		if [ "$_zte_restore_transition" != 1 ] &&
+			[ "$_zte_restore_power_required" != 1 ]; then
+			exit 1
+		fi
+		zte_recovery_service_available \
+			"$ZTE_POWER_RESTORE_RECOVERY_SERVICE" || exit 1
+		zte_recovery_service_control \
+			"$ZTE_POWER_RESTORE_RECOVERY_SERVICE" start || exit 1
+		zte_recovery_service_running \
+			"$ZTE_POWER_RESTORE_RECOVERY_SERVICE" || exit 1
+		zte_recovery_inhibit_clear \
+			"$ZTE_POWER_RESTORE_INHIBIT_FILE" || exit 1
+	fi
+elif [ "$_zte_restore_transition" = 1 ] &&
+	! zte_recovery_service_running \
+		"$ZTE_POWER_RESTORE_RECOVERY_SERVICE"; then
+	zte_recovery_service_control \
+		"$ZTE_POWER_RESTORE_RECOVERY_SERVICE" start || exit 1
+	zte_recovery_service_running \
+		"$ZTE_POWER_RESTORE_RECOVERY_SERVICE" || exit 1
+fi
+
+if [ "$_zte_restore_transition" = 1 ]; then
+	zte_power_transition_release "$ZTE_POWER_RESTORE_STATE_DIR" || exit 1
+fi

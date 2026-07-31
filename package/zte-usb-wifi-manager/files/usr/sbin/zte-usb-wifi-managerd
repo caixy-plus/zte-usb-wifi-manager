@@ -11,6 +11,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/schedule.sh
 . /usr/lib/zte-usb-wifi-manager/power-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
+. /usr/lib/zte-usb-wifi-manager/recovery-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/event-log.sh
 . /usr/lib/zte-usb-wifi-manager/actions.sh
 . /usr/lib/zte-usb-wifi-manager/action-executor.sh
@@ -22,14 +23,23 @@ set -e
 STATE_DIR=/var/run/zte-usb-wifi-manager
 STATUS_FILE=$STATE_DIR/status.json
 COOKIE_FILE=$STATE_DIR/cookies.txt
+PID_FILE=$STATE_DIR/manager.pid
 EVENT_LOG_MAX_BYTES=524288
 ACTION_RESULT_MAX_COUNT=50
 RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
 RECOVERY_INHIBIT_SECONDS=600
+RECOVERY_SERVICE=/etc/init.d/zte-usb-recover
+SAFETY_RESTORE_HELPER=/usr/libexec/zte-usb-power-restore
+
+early_safety_restore() {
+	[ -x "$SAFETY_RESTORE_HELPER" ] || return 1
+	"$SAFETY_RESTORE_HELPER"
+}
 
 load_config() {
 	# config_get assigns these global variables by the name in its first argument.
 	enabled=''
+	write_enabled=''
 	poll_interval=''
 	failure_threshold=''
 	host=''
@@ -45,9 +55,14 @@ load_config() {
 	schedule_departure=''
 	schedule_lead=''
 	power_backend=''
+	power_control_path=''
+	power_calibrated=''
+	power_off_probe_interval=''
+	power_probe_settle_seconds=''
 
 	config_load zte-usb-wifi-manager
 	config_get enabled main enabled 1
+	config_get write_enabled main write_enabled 0
 	config_get poll_interval main poll_interval 30
 	config_get failure_threshold main failure_threshold 3
 	config_get host zte host 192.168.0.1
@@ -64,6 +79,11 @@ load_config() {
 	config_get schedule_departure work departure '18:00'
 	config_get schedule_lead work lead_minutes 90
 	config_get power_backend usb backend unconfigured
+	config_get power_control_path usb control_path \
+		/sys/class/gpio/modem_power/value
+	config_get power_calibrated usb calibrated 0
+	config_get power_off_probe_interval usb off_probe_interval 900
+	config_get power_probe_settle_seconds usb probe_settle_seconds 15
 
 	zte_validate_host "$host" || {
 		logger -t zte-usb-wifi-manager 'invalid device host'
@@ -83,7 +103,8 @@ load_config() {
 		return 1
 	fi
 	if ! zte_is_uint "$poll_interval" ||
-		[ "$poll_interval" -lt 10 ]; then
+		[ "$poll_interval" -lt 10 ] ||
+		[ "$poll_interval" -gt 3600 ]; then
 		logger -t zte-usb-wifi-manager 'invalid poll interval'
 		return 1
 	fi
@@ -91,8 +112,8 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid battery thresholds'
 		return 1
 	}
-	case $battery_enabled:$manual_full:$schedule_enabled in
-		[01]:[01]:[01]) ;;
+	case $enabled:$write_enabled:$battery_enabled:$manual_full:$schedule_enabled in
+		[01]:[01]:[01]:[01]:[01]) ;;
 		*)
 			logger -t zte-usb-wifi-manager 'invalid policy flags'
 			return 1
@@ -118,6 +139,41 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid power backend'
 		return 1
 	}
+	zte_power_control_path_valid "$power_control_path" || {
+		logger -t zte-usb-wifi-manager 'invalid power control path'
+		return 1
+	}
+	zte_power_calibrated_flag_valid "$power_calibrated" || {
+		logger -t zte-usb-wifi-manager 'invalid power calibration flag'
+		return 1
+	}
+	if ! zte_is_uint "$power_off_probe_interval" ||
+		[ "$power_off_probe_interval" -lt 60 ] ||
+		[ "$power_off_probe_interval" -gt 3600 ]; then
+		logger -t zte-usb-wifi-manager 'invalid power-off probe interval'
+		return 1
+	fi
+	if ! zte_is_uint "$power_probe_settle_seconds" ||
+		[ "$power_probe_settle_seconds" -lt 1 ] ||
+		[ "$power_probe_settle_seconds" -gt 120 ]; then
+		logger -t zte-usb-wifi-manager 'invalid power probe settle time'
+		return 1
+	fi
+}
+
+power_inhibit_expiry() {
+	_zte_power_expiry_now=$1
+	zte_is_uint "$_zte_power_expiry_now" || return 1
+	_zte_power_expiry_horizon=$((
+		power_off_probe_interval + power_probe_settle_seconds + 60
+	))
+	_zte_power_poll_horizon=$((poll_interval + 90))
+	if [ "$_zte_power_poll_horizon" -gt \
+		"$_zte_power_expiry_horizon" ]; then
+		_zte_power_expiry_horizon=$_zte_power_poll_horizon
+	fi
+	printf '%s\n' \
+		"$((_zte_power_expiry_now + _zte_power_expiry_horizon))"
 }
 
 schedule_pre_departure_now() {
@@ -141,6 +197,23 @@ init_state() {
 	zte_event_init "$STATE_DIR"
 }
 
+write_pid_file() {
+	_zte_pid_dir=${PID_FILE%/*}
+	_zte_pid_tmp=$PID_FILE.tmp.$$
+	umask 077
+	mkdir -p "$_zte_pid_dir" || return 1
+	printf '%s\n' "$$" >"$_zte_pid_tmp" || return 1
+	chmod 600 "$_zte_pid_tmp" || return 1
+	mv "$_zte_pid_tmp" "$PID_FILE"
+}
+
+remove_pid_file() {
+	[ -s "${PID_FILE:-}" ] || return 0
+	_zte_pid_owner=$(cat "$PID_FILE" 2>/dev/null) || return 0
+	[ "$_zte_pid_owner" = "$$" ] || return 0
+	rm -f "$PID_FILE"
+}
+
 write_status() {
 	umask 077
 	mkdir -p "$STATE_DIR"
@@ -159,16 +232,56 @@ collect_network() {
 	fi
 }
 
+zte_power_detect_board() {
+	[ -r /tmp/sysinfo/board_name ] || return 1
+	_zte_detected_board=$(cat /tmp/sysinfo/board_name) || return 1
+	zte_power_board_supported "$_zte_detected_board" || return 1
+	printf '%s\n' "$_zte_detected_board"
+}
+
 apply_policy_action() {
 	_zte_policy_state=$1
 	_zte_policy_action=$2
 
+	_zte_power_board=''
 	case $power_backend in
 		mock|dry-run) ;;
+		hardware)
+			[ "$write_enabled" = 1 ] || return 0
+			[ "$power_calibrated" = 1 ] || return 0
+			zte_recovery_service_available "$RECOVERY_SERVICE" || {
+				logger -t zte-usb-wifi-manager \
+					'USB recovery service unavailable'
+				return 0
+			}
+			_zte_power_board=$(zte_power_detect_board) || {
+				logger -t zte-usb-wifi-manager \
+					'unsupported or unreadable power-control board'
+				return 0
+			}
+			;;
 		*) return 0 ;;
 	esac
 	[ "$_zte_policy_action" != KEEP ] || return 0
 	[ "$_zte_policy_action" != "$last_power_action" ] || return 0
+	if [ "$power_backend" = hardware ] &&
+		[ "$_zte_policy_action" = OFF ]; then
+		_zte_power_is_default=$(
+			zte_json_top_get "$network_json" is_default_route 2>/dev/null
+		) || _zte_power_is_default=''
+		[ "$_zte_power_is_default" = false ] || {
+			logger -t zte-usb-wifi-manager \
+				'power-off deferred while U25S is the default route'
+			return 0
+		}
+	fi
+	if [ "$_zte_policy_action" = OFF ] &&
+		[ "$power_backend" = mock ] &&
+		zte_action_has_active "$STATE_DIR"; then
+		logger -t zte-usb-wifi-manager \
+			'power-off deferred while a device action is active'
+		return 0
+	fi
 
 	case $_zte_policy_state in
 		MAINTAIN_CHARGING) _zte_power_reason=battery_low ;;
@@ -180,30 +293,146 @@ apply_policy_action() {
 	esac
 
 	_zte_power_inhibit_written=0
-	if [ "$power_backend" = mock ] &&
+	_zte_power_transition_claimed=0
+	if { [ "$power_backend" = mock ] ||
+		[ "$power_backend" = hardware ]; } &&
 		[ "$_zte_policy_action" = OFF ]; then
+		if [ "$power_backend" = hardware ]; then
+			zte_power_transition_claim "$STATE_DIR" || {
+				logger -t zte-usb-wifi-manager \
+					'power-off deferred by device-action lock'
+				return 0
+			}
+			_zte_power_transition_claimed=1
+		fi
 		_zte_power_now=$(date +%s)
-		_zte_power_expires=$((_zte_power_now + RECOVERY_INHIBIT_SECONDS))
-		zte_recovery_inhibit_write \
-			"$RECOVERY_INHIBIT_FILE" battery_high \
-			"$_zte_power_expires" "$_zte_power_now" || return 1
+		if [ "$power_backend" = hardware ]; then
+			_zte_power_expires=$(
+				power_inhibit_expiry "$_zte_power_now"
+			) || return 1
+		else
+			_zte_power_expires=$((_zte_power_now + RECOVERY_INHIBIT_SECONDS))
+		fi
+		if [ "$power_backend" = hardware ]; then
+			zte_recovery_prepare_off \
+				"$RECOVERY_INHIBIT_FILE" battery_high \
+				"$_zte_power_expires" "$_zte_power_now" \
+				"$RECOVERY_SERVICE" || {
+				zte_power_transition_release "$STATE_DIR" || :
+				return 1
+			}
+		else
+			zte_recovery_inhibit_write \
+				"$RECOVERY_INHIBIT_FILE" battery_high \
+				"$_zte_power_expires" "$_zte_power_now" ||
+				return 1
+		fi
 		_zte_power_inhibit_written=1
 	fi
 
 	if zte_power_apply \
 		"$power_backend" "$_zte_policy_action" "$_zte_power_reason" \
-		"$STATE_DIR/power-decision.json" >/dev/null; then
+		"$STATE_DIR/power-decision.json" "$power_control_path" \
+		"$power_calibrated" "$_zte_power_board" \
+		"$write_enabled" >/dev/null; then
+		if [ "$_zte_policy_action" = ON ]; then
+			case $power_backend in
+				hardware)
+					zte_recovery_finish_on \
+						"$RECOVERY_INHIBIT_FILE" \
+						"$RECOVERY_SERVICE" || {
+						logger -t zte-usb-wifi-manager \
+							'USB recovery service restart failed'
+						return 1
+					}
+					;;
+				mock)
+					zte_recovery_inhibit_clear \
+						"$RECOVERY_INHIBIT_FILE" || :
+					;;
+			esac
+		fi
 		last_power_action=$_zte_policy_action
-		if [ "$power_backend" = mock ] &&
-			[ "$_zte_policy_action" = ON ]; then
-			zte_recovery_inhibit_clear "$RECOVERY_INHIBIT_FILE" || :
+		if [ "$power_backend" = hardware ]; then
+			case $_zte_policy_action in
+				OFF)
+					planned_power_off=1
+					_zte_power_off_started=$(date +%s)
+					next_power_probe_at=$((_zte_power_off_started +
+						power_off_probe_interval))
+					;;
+				ON)
+					planned_power_off=0
+					next_power_probe_at=0
+					zte_power_transition_release "$STATE_DIR" || :
+					;;
+			esac
 		fi
 	else
-		if [ "$_zte_power_inhibit_written" = 1 ]; then
+		if [ "$_zte_power_inhibit_written" = 1 ] &&
+			[ "$power_backend" != hardware ]; then
 			zte_recovery_inhibit_clear "$RECOVERY_INHIBIT_FILE" || :
 		fi
 		logger -t zte-usb-wifi-manager 'power decision recording failed'
+		if [ "$power_backend" = hardware ] &&
+			[ "$_zte_policy_action" = OFF ] &&
+			[ "$_zte_power_transition_claimed" = 1 ]; then
+			planned_power_off=1
+			next_power_probe_at=$((
+				$(date +%s) + power_probe_settle_seconds
+			))
+		fi
+		return 1
 	fi
+}
+
+restore_power_on() {
+	_zte_restore_transition=0
+	if zte_power_transition_active "$STATE_DIR"; then
+		_zte_restore_transition=1
+	fi
+	if ! { [ "$power_backend" = hardware ] &&
+		[ "$power_calibrated" = 1 ]; } &&
+		[ "$_zte_restore_transition" = 0 ]; then
+		return 0
+	fi
+	_zte_restore_board=$(zte_power_detect_board) || return 1
+	zte_power_control_path_valid "$power_control_path" || return 1
+	zte_power_hardware_apply ON "$power_control_path" || return 1
+	_zte_restore_record=$(printf \
+		'{"backend":"hardware","action":"ON","executed":true,"reason":"disabled"}')
+	zte_power_write_record \
+		"$STATE_DIR/power-decision.json" "$_zte_restore_record" || {
+		logger -t zte-usb-wifi-manager \
+			'USB power restored but audit record failed'
+	}
+	if [ -s "$RECOVERY_INHIBIT_FILE" ]; then
+		zte_recovery_finish_on \
+			"$RECOVERY_INHIBIT_FILE" "$RECOVERY_SERVICE" || return 1
+	elif [ "$_zte_restore_transition" = 1 ] &&
+		! zte_recovery_service_running "$RECOVERY_SERVICE"; then
+		zte_recovery_service_control "$RECOVERY_SERVICE" start ||
+			return 1
+		zte_recovery_service_running "$RECOVERY_SERVICE" || return 1
+	fi
+	last_power_action=ON
+	planned_power_off=0
+	next_power_probe_at=0
+	if [ "$_zte_restore_transition" = 1 ]; then
+		zte_power_transition_release "$STATE_DIR" || :
+	fi
+}
+
+shutdown_manager() {
+	[ "${shutdown_started:-0}" = 0 ] || return 0
+	shutdown_started=1
+	trap - 0 1 2 15
+	set +e
+	restore_power_on || {
+		logger -t zte-usb-wifi-manager \
+			'failed to restore USB power during shutdown'
+	}
+	remove_pid_file
 }
 
 record_event() {
@@ -222,7 +451,7 @@ record_state_change() {
 	[ "$_zte_new_state" != "$last_logged_state" ] || return 0
 
 	case $_zte_new_state in
-		ok) _zte_state_level=info ;;
+		ok|planned_off) _zte_state_level=info ;;
 		degraded|credentials_missing) _zte_state_level=warn ;;
 		fail_safe) _zte_state_level=error ;;
 		*) return 0 ;;
@@ -351,7 +580,60 @@ calculate_policy() {
 	fi
 }
 
+write_power_status() {
+	_zte_power_status_state=$1
+	_zte_power_status_reason=$2
+	_zte_power_status_policy=$3
+	_zte_power_status_action=$4
+	collect_network
+	device_json=$last_device_json
+	_zte_power_status_updated=$(date +%s)
+	_zte_power_status_json=$(zte_snapshot_compose \
+		"$_zte_power_status_state" "$_zte_power_status_reason" \
+		"$device_json" "$network_json" "$_zte_power_status_policy" \
+		"$_zte_power_status_action" "$failures" \
+		"$_zte_power_status_updated")
+	write_status "$_zte_power_status_json"
+	record_state_change \
+		"$_zte_power_status_state" "$_zte_power_status_updated"
+}
+
+handle_planned_power_off() {
+	[ "$planned_power_off" = 1 ] || return 1
+	_zte_planned_now=$(date +%s)
+	_zte_planned_expires=$(
+		power_inhibit_expiry "$_zte_planned_now"
+	) || return 1
+	if ! zte_recovery_inhibit_renew \
+		"$RECOVERY_INHIBIT_FILE" "$_zte_planned_expires" \
+		"$_zte_planned_now"; then
+		if restore_power_on; then
+			sleep "$power_probe_settle_seconds"
+			return 1
+		fi
+		write_power_status \
+			fail_safe recovery_inhibit_lost FAIL_SAFE_ON ON
+		return 0
+	fi
+	if [ "$_zte_planned_now" -lt "$next_power_probe_at" ]; then
+		failures=0
+		write_power_status \
+			planned_off battery_high MAINTAIN_BATTERY OFF
+		return 0
+	fi
+	if restore_power_on; then
+		sleep "$power_probe_settle_seconds"
+		return 1
+	fi
+	write_power_status \
+		fail_safe power_restore_failed FAIL_SAFE_ON ON
+	return 0
+}
+
 poll_once() {
+	if handle_planned_power_off; then
+		return 0
+	fi
 	ok=0
 	candidate_device_json=''
 	health=degraded
@@ -418,12 +700,34 @@ poll_once() {
 }
 
 main() {
+	early_safety_restore || {
+		logger -t zte-usb-wifi-manager \
+			'early USB power safety restore failed'
+		return 1
+	}
 	load_config
 	init_state
 	failures=0
 	last_device_json=''
 	last_power_action=''
 	last_logged_state=''
+	planned_power_off=0
+	next_power_probe_at=0
+	shutdown_started=0
+	trap shutdown_manager 0
+	trap 'exit 0' 1 2 15
+	write_pid_file || return 1
+	zte_recovery_reconcile \
+		"$RECOVERY_INHIBIT_FILE" "$(date +%s)" \
+		"$RECOVERY_SERVICE" || {
+		logger -t zte-usb-wifi-manager \
+			'USB recovery reconciliation failed'
+	}
+	restore_power_on || {
+		logger -t zte-usb-wifi-manager \
+			'failed to establish safe USB power at startup'
+		return 1
+	}
 	zte_action_reconcile_active "$STATE_DIR" || :
 	zte_action_recover_running "$STATE_DIR" "$(date +%s)" || :
 	zte_action_prune_results "$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || :

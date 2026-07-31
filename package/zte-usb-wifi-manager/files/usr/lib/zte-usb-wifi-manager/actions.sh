@@ -55,6 +55,32 @@ zte_action_has_active() {
 	return 1
 }
 
+zte_power_transition_active() {
+	_zte_action_root=$1
+	[ -d "$_zte_action_root/actions/power-transition" ]
+}
+
+zte_power_transition_claim() {
+	_zte_action_root=$1
+	zte_action_init "$_zte_action_root" || return 1
+	_zte_power_transition=$_zte_action_root/actions/power-transition
+	mkdir "$_zte_power_transition" 2>/dev/null || return 1
+	chmod 700 "$_zte_power_transition" || {
+		rmdir "$_zte_power_transition" 2>/dev/null || :
+		return 1
+	}
+	if zte_action_has_active "$_zte_action_root"; then
+		rmdir "$_zte_power_transition" 2>/dev/null || :
+		return 1
+	fi
+}
+
+zte_power_transition_release() {
+	_zte_action_root=$1
+	[ -n "$_zte_action_root" ] && [ "$_zte_action_root" != / ] || return 1
+	rmdir "$_zte_action_root/actions/power-transition" 2>/dev/null || :
+}
+
 zte_action_get() {
 	_zte_action_root=$1
 	_zte_operation_id=$2
@@ -90,6 +116,10 @@ zte_action_enqueue() {
 		rmdir "$_zte_action_slot" 2>/dev/null || :
 		return 1
 	}
+	if zte_power_transition_active "$_zte_action_root"; then
+		rmdir "$_zte_action_slot" 2>/dev/null || :
+		return 1
+	fi
 	zte_action_get "$_zte_action_root" "$_zte_operation_id" >/dev/null 2>&1 &&
 		{
 			rmdir "$_zte_action_slot" 2>/dev/null || :

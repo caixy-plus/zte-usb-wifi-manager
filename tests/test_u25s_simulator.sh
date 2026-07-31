@@ -201,8 +201,8 @@ start_simulator normal 1
 action_jar=$work/action.cookies
 assert_success zte_session_login \
     "$simulator_host" "$login_secret" "$action_jar"
-ZTE_SIM_READBACK_ATTEMPTS=1
-ZTE_SIM_READBACK_INTERVAL=0
+export ZTE_SIM_READBACK_ATTEMPTS=1
+export ZTE_SIM_READBACK_INTERVAL=0
 assert_eq ok "$(
     zte_execute_switch_sim \
         "$simulator_host" "$login_secret" "$action_jar" sim2

@@ -1,0 +1,195 @@
+#!/bin/sh
+set -eu
+
+ZTE_SOAK_LIB_DIR=${ZTE_SOAK_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+ZTE_SOAK_STATUS_FILE=${ZTE_SOAK_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
+ZTE_SOAK_POWER_PATH=${ZTE_SOAK_POWER_PATH:-/sys/class/gpio/modem_power/value}
+ZTE_SOAK_INHIBIT_FILE=${ZTE_SOAK_INHIBIT_FILE:-/var/run/zte-usb-wifi-manager/inhibit-recovery}
+ZTE_SOAK_EVENT_LOG=${ZTE_SOAK_EVENT_LOG:-/var/run/zte-usb-wifi-manager/logs/events.jsonl}
+ZTE_SOAK_NETDEV_PATH=${ZTE_SOAK_NETDEV_PATH:-/sys/class/net/eth2}
+ZTE_SOAK_PROC_ROOT=${ZTE_SOAK_PROC_ROOT:-/proc}
+ZTE_SOAK_MANAGER_PID_FILE=${ZTE_SOAK_MANAGER_PID_FILE:-/var/run/zte-usb-wifi-manager/manager.pid}
+ZTE_SOAK_COORDINATOR_PID_FILE=${ZTE_SOAK_COORDINATOR_PID_FILE:-/var/run/zte-usb-wifi-manager/coordinator.pid}
+ZTE_SOAK_RECOVERY_SERVICE=${ZTE_SOAK_RECOVERY_SERVICE:-/etc/init.d/zte-usb-recover}
+ZTE_SOAK_STATE_DIR=${ZTE_SOAK_STATE_DIR:-/var/run/zte-usb-wifi-manager/soak}
+ZTE_SOAK_LOCK_DIR=${ZTE_SOAK_LOCK_DIR:-/var/lock/zte-usb-soak.lock}
+ZTE_SOAK_MAX_BYTES=${ZTE_SOAK_MAX_BYTES:-2097152}
+
+. "$ZTE_SOAK_LIB_DIR/validation.sh"
+. "$ZTE_SOAK_LIB_DIR/json.sh"
+. "$ZTE_SOAK_LIB_DIR/recovery-inhibit.sh"
+. "$ZTE_SOAK_LIB_DIR/recovery-adapter.sh"
+
+zte_soak_collect() {
+	_zte_soak_now=$(date +%s)
+	zte_is_uint "$_zte_soak_now" || return 1
+
+	_zte_soak_service_running=false
+	_zte_soak_sample_pid=0
+	_zte_soak_rss=0
+	_zte_soak_fds=0
+	_zte_soak_pid=0
+	if [ -s "$ZTE_SOAK_MANAGER_PID_FILE" ]; then
+		_zte_soak_pid=$(cat "$ZTE_SOAK_MANAGER_PID_FILE") || return 1
+	fi
+	if zte_is_uint "$_zte_soak_pid" &&
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/status" ]; then
+		_zte_soak_service_running=true
+		_zte_soak_sample_pid=$_zte_soak_pid
+		_zte_soak_rss=$(
+			awk '/^VmRSS:/ { print $2; found=1; exit }
+				END { if (!found) print 0 }' \
+				"$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/status"
+		)
+		_zte_soak_fds=$(
+			find "$ZTE_SOAK_PROC_ROOT/$_zte_soak_pid/fd" \
+				-mindepth 1 -maxdepth 1 2>/dev/null |
+				wc -l | tr -d ' '
+		)
+	fi
+	zte_is_uint "$_zte_soak_rss" &&
+		zte_is_uint "$_zte_soak_fds" || return 1
+
+	_zte_soak_coordinator_running=false
+	_zte_soak_coordinator_pid=0
+	_zte_soak_coordinator_rss=0
+	_zte_soak_coordinator_fds=0
+	_zte_soak_found_coordinator_pid=0
+	if [ -s "$ZTE_SOAK_COORDINATOR_PID_FILE" ]; then
+		_zte_soak_found_coordinator_pid=$(
+			cat "$ZTE_SOAK_COORDINATOR_PID_FILE"
+		) || return 1
+	fi
+	if zte_is_uint "$_zte_soak_found_coordinator_pid" &&
+		[ -r "$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/status" ]; then
+		_zte_soak_coordinator_running=true
+		_zte_soak_coordinator_pid=$_zte_soak_found_coordinator_pid
+		_zte_soak_coordinator_rss=$(
+			awk '/^VmRSS:/ { print $2; found=1; exit }
+				END { if (!found) print 0 }' \
+				"$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/status"
+		)
+		_zte_soak_coordinator_fds=$(
+			find "$ZTE_SOAK_PROC_ROOT/$_zte_soak_found_coordinator_pid/fd" \
+				-mindepth 1 -maxdepth 1 2>/dev/null |
+				wc -l | tr -d ' '
+		)
+	fi
+	zte_is_uint "$_zte_soak_coordinator_rss" &&
+		zte_is_uint "$_zte_soak_coordinator_fds" || return 1
+
+	if zte_recovery_service_running "$ZTE_SOAK_RECOVERY_SERVICE"; then
+		_zte_soak_recovery_running=true
+	else
+		_zte_soak_recovery_running=false
+	fi
+
+	[ -s "$ZTE_SOAK_STATUS_FILE" ] || return 1
+	_zte_soak_status=$(cat "$ZTE_SOAK_STATUS_FILE") || return 1
+	_zte_soak_state=$(zte_json_top_get "$_zte_soak_status" state) ||
+		return 1
+	case $_zte_soak_state in
+		ok|planned_off|degraded|fail_safe|credentials_missing) ;;
+		*) return 1 ;;
+	esac
+	_zte_soak_updated=$(zte_json_top_get "$_zte_soak_status" updated) ||
+		return 1
+	zte_is_uint "$_zte_soak_updated" || return 1
+	[ "$_zte_soak_now" -ge "$_zte_soak_updated" ] || return 1
+	_zte_soak_status_age=$((_zte_soak_now - _zte_soak_updated))
+
+	_zte_soak_power=$(cat "$ZTE_SOAK_POWER_PATH") || return 1
+	case $_zte_soak_power in
+		0|1) ;;
+		*) return 1 ;;
+	esac
+	if zte_recovery_inhibit_active \
+		"$ZTE_SOAK_INHIBIT_FILE" "$_zte_soak_now"; then
+		_zte_soak_inhibit=true
+	else
+		_zte_soak_inhibit=false
+	fi
+	if [ -e "$ZTE_SOAK_NETDEV_PATH" ]; then
+		_zte_soak_netdev=true
+	else
+		_zte_soak_netdev=false
+	fi
+	_zte_soak_event_bytes=0
+	if [ -f "$ZTE_SOAK_EVENT_LOG" ]; then
+		_zte_soak_event_bytes=$(
+			wc -c <"$ZTE_SOAK_EVENT_LOG" | tr -d ' '
+		)
+	fi
+	zte_is_uint "$_zte_soak_event_bytes" || return 1
+
+	printf \
+		'{"timestamp":%s,"service_running":%s,"pid":%s,"rss_kb":%s,"fd_count":%s,"coordinator_running":%s,"coordinator_pid":%s,"coordinator_rss_kb":%s,"coordinator_fd_count":%s,"recovery_service_running":%s,"state":"%s","status_age":%s,"power":%s,"recovery_inhibit":%s,"netdev_present":%s,"event_log_bytes":%s}\n' \
+		"$_zte_soak_now" "$_zte_soak_service_running" \
+		"$_zte_soak_sample_pid" "$_zte_soak_rss" "$_zte_soak_fds" \
+		"$_zte_soak_coordinator_running" "$_zte_soak_coordinator_pid" \
+		"$_zte_soak_coordinator_rss" "$_zte_soak_coordinator_fds" \
+		"$_zte_soak_recovery_running" \
+		"$_zte_soak_state" "$_zte_soak_status_age" \
+		"$_zte_soak_power" "$_zte_soak_inhibit" "$_zte_soak_netdev" \
+		"$_zte_soak_event_bytes"
+}
+
+_zte_soak_lock_held=0
+zte_soak_cleanup() {
+	if [ "$_zte_soak_lock_held" = 1 ]; then
+		rmdir "$ZTE_SOAK_LOCK_DIR" 2>/dev/null || :
+		_zte_soak_lock_held=0
+	fi
+}
+
+zte_soak_run() {
+	_zte_soak_duration=$1
+	_zte_soak_interval=$2
+	zte_is_uint "$_zte_soak_duration" &&
+		[ "$_zte_soak_duration" -ge 1 ] || return 1
+	zte_is_uint "$_zte_soak_interval" &&
+		[ "$_zte_soak_interval" -ge 1 ] || return 1
+	zte_is_uint "$ZTE_SOAK_MAX_BYTES" &&
+		[ "$ZTE_SOAK_MAX_BYTES" -ge 65536 ] || return 1
+
+	umask 077
+	mkdir -p "$ZTE_SOAK_STATE_DIR" || return 1
+	chmod 700 "$ZTE_SOAK_STATE_DIR" || return 1
+	mkdir "$ZTE_SOAK_LOCK_DIR" 2>/dev/null || return 1
+	_zte_soak_lock_held=1
+	trap zte_soak_cleanup EXIT
+	trap 'exit 130' HUP INT TERM
+
+	_zte_soak_started=$(date +%s)
+	zte_is_uint "$_zte_soak_started" || return 1
+	_zte_soak_output=${ZTE_SOAK_OUTPUT:-$ZTE_SOAK_STATE_DIR/soak-$_zte_soak_started.jsonl}
+	[ ! -e "$_zte_soak_output" ] || return 1
+
+	while :; do
+		zte_soak_collect >>"$_zte_soak_output" || return 1
+		chmod 600 "$_zte_soak_output" || return 1
+		_zte_soak_size=$(wc -c <"$_zte_soak_output" | tr -d ' ')
+		[ "$_zte_soak_size" -le "$ZTE_SOAK_MAX_BYTES" ] || return 1
+		_zte_soak_now=$(date +%s)
+		[ "$_zte_soak_now" -ge "$_zte_soak_started" ] || return 1
+		_zte_soak_elapsed=$((_zte_soak_now - _zte_soak_started))
+		[ "$_zte_soak_elapsed" -lt "$_zte_soak_duration" ] || break
+		sleep "$_zte_soak_interval"
+	done
+
+	printf '%s\n' "$_zte_soak_output"
+}
+
+case ${1-} in
+	once)
+		[ "$#" -eq 1 ] || exit 2
+		zte_soak_collect
+		;;
+	run)
+		[ "$#" -le 3 ] || exit 2
+		zte_soak_run "${2-259200}" "${3-60}"
+		;;
+	*)
+		exit 2
+		;;
+esac
