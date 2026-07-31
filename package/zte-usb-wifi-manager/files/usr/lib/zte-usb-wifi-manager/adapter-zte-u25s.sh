@@ -61,6 +61,39 @@ zte_adapter_fetch() {
 	printf '%s\n' "$_zte_resp"
 }
 
+# Map the target firmware's visible SIM choices to the verified card_index
+# values used by SIM_SWITCH_SIMCARD. The physical slot is index 0.
+zte_adapter_sim_card_index() {
+	case ${1-} in
+		sim1) printf '1\n' ;;
+		sim2) printf '2\n' ;;
+		sim3) printf '3\n' ;;
+		physical) printf '0\n' ;;
+		*) return 1 ;;
+	esac
+}
+
+# $1 host, $2 semantic SIM target, $3 cookie jar.
+# This only emits the request shape observed in the target U25S UI. Production
+# capability gating remains in metadata until a spare-device switch and
+# operation readback have passed.
+zte_adapter_switch_sim() {
+	_zte_switch_host=$1
+	_zte_switch_target=$2
+	_zte_switch_jar=$3
+	_zte_switch_index=$(
+		zte_adapter_sim_card_index "$_zte_switch_target"
+	) || return 1
+	_zte_switch_url="http://$_zte_switch_host/goform/goform_set_cmd_process"
+	_zte_switch_response=$(
+		zte_http_post "$_zte_switch_url" \
+			"isTest=false&goformId=SIM_SWITCH_SIMCARD&card_index=$_zte_switch_index" \
+			"$_zte_switch_jar"
+	) || return 1
+	zte_json_is_flat_object "$_zte_switch_response" || return 1
+	[ "$(zte_json_flat_get "$_zte_switch_response" result)" = success ]
+}
+
 # $1 raw flat device JSON -> normalized device object on stdout.
 # sim.active_slot_raw passes the firmware value through unmapped until the
 # slot numbering is calibrated on the real device (see design doc 5.6).

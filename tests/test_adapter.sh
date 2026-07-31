@@ -187,5 +187,32 @@ assert_eq "$(cat "$fixtures/read_ok.json")" "$raw2"
 assert_eq 2 "$(cat "$get_calls")"
 assert_eq 1 "$(wc -l <"$logins" | tr -d ' ')"
 
+# Target firmware login page exposes four SIM choices. Keep the semantic
+# action payload independent of the firmware's non-sequential physical slot.
+assert_eq 1 "$(zte_adapter_sim_card_index sim1)"
+assert_eq 2 "$(zte_adapter_sim_card_index sim2)"
+assert_eq 3 "$(zte_adapter_sim_card_index sim3)"
+assert_eq 0 "$(zte_adapter_sim_card_index physical)"
+assert_failure zte_adapter_sim_card_index ''
+assert_failure zte_adapter_sim_card_index sim4
+assert_failure zte_adapter_sim_card_index 0
+
+# The calibrated request shape must contain only the verified goform id and
+# card_index mapping. A response other than the observed success token fails.
+switch_post_log=$work/switch-post
+zte_http_post() {
+    printf '%s|%s|%s\n' "$1" "$2" "$3" >"$switch_post_log"
+    printf '%s\n' '{"result":"success"}'
+}
+assert_success zte_adapter_switch_sim 192.168.0.1 sim2 "$jar"
+assert_eq \
+    "http://192.168.0.1/goform/goform_set_cmd_process|isTest=false&goformId=SIM_SWITCH_SIMCARD&card_index=2|$jar" \
+    "$(cat "$switch_post_log")"
+zte_http_post() { printf '%s\n' '{"result":"failure"}'; }
+assert_failure zte_adapter_switch_sim 192.168.0.1 physical "$jar"
+zte_http_post() { printf '%s\n' 'not-json'; }
+assert_failure zte_adapter_switch_sim 192.168.0.1 sim1 "$jar"
+assert_failure zte_adapter_switch_sim 192.168.0.1 invalid "$jar"
+
 rm -rf "$work"
 finish
