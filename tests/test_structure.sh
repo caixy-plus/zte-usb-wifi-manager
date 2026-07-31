@@ -211,7 +211,8 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5'
 assert_file_contains README.md 'OpenWrt 24\.10\.7'
 assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
-assert_file_contains README.md '不代表当前 r15 / LuCI r4 已完成 QEMU'
+assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
+assert_file_contains README.md 'r15 / LuCI r4 已通过双 SDK 与 QEMU 复验'
 assert_file_contains README.md 'LuCI 十个标签已可切换'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
 assert_file_contains README.md '短信总数与脱敏事件日志'
@@ -233,6 +234,12 @@ assert_file_contains README.md \
     'r14 已修复实机满电状态枚举'
 assert_file_contains README.md \
     'docs/validation/2026-07-31-r8-r3-qemu\.md'
+assert_file_contains README.md \
+    'docs/validation/2026-07-31-r15-r4-qemu\.md'
+assert_file_contains docs/validation/2026-07-31-r15-r4-qemu.md \
+    '30639262368'
+assert_file_contains docs/validation/2026-07-31-r15-r4-qemu.md \
+    'r14/r3→r15/r4'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
     'probe'
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \

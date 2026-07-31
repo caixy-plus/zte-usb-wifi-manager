@@ -59,14 +59,15 @@
 
 | OpenWrt | 包格式 | 当前 r15 / LuCI r4 | 历史 QEMU 记录 |
 |---|---|---|---|
-| OpenWrt 25.12.5 | `.apk` | 本地检查通过；等待本版本 SDK/QEMU 复验 | backend r8 / LuCI r3 通过 |
-| OpenWrt 24.10.7 | `.ipk` | 本地检查通过；等待本版本 SDK/QEMU 复验 | backend r8 / LuCI r3 通过 |
+| OpenWrt 25.12.5 | `.apk` | GitHub SDK、安装、r14→r15 升级、服务与卸载均通过 | backend r8 / LuCI r3 通过 |
+| OpenWrt 24.10.7 | `.ipk` | GitHub SDK、安装、r14→r15 升级、服务与卸载均通过 | backend r8 / LuCI r3 通过 |
 
-backend r8 / LuCI r3 的本地检查、GitHub 双版本真实 SDK 构建、官方 OpenWrt
-双版本 QEMU 安装/卸载验证，以及当时的 OpenWrt 25.12.5 Cudy TR3000 实机升级和
-只读 probe 均已完成。该 QEMU 记录只证明 r8 / r3，不代表当前 r15 / LuCI r4 已完成 QEMU。
-进度见
-[验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
+当前 backend r15 / LuCI r4 已完成本地检查、GitHub 双版本真实 SDK 构建，以及
+官方 OpenWrt 双版本 QEMU 安装、从 r14/r3 原位升级、配置保留、procd/rpcd/ubus
+和卸载验证。过程未连接主路由器或真实 U25S。记录见
+[r15/r4 验证记录](docs/validation/2026-07-31-r15-r4-qemu.md)。历史 r8/r3 的
+QEMU 与当时的 OpenWrt 25.12.5 Cudy TR3000 实机只读 probe 见
+[r8/r3 验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
 r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在
@@ -92,7 +93,7 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 
 当前源码的预发布入口为 `v0.1.0-rc1-r15`；只有维护者显式创建并推送与包元数据
 匹配的 tag 才会发布。带 `-rc` 的 tag 自动创建 prerelease，稳定版 tag 创建普通
-Release。当前 r15 / LuCI r4 尚待双 SDK 与 QEMU 复验，也不代表真实设备写接口、
+Release。当前 r15 / LuCI r4 已通过双 SDK 与 QEMU 复验，但这不代表真实设备写接口、
 USB 供电或 72 小时稳定性验收已经完成。
 
 两个包均为纯脚本和静态资源，发布时标记为 `all` 架构。这里的 `all` 只表示不受
