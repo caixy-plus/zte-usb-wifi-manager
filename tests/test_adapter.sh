@@ -30,7 +30,41 @@ assert_eq null "$(zte_adapter_bool maybe)"
 assert_success zte_adapter_has_any_field "$(cat "$fixtures/read_ok.json")"
 assert_failure zte_adapter_has_any_field "$(cat "$fixtures/read_session_expired.json")"
 
+# A firmware that exposes status without authentication must not be rejected
+# merely because the cookie jar and credential are empty.
+: >"$jar"
+anonymous_logins=$work/anonymous-logins
+: >"$anonymous_logins"
+# Injected into zte_adapter_fetch from the sourced production library.
+# shellcheck disable=SC2329
+zte_session_login() {
+    printf 'login\n' >>"$anonymous_logins"
+    return 1
+}
+# Injected into zte_adapter_fetch from the sourced production library.
+# shellcheck disable=SC2329
+zte_http_get() { cat "$fixtures/read_ok.json"; }
+anonymous_raw=$(zte_adapter_fetch 192.168.0.1 '' "$jar")
+assert_eq "$(cat "$fixtures/read_ok.json")" "$anonymous_raw"
+assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
+
+# If the anonymous probe is valid JSON but has no known status fields, an
+# absent password is a distinct "credentials required" outcome.
+: >"$jar"
+: >"$anonymous_logins"
+# Injected into zte_adapter_fetch from the sourced production library.
+# shellcheck disable=SC2329
+zte_http_get() { cat "$fixtures/read_session_expired.json"; }
+set +e
+zte_adapter_fetch 192.168.0.1 '' "$jar" >/dev/null
+anonymous_status=$?
+set -e
+assert_eq 2 "$anonymous_status"
+assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
+
 # fetch with a warm cookie jar performs no login
+: >"$jar"
+printf x >"$jar"
 # Injected into zte_adapter_fetch from the sourced production library.
 # shellcheck disable=SC2329
 zte_http_get() { cat "$fixtures/read_ok.json"; }
@@ -77,6 +111,10 @@ for invalid_response in \
 do
     assert_failure zte_adapter_normalize "$invalid_response"
 done
+empty_sms_out=$(zte_adapter_normalize '{"sms_data_total":""}')
+assert_eq null \
+    "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).sms.total))' \
+        "$empty_sms_out")"
 
 # A rejected candidate cannot replace the last trusted device snapshot.
 invalid_response='{"battery_vol_percent":"01"}'
