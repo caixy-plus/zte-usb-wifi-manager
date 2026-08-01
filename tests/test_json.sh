@@ -43,6 +43,10 @@ assert_eq '' "$(zte_json_top_get "$normalized" percent)"
 assert_eq 82 "$(zte_json_path_get "$normalized" battery percent)"
 assert_success zte_json_is_flat_object '{"a":"b"}'
 assert_success zte_json_is_flat_object '{}'
+assert_eq 'action
+target' "$(zte_json_flat_keys '{"action":"switch_sim","target":"sim2"}')"
+assert_failure zte_json_is_flat_object '{"action":"first","action":"second"}'
+assert_failure zte_json_flat_keys '{"action":"first","action":"second"}'
 assert_success zte_json_is_flat_object ' { "provider" : "中国移动 4G", "escaped" : "a\"b\\c", "number" : -12.5e+2, "enabled" : true, "disabled" : false, "empty" : null } '
 assert_failure zte_json_is_flat_object 'not json'
 assert_failure zte_json_is_flat_object ''

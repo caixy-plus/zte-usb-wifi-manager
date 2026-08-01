@@ -162,11 +162,79 @@ zte_adapter_action_feature_option() {
 	esac
 }
 
+zte_adapter_payload_schema() {
+	_zte_schema_payload=$1
+	_zte_schema_allowed=$2
+	_zte_schema_required=$3
+	_zte_schema_keys=$(zte_json_flat_keys "$_zte_schema_payload") || return 1
+	for _zte_schema_required_key in $_zte_schema_required; do
+		zte_json_flat_has \
+			"$_zte_schema_payload" "$_zte_schema_required_key" || return 1
+	done
+	while IFS= read -r _zte_schema_key; do
+		[ -n "$_zte_schema_key" ] || continue
+		case " $_zte_schema_allowed " in
+			*" $_zte_schema_key "*) ;;
+			*) return 1 ;;
+		esac
+	done <<EOF
+$_zte_schema_keys
+EOF
+}
+
+zte_adapter_payload_text() {
+	_zte_payload_text=${1-}
+	_zte_payload_text_min=$2
+	_zte_payload_text_max=$3
+	[ "${#_zte_payload_text}" -ge "$_zte_payload_text_min" ] &&
+		[ "${#_zte_payload_text}" -le "$_zte_payload_text_max" ] || return 1
+	case $_zte_payload_text in
+		*[[:cntrl:]]*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
+zte_adapter_payload_uint_range() {
+	_zte_payload_uint=${1-}
+	_zte_payload_uint_min=$2
+	_zte_payload_uint_max=$3
+	zte_is_uint "$_zte_payload_uint" &&
+		[ "$_zte_payload_uint" -ge "$_zte_payload_uint_min" ] &&
+		[ "$_zte_payload_uint" -le "$_zte_payload_uint_max" ]
+}
+
+zte_adapter_payload_message_id() {
+	_zte_payload_message_id=${1-}
+	zte_adapter_payload_text "$_zte_payload_message_id" 1 64 || return 1
+	case $_zte_payload_message_id in
+		*[!A-Za-z0-9._:-]*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
+zte_adapter_payload_phone() {
+	_zte_payload_phone=${1-}
+	zte_adapter_payload_text "$_zte_payload_phone" 3 20 || return 1
+	case $_zte_payload_phone in
+		+*) _zte_payload_phone=${_zte_payload_phone#+} ;;
+	esac
+	case $_zte_payload_phone in
+		''|*[!0-9]*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
 zte_adapter_action_payload_valid() {
 	_zte_metadata_action=${1-}
 	_zte_metadata_payload=${2-}
+	zte_json_is_flat_object "$_zte_metadata_payload" || return 1
+	[ "$(zte_json_flat_get "$_zte_metadata_payload" action)" = \
+		"$_zte_metadata_action" ] || return 1
 	case $_zte_metadata_action in
 		switch_sim)
+			zte_adapter_payload_schema \
+				"$_zte_metadata_payload" 'action target' \
+				'action target' || return 1
 			_zte_metadata_target=$(
 				zte_json_flat_get "$_zte_metadata_payload" target
 			)
@@ -174,6 +242,134 @@ zte_adapter_action_payload_valid() {
 				sim1|sim2|sim3|physical) return 0 ;;
 				*) return 1 ;;
 			esac
+			;;
+		set_apn)
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action apn pdp_type auth username password' \
+				'action apn pdp_type auth' || return 1
+			_zte_metadata_apn=$(zte_json_flat_get "$_zte_metadata_payload" apn)
+			case $_zte_metadata_apn in
+				''|*[!A-Za-z0-9._-]*) return 1 ;;
+			esac
+			[ "${#_zte_metadata_apn}" -le 100 ] || return 1
+			case $(zte_json_flat_get "$_zte_metadata_payload" pdp_type) in
+				ipv4|ipv6|ipv4v6) ;;
+				*) return 1 ;;
+			esac
+			_zte_metadata_auth=$(zte_json_flat_get "$_zte_metadata_payload" auth)
+			case $_zte_metadata_auth in
+				none) ;;
+				pap|chap|pap_or_chap)
+					zte_json_flat_has "$_zte_metadata_payload" username &&
+						zte_json_flat_has "$_zte_metadata_payload" password ||
+						return 1
+					zte_adapter_payload_text "$(zte_json_flat_get \
+						"$_zte_metadata_payload" username)" 1 128 || return 1
+					zte_adapter_payload_text "$(zte_json_flat_get \
+						"$_zte_metadata_payload" password)" 1 128 || return 1
+					;;
+				*) return 1 ;;
+			esac
+			;;
+		set_connection_mode)
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action mode' 'action mode' || return 1
+			case $(zte_json_flat_get "$_zte_metadata_payload" mode) in
+				automatic|manual|on_demand) return 0 ;;
+				*) return 1 ;;
+			esac
+			;;
+		set_wifi)
+			_zte_metadata_enabled=$(zte_json_flat_get \
+				"$_zte_metadata_payload" enabled)
+			case $_zte_metadata_enabled in
+				false)
+					zte_adapter_payload_schema "$_zte_metadata_payload" \
+						'action enabled' 'action enabled'
+					return
+					;;
+				true) ;;
+				*) return 1 ;;
+			esac
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action enabled band ssid security password channel' \
+				'action enabled band ssid security channel' || return 1
+			case $(zte_json_flat_get "$_zte_metadata_payload" band) in
+				2g|5g) ;;
+				*) return 1 ;;
+			esac
+			zte_adapter_payload_text "$(zte_json_flat_get \
+				"$_zte_metadata_payload" ssid)" 1 32 || return 1
+			_zte_metadata_security=$(zte_json_flat_get \
+				"$_zte_metadata_payload" security)
+			case $_zte_metadata_security in
+				open) ;;
+				wpa2_psk|wpa3_sae|wpa2_wpa3)
+					zte_json_flat_has "$_zte_metadata_payload" password || return 1
+					zte_adapter_payload_text "$(zte_json_flat_get \
+						"$_zte_metadata_payload" password)" 8 63 || return 1
+					;;
+				*) return 1 ;;
+			esac
+			_zte_metadata_channel=$(zte_json_flat_get \
+				"$_zte_metadata_payload" channel)
+			[ "$_zte_metadata_channel" = auto ] ||
+				zte_adapter_payload_uint_range \
+					"$_zte_metadata_channel" 1 196
+			;;
+		set_traffic_plan)
+			_zte_metadata_enabled=$(zte_json_flat_get \
+				"$_zte_metadata_payload" enabled)
+			case $_zte_metadata_enabled in
+				false)
+					zte_adapter_payload_schema "$_zte_metadata_payload" \
+						'action enabled' 'action enabled'
+					return
+					;;
+				true) ;;
+				*) return 1 ;;
+			esac
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action enabled limit_bytes alert_percent cycle_day disconnect' \
+				'action enabled limit_bytes alert_percent cycle_day disconnect' ||
+				return 1
+			zte_adapter_payload_uint_range "$(zte_json_flat_get \
+				"$_zte_metadata_payload" limit_bytes)" 1 1000000000000000 &&
+				zte_adapter_payload_uint_range "$(zte_json_flat_get \
+				"$_zte_metadata_payload" alert_percent)" 1 100 &&
+				zte_adapter_payload_uint_range "$(zte_json_flat_get \
+				"$_zte_metadata_payload" cycle_day)" 1 31 || return 1
+			case $(zte_json_flat_get "$_zte_metadata_payload" disconnect) in
+				true|false) return 0 ;;
+				*) return 1 ;;
+			esac
+			;;
+		reset_traffic)
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action confirm' 'action confirm' || return 1
+			[ "$(zte_json_flat_get "$_zte_metadata_payload" confirm)" = true ]
+			;;
+		send_sms)
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action number content' 'action number content' || return 1
+			zte_adapter_payload_phone "$(zte_json_flat_get \
+				"$_zte_metadata_payload" number)" &&
+				zte_adapter_payload_text "$(zte_json_flat_get \
+				"$_zte_metadata_payload" content)" 1 700
+			;;
+		delete_sms)
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action message_id confirm' 'action message_id confirm' || return 1
+			zte_adapter_payload_message_id "$(zte_json_flat_get \
+				"$_zte_metadata_payload" message_id)" &&
+				[ "$(zte_json_flat_get \
+					"$_zte_metadata_payload" confirm)" = true ]
+			;;
+		mark_sms_read)
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action message_id' 'action message_id' || return 1
+			zte_adapter_payload_message_id "$(zte_json_flat_get \
+				"$_zte_metadata_payload" message_id)"
 			;;
 		*) return 1 ;;
 	esac

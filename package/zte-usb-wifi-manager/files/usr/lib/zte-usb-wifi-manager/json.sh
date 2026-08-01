@@ -232,6 +232,11 @@ _zte_json_flat_query() {
                 if (!parse_string())
                     return 0
                 key = parsed_string
+                if (seen_flat_key[key]++)
+                    return 0
+                if (flat_keys != "")
+                    flat_keys = flat_keys "\n"
+                flat_keys = flat_keys key
                 skip_space()
                 if (substr(json, pos, 1) != ":")
                     return 0
@@ -364,6 +369,11 @@ _zte_json_flat_query() {
                 exit 1
             if (mode == "validate")
                 exit 0
+            if (mode == "keys") {
+                if (flat_keys != "")
+                    printf "%s", flat_keys
+                exit 0
+            }
             if (mode == "has")
                 exit(found ? 0 : 1)
             if (mode == "get") {
@@ -384,6 +394,12 @@ _zte_json_flat_query() {
 # Succeed when "$1" is a JSON object whose values are scalar.
 zte_json_is_flat_object() {
     _zte_json_flat_query validate "${1-}" ''
+}
+
+# Print decoded keys from a valid flat object, one per line. Duplicate keys are
+# invalid because their last-value-wins behavior differs between JSON parsers.
+zte_json_flat_keys() {
+    _zte_json_flat_query keys "${1-}" ''
 }
 
 # Succeed when flat JSON object "$1" contains key "$2".

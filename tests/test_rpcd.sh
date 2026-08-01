@@ -59,7 +59,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
+assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -176,7 +176,10 @@ for library in validation.sh json.sh credentials.sh actions.sh event-log.sh; do
 done
 sed \
     -e 's/^ZTE_CAP_SIM_SWITCH=0$/ZTE_CAP_SIM_SWITCH=1/' \
+    -e 's/^ZTE_CAP_CELLULAR_WRITE=0$/ZTE_CAP_CELLULAR_WRITE=1/' \
     -e 's/^ZTE_CAP_WIFI_WRITE=0$/ZTE_CAP_WIFI_WRITE=1/' \
+    -e 's/^ZTE_CAP_TRAFFIC_WRITE=0$/ZTE_CAP_TRAFFIC_WRITE=1/' \
+    -e 's/^ZTE_CAP_SMS_WRITE=0$/ZTE_CAP_SMS_WRITE=1/' \
     "$metadata" >"$write_lib/adapter-zte-u25s-metadata.sh"
 # The generated stub must expand this variable when it executes, not here.
 # shellcheck disable=SC2016
@@ -247,6 +250,80 @@ assert_eq physical "$(
 zte_action_claim "$state_dir" >/dev/null
 assert_success zte_action_finish \
     "$state_dir" "$sim_queued_id" failed test_complete 1722345680
+
+assert_queued_action() {
+    _zte_test_reply=$1
+    _zte_test_key=$2
+    _zte_test_expected=$3
+    assert_success assert_json "$_zte_test_reply"
+    _zte_test_id=$(zte_json_flat_get "$_zte_test_reply" operation_id)
+    assert_success zte_operation_id_valid "$_zte_test_id"
+    _zte_test_file=$state_dir/actions/pending/$_zte_test_id.json
+    assert_eq 600 "$(test_file_mode "$_zte_test_file")"
+    assert_eq "$_zte_test_expected" "$(
+        zte_json_path_get "$(cat "$_zte_test_file")" payload "$_zte_test_key"
+    )"
+    zte_action_claim "$state_dir" >/dev/null
+    assert_success zte_action_finish \
+        "$state_dir" "$_zte_test_id" failed test_complete 1722345680
+}
+
+apn_queued=$(printf '%s\n' \
+    '{"action":"set_apn","apn":"internet","pdp_type":"ipv4v6","auth":"chap","username":"fixture-user","password":"DUMMY_QUEUE_VALUE"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_CELLULAR_WRITE_ENABLED=1 \
+        rpcd_call call cellular_action)
+case $apn_queued in *DUMMY_QUEUE_VALUE*) fail 'APN password leaked in RPC reply' ;; *) pass ;; esac
+assert_queued_action "$apn_queued" apn internet
+
+mode_queued=$(printf '%s\n' \
+    '{"action":"set_connection_mode","mode":"automatic"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_CELLULAR_WRITE_ENABLED=1 \
+        rpcd_call call cellular_action)
+assert_queued_action "$mode_queued" mode automatic
+
+wifi_queued=$(printf '%s\n' \
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"Fixture WiFi","security":"wpa2_psk","password":"DUMMY_WIFI_VALUE","channel":"auto"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+        rpcd_call call wifi_action)
+case $wifi_queued in *DUMMY_WIFI_VALUE*) fail 'Wi-Fi password leaked in RPC reply' ;; *) pass ;; esac
+assert_queued_action "$wifi_queued" ssid 'Fixture WiFi'
+
+traffic_queued=$(printf '%s\n' \
+    '{"action":"set_traffic_plan","enabled":true,"limit_bytes":10737418240,"alert_percent":90,"cycle_day":1,"disconnect":false}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_TRAFFIC_WRITE_ENABLED=1 \
+        rpcd_call call traffic_action)
+assert_queued_action "$traffic_queued" limit_bytes 10737418240
+
+reset_queued=$(printf '%s\n' \
+    '{"action":"reset_traffic","confirm":true}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_TRAFFIC_WRITE_ENABLED=1 \
+        rpcd_call call traffic_action)
+assert_queued_action "$reset_queued" confirm true
+
+sms_queued=$(printf '%s\n' \
+    '{"action":"send_sms","number":"+12025550123","content":"runtime fixture message"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SMS_WRITE_ENABLED=1 \
+        rpcd_call call sms_action)
+case $sms_queued in *runtime*|*12025550123*) fail 'SMS private data leaked in RPC reply' ;; *) pass ;; esac
+assert_queued_action "$sms_queued" action send_sms
+
+delete_queued=$(printf '%s\n' \
+    '{"action":"delete_sms","message_id":"42","confirm":true}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SMS_WRITE_ENABLED=1 \
+        rpcd_call call sms_action)
+assert_queued_action "$delete_queued" message_id 42
+
+read_queued=$(printf '%s\n' \
+    '{"action":"mark_sms_read","message_id":"42"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SMS_WRITE_ENABLED=1 \
+        rpcd_call call sms_action)
+assert_queued_action "$read_queued" message_id 42
+
+unknown_field=$(printf '%s\n' \
+    '{"action":"set_wifi","enabled":false,"goformId":"UNREVIEWED"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+        rpcd_call call wifi_action)
+assert_eq '{"ok":false,"error":"invalid_action"}' "$unknown_field"
 
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
     printf '%s\n' '{"action":"set_wifi"}' |

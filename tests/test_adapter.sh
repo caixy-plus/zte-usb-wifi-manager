@@ -78,6 +78,58 @@ assert_eq wifi_write_enabled "$(zte_adapter_action_feature_option set_wifi)"
 assert_failure zte_adapter_action_feature_option unknown
 ZTE_CAP_SIM_SWITCH=0
 
+# Semantic write payloads are validated before any future target-firmware
+# mapping. Unknown fields are rejected so ubus cannot smuggle unreviewed
+# device parameters into the root-only action queue.
+assert_success zte_adapter_action_payload_valid switch_sim \
+    '{"action":"switch_sim","target":"sim2"}'
+assert_failure zte_adapter_action_payload_valid switch_sim \
+    '{"action":"switch_sim","target":"sim2","extra":"x"}'
+assert_success zte_adapter_action_payload_valid set_apn \
+    '{"action":"set_apn","apn":"internet","pdp_type":"ipv4v6","auth":"none"}'
+assert_success zte_adapter_action_payload_valid set_apn \
+    '{"action":"set_apn","apn":"carrier.apn","pdp_type":"ipv4","auth":"chap","username":"user","password":"PLACEHOLDER"}'
+assert_failure zte_adapter_action_payload_valid set_apn \
+    '{"action":"set_apn","apn":"","pdp_type":"ipv4","auth":"none"}'
+assert_failure zte_adapter_action_payload_valid set_apn \
+    '{"action":"set_apn","apn":"internet","pdp_type":"invalid","auth":"none"}'
+assert_failure zte_adapter_action_payload_valid set_apn \
+    '{"action":"set_apn","apn":"internet","pdp_type":"ipv4","auth":"chap"}'
+assert_success zte_adapter_action_payload_valid set_connection_mode \
+    '{"action":"set_connection_mode","mode":"automatic"}'
+assert_failure zte_adapter_action_payload_valid set_connection_mode \
+    '{"action":"set_connection_mode","mode":"firmware_raw_7"}'
+assert_success zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":false}'
+assert_success zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U25S Guest","security":"wpa2_psk","password":"PLACEHOLDER","channel":"auto"}'
+assert_failure zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U25S","security":"wpa2_psk","channel":"auto"}'
+assert_failure zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"6g","ssid":"U25S","security":"open","channel":"auto"}'
+assert_success zte_adapter_action_payload_valid set_traffic_plan \
+    '{"action":"set_traffic_plan","enabled":false}'
+assert_success zte_adapter_action_payload_valid set_traffic_plan \
+    '{"action":"set_traffic_plan","enabled":true,"limit_bytes":10737418240,"alert_percent":90,"cycle_day":1,"disconnect":false}'
+assert_failure zte_adapter_action_payload_valid set_traffic_plan \
+    '{"action":"set_traffic_plan","enabled":true,"limit_bytes":0,"alert_percent":90,"cycle_day":1,"disconnect":false}'
+assert_success zte_adapter_action_payload_valid reset_traffic \
+    '{"action":"reset_traffic","confirm":true}'
+assert_failure zte_adapter_action_payload_valid reset_traffic \
+    '{"action":"reset_traffic","confirm":false}'
+assert_success zte_adapter_action_payload_valid send_sms \
+    '{"action":"send_sms","number":"+12025550123","content":"fixture message"}'
+assert_failure zte_adapter_action_payload_valid send_sms \
+    '{"action":"send_sms","number":"bad;number","content":"fixture message"}'
+assert_success zte_adapter_action_payload_valid delete_sms \
+    '{"action":"delete_sms","message_id":"42","confirm":true}'
+assert_failure zte_adapter_action_payload_valid delete_sms \
+    '{"action":"delete_sms","message_id":"../42","confirm":true}'
+assert_success zte_adapter_action_payload_valid mark_sms_read \
+    '{"action":"mark_sms_read","message_id":"42"}'
+assert_failure zte_adapter_action_payload_valid mark_sms_read \
+    '{"action":"mark_sms_read","message_id":"42","confirm":true}'
+
 fixtures=./tests/fixtures/u25s
 work=/tmp/zte-test-adapter.$$
 mkdir -p "$work"
