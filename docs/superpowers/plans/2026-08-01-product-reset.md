@@ -16,7 +16,7 @@
 - Modify: `tests/test_structure.sh`
 - Modify: `tests/test_luci.js`
 
-- [ ] **Step 1: Add structural assertions for the daemon and default UCI contract**
+- [x] **Step 1: Add structural assertions for the daemon and default UCI contract**
 
 Assert that the default config contains no `policy` or `work` section, and that
 the daemon polling function contains neither `zte_policy_decide` nor
@@ -36,13 +36,13 @@ case $poll_once_source in
 esac
 ```
 
-- [ ] **Step 2: Add LuCI information-architecture assertions**
+- [x] **Step 2: Add LuCI information-architecture assertions**
 
 Render the page and assert that tabs `battery` and `schedule` do not exist,
 that `clients` does exist, that the overview says `电池状态`, and that the
 source contains no `立即充满` or `充电日程` control.
 
-- [ ] **Step 3: Run the focused tests and verify RED**
+- [x] **Step 3: Run the focused tests and verify RED**
 
 Run:
 
@@ -54,7 +54,7 @@ node tests/test_luci.js
 Expected: both suites fail because the legacy UCI sections, daemon policy call,
 and old tabs are still present.
 
-- [ ] **Step 4: Commit the failing contract tests**
+- [x] **Step 4: Commit the failing contract tests**
 
 ```sh
 git add tests/test_structure.sh tests/test_luci.js
@@ -69,12 +69,12 @@ git commit -m "test: define U25S console product boundary"
 - Modify: `package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/snapshot.sh`
 - Modify: `tests/test_snapshot.sh`
 
-- [ ] **Step 1: Remove battery-policy and schedule defaults**
+- [x] **Step 1: Remove battery-policy and schedule defaults**
 
 Delete the `config battery 'policy'` and `config schedule 'work'` blocks. Keep
 the `usb` block disabled for safe legacy restore and future explicit recovery.
 
-- [ ] **Step 2: Make the daemon poll path telemetry-only**
+- [x] **Step 2: Make the daemon poll path telemetry-only**
 
 Remove policy/schedule configuration loading and validation. In `poll_once`, do
 not call `calculate_policy`; compose the snapshot with a stable retired marker:
@@ -89,13 +89,13 @@ Startup and shutdown retain `early_safety_restore` and `restore_power_on` so an
 upgrade cannot strand a device in a legacy OFF transition. No normal polling
 path may call `zte_power_apply`.
 
-- [ ] **Step 3: Constrain snapshot semantics**
+- [x] **Step 3: Constrain snapshot semantics**
 
 Allow `policy.state=retired` only as backward-compatible status metadata. Add a
 snapshot test proving battery telemetry is retained while the policy marker is
 retired and the requested action is `none`.
 
-- [ ] **Step 4: Run focused backend tests and verify GREEN**
+- [x] **Step 4: Run focused backend tests and verify GREEN**
 
 Run:
 
@@ -108,7 +108,7 @@ Run:
 Expected: all suites pass, and the structural test proves polling cannot invoke
 the retired policy.
 
-- [ ] **Step 5: Commit the backend reset**
+- [x] **Step 5: Commit the backend reset**
 
 ```sh
 git add package/zte-usb-wifi-manager/files/etc/config/zte-usb-wifi-manager \
@@ -124,7 +124,7 @@ git commit -m "refactor: retire automatic USB battery cycling"
 - Modify: `luci-app-zte-usb-wifi-manager/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js`
 - Modify: `tests/test_luci.js`
 
-- [ ] **Step 1: Change the tab set**
+- [x] **Step 1: Change the tab set**
 
 Use exactly these tab identifiers:
 
@@ -135,7 +135,7 @@ overview, network, wifi, clients, traffic, sms, device, diagnostics, logs
 `logs` remains separate because it is an existing bounded module. Remove
 `battery` and `schedule`; battery fields move into Overview and Device.
 
-- [ ] **Step 2: Replace policy presentation**
+- [x] **Step 2: Replace policy presentation**
 
 Remove `powerExecutionLabel()`, `renderBattery()` and `renderSchedule()` from
 normal UI rendering. Overview renders `电池状态` from the device snapshot.
@@ -143,7 +143,7 @@ Device renders battery presence, percent, charging state and temperature.
 Diagnostics may show read-only USB/recovery state with the warning
 `USB 断电会中断数据连接，仅用于故障恢复` and must render no recovery button.
 
-- [ ] **Step 3: Add connected-device placeholder with precise status**
+- [x] **Step 3: Add connected-device placeholder with precise status**
 
 Until verified fixtures exist, the `clients` tab renders:
 
@@ -154,7 +154,7 @@ Until verified fixtures exist, the `clients` tab renders:
 The Wi-Fi and traffic placeholders use the same precise calibration language,
 not a generic empty-state message.
 
-- [ ] **Step 4: Run LuCI tests and verify GREEN**
+- [x] **Step 4: Run LuCI tests and verify GREEN**
 
 Run:
 
@@ -164,7 +164,7 @@ node tests/test_luci.js
 
 Expected: all LuCI assertions pass.
 
-- [ ] **Step 5: Commit the UI reset**
+- [x] **Step 5: Commit the UI reset**
 
 ```sh
 git add luci-app-zte-usb-wifi-manager/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js tests/test_luci.js
@@ -180,26 +180,26 @@ git commit -m "feat: reposition LuCI as U25S device console"
 - Modify: `docs/design/zte-usb-wifi-manager-design.md`
 - Modify: `tests/test_structure.sh`
 
-- [ ] **Step 1: Update package metadata and tests**
+- [x] **Step 1: Update package metadata and tests**
 
 Bump backend release from 15 to 16 and LuCI release from 4 to 5. Change the
 backend package description to `U25S device-console integration and safely
 gated device actions for OpenWrt.` Update exact release assertions.
 
-- [ ] **Step 2: Rewrite README positioning and current-state summary**
+- [x] **Step 2: Rewrite README positioning and current-state summary**
 
 Lead with U25S console integration. State prominently that seamless charging
 control is not supported because removing USB VBUS interrupts USB data. Describe
 USB power only as a future, disruptive recovery action. Preserve verified build,
 installation and compatibility evidence without claiming new live writes.
 
-- [ ] **Step 3: Mark the old design as superseded where it conflicts**
+- [x] **Step 3: Mark the old design as superseded where it conflicts**
 
 Add a notice at the top of the old design pointing to
 `docs/superpowers/specs/2026-08-01-u25s-console-integration-design.md`. Replace
 the old phase-3 automatic battery section with telemetry and explicit recovery.
 
-- [ ] **Step 4: Run documentation and structure checks**
+- [x] **Step 4: Run documentation and structure checks**
 
 Run:
 
@@ -211,7 +211,7 @@ git diff --check
 
 Expected: all pass and no credential/device identifiers are introduced.
 
-- [ ] **Step 5: Commit documentation and release metadata**
+- [x] **Step 5: Commit documentation and release metadata**
 
 ```sh
 git add README.md package/zte-usb-wifi-manager/Makefile \
@@ -225,7 +225,7 @@ git commit -m "docs: publish U25S console product direction"
 **Files:**
 - Modify only if verification exposes a regression.
 
-- [ ] **Step 1: Run the complete local gate**
+- [x] **Step 1: Run the complete local gate**
 
 Run:
 
@@ -236,7 +236,7 @@ make check
 Expected: every Shell, Node, JSON, packaging and secret-scan suite passes and
 shellcheck reports no findings.
 
-- [ ] **Step 2: Inspect the exact committed diff**
+- [x] **Step 2: Inspect the exact committed diff**
 
 Run:
 
@@ -248,7 +248,7 @@ git diff origin/codex/phase1-phase2...HEAD --check
 
 Expected: no uncommitted files and no whitespace errors.
 
-- [ ] **Step 3: Push the branch**
+- [x] **Step 3: Push the branch**
 
 ```sh
 git push origin codex/phase1-phase2
