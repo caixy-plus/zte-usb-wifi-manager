@@ -304,6 +304,25 @@ zte_adapter_normalize() {
 		"$_zte_raw" network_current_network_mode)
 	_zte_network_selection=$(zte_adapter_json_nonempty_field \
 		"$_zte_raw" network_net_select_mode)
+	_zte_snr=$(zte_adapter_json_nonempty_field "$_zte_raw" Z5g_snr)
+	_zte_sinr=$(zte_adapter_json_nonempty_field "$_zte_raw" Z5g_SINR)
+	_zte_ca=$(zte_adapter_json_nonempty_field "$_zte_raw" wan_lte_ca)
+	_zte_primary_band=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_lte_ca_pcell_band)
+	_zte_primary_bandwidth=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" bandwidth)
+	_zte_secondary_band=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_lte_ca_scell_band)
+	_zte_secondary_bandwidth=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_lte_ca_scell_bandwidth)
+	_zte_primary_arfcn=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_lte_ca_pcell_arfcn)
+	_zte_secondary_arfcn=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" lte_ca_scell_arfcn)
+	_zte_active_band=$(zte_adapter_json_nonempty_field "$_zte_raw" wan_active_band)
+	_zte_pdp_ipv4=$(zte_adapter_json_nonempty_field "$_zte_raw" apn_pdp_type)
+	_zte_pdp_ipv6=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" apn_ipv6_pdp_type)
 	_zte_mcc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmcc)
 	_zte_mnc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmnc)
 	_zte_ppp=$(zte_json_flat_get "$_zte_raw" ppp_status)
@@ -455,7 +474,7 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"connection_mode":%s,"auto_roaming_raw":%s,"network_mode_raw":%s,"network_selection_mode_raw":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}},"radio_off_raw":%s,"primary":{"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"guest":{"enabled_raw":%s,"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"advanced":{"mode_raw":%s,"country_raw":%s,"channel_raw":%s,"bandwidth_raw":%s,"coverage_raw":%s},"sleep_status_raw":%s},"clients":%s,"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"connection_mode":%s,"auto_roaming_raw":%s,"network_mode_raw":%s,"network_selection_mode_raw":%s,"radio":{"snr_raw":%s,"sinr_raw":%s,"ca_state_raw":%s,"primary_band_raw":%s,"primary_bandwidth_raw":%s,"secondary_band_raw":%s,"secondary_bandwidth_raw":%s,"primary_arfcn_raw":%s,"secondary_arfcn_raw":%s,"active_band_raw":%s},"pdp":{"ipv4_type_raw":%s,"ipv6_type_raw":%s},"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}},"radio_off_raw":%s,"primary":{"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"guest":{"enabled_raw":%s,"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"advanced":{"mode_raw":%s,"country_raw":%s,"channel_raw":%s,"bandwidth_raw":%s,"coverage_raw":%s},"sleep_status_raw":%s},"clients":%s,"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_MODEL" "$_zte_firmware" \
 		"$_zte_hardware_version" "$_zte_webui_version" \
 		"$_zte_software_version" "$_zte_market_name" \
@@ -469,6 +488,11 @@ zte_adapter_normalize() {
 		"$_zte_dial_mode" "$_zte_wan_mode" \
 		"$_zte_connection_mode" "$_zte_auto_roaming" \
 		"$_zte_network_mode" "$_zte_network_selection" \
+		"$_zte_snr" "$_zte_sinr" "$_zte_ca" "$_zte_primary_band" \
+		"$_zte_primary_bandwidth" "$_zte_secondary_band" \
+		"$_zte_secondary_bandwidth" "$_zte_primary_arfcn" \
+		"$_zte_secondary_arfcn" "$_zte_active_band" \
+		"$_zte_pdp_ipv4" "$_zte_pdp_ipv6" \
 		"$_zte_mcc" "$_zte_mnc" \
 		"$(zte_json_escape "$_zte_ppp")" \
 		"$_zte_slot" "$_zte_sim_type" \

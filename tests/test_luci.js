@@ -764,6 +764,14 @@ const completeStatus = {
 			auto_roaming_raw: '1',
 			network_mode_raw: 'LTE_NR',
 			network_selection_mode_raw: 'auto',
+			radio: {
+				snr_raw: '28', sinr_raw: '25', ca_state_raw: 'ca_activated',
+				primary_band_raw: 'n78', primary_bandwidth_raw: '100MHz',
+				secondary_band_raw: 'B3', secondary_bandwidth_raw: '20MHz',
+				primary_arfcn_raw: '640000', secondary_arfcn_raw: '1650',
+				active_band_raw: 'NR5G'
+			},
+			pdp: { ipv4_type_raw: 'IPV4V6', ipv6_type_raw: 'IPV6' },
 			mcc: '460',
 			mnc: '00',
 			ppp_status: 'ipv4_ipv6_connected'
@@ -901,6 +909,13 @@ test('renders the mobile-network panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '漫游自动连接原始值'), '1');
 	assert.strictEqual(rowValue(tree, '网络偏好原始值'), 'LTE_NR');
 	assert.strictEqual(rowValue(tree, '选网模式原始值'), 'auto');
+	assert.strictEqual(rowValue(tree, 'SNR 原始值'), '28');
+	assert.strictEqual(rowValue(tree, 'SINR 原始值'), '25');
+	assert.strictEqual(rowValue(tree, '载波聚合状态'), 'ca_activated');
+	assert.strictEqual(rowValue(tree, '主载波频段'), 'n78');
+	assert.strictEqual(rowValue(tree, '辅载波频段'), 'B3');
+	assert.strictEqual(rowValue(tree, 'IPv4 PDP 类型'), 'IPV4V6');
+	assert.strictEqual(rowValue(tree, 'IPv6 PDP 类型'), 'IPV6');
 	assert.strictEqual(rowValue(tree, '运营商代码'), '460-00');
 	assert.strictEqual(rowValue(tree, 'PPP 状态'), 'ipv4_ipv6_connected');
 	assert.strictEqual(rowValue(tree, 'USB 上联'), '已连接 (eth2)');

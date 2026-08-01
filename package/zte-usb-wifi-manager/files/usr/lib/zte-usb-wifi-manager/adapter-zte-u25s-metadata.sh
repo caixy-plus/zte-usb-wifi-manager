@@ -29,6 +29,8 @@ ZTE_READ_FIELDS=$ZTE_READ_FIELDS',flux_data_volume_limit_size,flux_data_volume_a
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',ConnectionMode,autoConnectWhenRoaming,network_current_network_mode,network_net_select_mode'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',RadioOff,SSID1,AuthMode,HideSSID,MAX_Access_num,NoForwarding,m_ssid_enable,m_SSID,m_AuthMode,m_HideSSID,m_MAX_Access_num,m_NoForwarding'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',WirelessMode,CountryCode,Channel,wifi_11n_cap,wifi_coverage,SleepStatusForSingleChipCpe'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',Z5g_snr,Z5g_SINR,wan_lte_ca,network_lte_ca_pcell_band,bandwidth,network_lte_ca_scell_band,network_lte_ca_scell_bandwidth'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',network_lte_ca_pcell_arfcn,lte_ca_scell_arfcn,wan_active_band,apn_pdp_type,apn_ipv6_pdp_type'
 
 # These variables are the sourced adapter contract and are consumed by other
 # library files after this metadata file returns.

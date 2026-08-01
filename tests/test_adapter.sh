@@ -285,7 +285,8 @@ expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","hardware_ver
 expected=$(printf '%s' "$expected" | sed \
     -e 's/"wan_mode":null,/"wan_mode":null,"connection_mode":null,"auto_roaming_raw":null,"network_mode_raw":null,"network_selection_mode_raw":null,/' \
     -e 's/}}},"clients"/}},"radio_off_raw":null,"primary":{"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"guest":{"enabled_raw":null,"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"advanced":{"mode_raw":null,"country_raw":null,"channel_raw":null,"bandwidth_raw":null,"coverage_raw":null},"sleep_status_raw":null},"clients"/' \
-    -e 's/current_upgrade_state"}/current_upgrade_state,ConnectionMode,autoConnectWhenRoaming,network_current_network_mode,network_net_select_mode,RadioOff,SSID1,AuthMode,HideSSID,MAX_Access_num,NoForwarding,m_ssid_enable,m_SSID,m_AuthMode,m_HideSSID,m_MAX_Access_num,m_NoForwarding,WirelessMode,CountryCode,Channel,wifi_11n_cap,wifi_coverage,SleepStatusForSingleChipCpe"}/')
+    -e 's/"network_selection_mode_raw":null,/"network_selection_mode_raw":null,"radio":{"snr_raw":null,"sinr_raw":null,"ca_state_raw":null,"primary_band_raw":null,"primary_bandwidth_raw":null,"secondary_band_raw":null,"secondary_bandwidth_raw":null,"primary_arfcn_raw":null,"secondary_arfcn_raw":null,"active_band_raw":null},"pdp":{"ipv4_type_raw":null,"ipv6_type_raw":null},/' \
+    -e 's/current_upgrade_state"}/current_upgrade_state,ConnectionMode,autoConnectWhenRoaming,network_current_network_mode,network_net_select_mode,RadioOff,SSID1,AuthMode,HideSSID,MAX_Access_num,NoForwarding,m_ssid_enable,m_SSID,m_AuthMode,m_HideSSID,m_MAX_Access_num,m_NoForwarding,WirelessMode,CountryCode,Channel,wifi_11n_cap,wifi_coverage,SleepStatusForSingleChipCpe,Z5g_snr,Z5g_SINR,wan_lte_ca,network_lte_ca_pcell_band,bandwidth,network_lte_ca_scell_band,network_lte_ca_scell_bandwidth,network_lte_ca_pcell_arfcn,lte_ca_scell_arfcn,wan_active_band,apn_pdp_type,apn_ipv6_pdp_type"}/')
 assert_eq "$expected" "$(zte_adapter_normalize "$raw")"
 assert_success node -e 'JSON.parse(process.argv[1])' "$expected"
 
@@ -305,6 +306,11 @@ assert_eq Primary "$(printf '%s' "$console_status" | node -e 'let s="";process.s
 assert_eq Guest "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).wifi.guest.ssid))')"
 assert_eq 36 "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).wifi.advanced.channel_raw))')"
 assert_eq 0 "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).wifi.sleep_status_raw))')"
+
+radio_status=$(zte_adapter_normalize '{"Z5g_snr":"28","Z5g_SINR":"25","wan_lte_ca":"ca_activated","network_lte_ca_pcell_band":"n78","bandwidth":"100MHz","network_lte_ca_scell_band":"B3","network_lte_ca_scell_bandwidth":"20MHz","network_lte_ca_pcell_arfcn":"640000","lte_ca_scell_arfcn":"1650","wan_active_band":"NR5G","apn_pdp_type":"IPV4V6","apn_ipv6_pdp_type":"IPV6"}')
+assert_eq 28 "$(printf '%s' "$radio_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.radio.snr_raw))')"
+assert_eq n78 "$(printf '%s' "$radio_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.radio.primary_band_raw))')"
+assert_eq IPV4V6 "$(printf '%s' "$radio_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.pdp.ipv4_type_raw))')"
 assert_eq '0' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.roaming))')"
 assert_eq 'auto_dial' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.dial_mode))')"
 assert_eq 'PPP' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.wan_mode))')"
@@ -426,7 +432,7 @@ case $out in
     *) fail "missing SMS fields not nulled: $out" ;;
 esac
 case $out in
-    *'"missing":"mc_modem_main_state,network_signalbar,'*',flux_limited_disconnect,ConnectionMode,'*',SleepStatusForSingleChipCpe"'*) pass ;;
+    *'"missing":"mc_modem_main_state,network_signalbar,'*',flux_limited_disconnect,ConnectionMode,'*',SleepStatusForSingleChipCpe,'*',apn_ipv6_pdp_type"'*) pass ;;
     *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total,network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state,wa_inner_version,flux_realtime_tx_thrpt,flux_realtime_rx_thrpt,flux_realtime_tx_bytes,flux_realtime_rx_bytes,flux_realtime_time,flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time,date_month,flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect"'*) pass ;;
     *) fail "missing list wrong: $out" ;;
 esac

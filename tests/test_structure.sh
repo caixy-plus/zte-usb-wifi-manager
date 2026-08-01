@@ -44,6 +44,8 @@ assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=16$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
+assert_file_contains "$backend/Makefile" \
+    '^  DEPENDS:=.*\+jsonfilter([[:space:]]|$)'
 assert_file_contains "$backend/Makefile" '^  EXTRA_DEPENDS:=ip \(>=1\)$'
 if grep -q '\+ip\(-tiny\|-full\)\{0,1\}\([[:space:]]\|$\)' \
     "$backend/Makefile"; then
@@ -241,7 +243,7 @@ assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检�
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
 assert_file_contains README.md 'LuCI 已采用设备控制台导航'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
-assert_file_contains README.md '短信总数与脱敏事件日志'
+assert_file_contains README.md '独立 `0600` 私有缓存提供最近 50 条短信'
 assert_file_contains README.md '固件版本、实时/本次/本月流量和套餐状态已按目标固件契约接入只读展示'
 assert_file_contains README.md 'hardware Power Adapter'
 # Match literal Markdown backticks.

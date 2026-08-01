@@ -407,6 +407,9 @@ function renderOverview(status, capabilities) {
 function renderNetwork(status) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
+	var radio = cellular.radio && typeof cellular.radio === 'object'
+		? cellular.radio : {};
+	var pdp = cellular.pdp && typeof cellular.pdp === 'object' ? cellular.pdp : {};
 	var network = status.network && typeof status.network === 'object' ? status.network : {};
 
 	return panelRoot('network', _('移动网络'), [
@@ -423,6 +426,18 @@ function renderNetwork(status) {
 		row(_('漫游自动连接原始值'), cellular.auto_roaming_raw),
 		row(_('网络偏好原始值'), cellular.network_mode_raw),
 		row(_('选网模式原始值'), cellular.network_selection_mode_raw),
+		row(_('SNR 原始值'), radio.snr_raw),
+		row(_('SINR 原始值'), radio.sinr_raw),
+		row(_('载波聚合状态'), radio.ca_state_raw),
+		row(_('主载波频段'), radio.primary_band_raw),
+		row(_('主载波带宽'), radio.primary_bandwidth_raw),
+		row(_('辅载波频段'), radio.secondary_band_raw),
+		row(_('辅载波带宽'), radio.secondary_bandwidth_raw),
+		row(_('主载波 ARFCN'), radio.primary_arfcn_raw),
+		row(_('辅载波 ARFCN'), radio.secondary_arfcn_raw),
+		row(_('当前活动频段'), radio.active_band_raw),
+		row(_('IPv4 PDP 类型'), pdp.ipv4_type_raw),
+		row(_('IPv6 PDP 类型'), pdp.ipv6_type_raw),
 		row(_('运营商代码'), operatorCodeLabel(cellular)),
 		row(_('PPP 状态'), cellular.ppp_status),
 		row(_('USB 上联'), uplinkLabel(network)),
