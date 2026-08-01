@@ -202,13 +202,20 @@ test('renders safely with missing nested objects', function() {
 });
 
 test('marks retained device data stale for every non-ok backend state', function() {
-	['degraded', 'fail_safe', 'credentials_missing', 'planned_off'].forEach(function(state) {
+	['degraded', 'fail_safe', 'credentials_missing', 'authentication_failed', 'planned_off'].forEach(function(state) {
 		const value = rowValue(render({ state: state, device: { model: 'U25S' } }), '后端状态');
 		assert.ok(
 			value.indexOf('设备数据来自最近一次成功读取') !== -1,
 			state + ' does not mark retained device data stale'
 		);
 	});
+});
+
+test('labels rejected device credentials explicitly', function() {
+	assert.strictEqual(
+		rowValue(render({ state: 'authentication_failed' }), '后端状态'),
+		'设备认证失败'
+	);
 });
 
 test('labels planned hardware power-off explicitly', function() {

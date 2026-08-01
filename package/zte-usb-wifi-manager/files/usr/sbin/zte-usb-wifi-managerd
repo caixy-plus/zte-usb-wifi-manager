@@ -717,7 +717,7 @@ record_state_change() {
 
 	case $_zte_new_state in
 		ok|planned_off) _zte_state_level=info ;;
-		degraded|credentials_missing) _zte_state_level=warn ;;
+		degraded|credentials_missing|authentication_failed) _zte_state_level=warn ;;
 		fail_safe) _zte_state_level=error ;;
 		*) return 0 ;;
 	esac
@@ -962,6 +962,9 @@ poll_once() {
 			"$failures" "$ok" "$failure_threshold")
 		failures=${failure_result%%:*}
 		health=${failure_result#*:}
+		if [ "$fetch_status" = 3 ]; then
+			health=authentication_failed
+		fi
 	fi
 	device_json=$(zte_device_retain \
 		"$last_device_json" "$candidate_device_json" "$ok")
@@ -985,6 +988,10 @@ poll_once() {
 		credentials_missing)
 			state=credentials_missing
 			reason=device_credentials_required
+			;;
+		authentication_failed)
+			state=authentication_failed
+			reason=device_authentication_failed
 			;;
 	esac
 

@@ -111,6 +111,14 @@ set -e
 assert_eq 2 "$anonymous_status"
 assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
 
+# A rejected LOGIN is distinct from transport failure so the console can ask
+# for a corrected credential without hiding the reason.
+set +e
+zte_adapter_fetch 192.168.0.1 rejected-password "$jar" >/dev/null
+authentication_status=$?
+set -e
+assert_eq 3 "$authentication_status"
+
 # An explicitly configured HAS_LOGIN:false firmware variant must never enter
 # LOGIN after a malformed or unknown anonymous response.
 ZTE_LOGIN_REQUIRED=0

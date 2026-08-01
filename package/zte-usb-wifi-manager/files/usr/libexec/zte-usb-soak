@@ -138,7 +138,7 @@ zte_soak_collect() {
 	_zte_soak_state=$(zte_json_top_get "$_zte_soak_status" state) ||
 		return 1
 	case $_zte_soak_state in
-		ok|planned_off|degraded|fail_safe|credentials_missing) ;;
+		ok|planned_off|degraded|fail_safe|credentials_missing|authentication_failed) ;;
 		*) return 1 ;;
 	esac
 	_zte_soak_updated=$(zte_json_top_get "$_zte_soak_status" updated) ||

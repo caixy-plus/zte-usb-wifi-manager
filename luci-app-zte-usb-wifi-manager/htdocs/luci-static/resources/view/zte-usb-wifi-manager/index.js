@@ -103,6 +103,9 @@ function stateLabel(state, hasDevice) {
 	case 'credentials_missing':
 		label = _('缺少设备凭据');
 		break;
+	case 'authentication_failed':
+		label = _('设备认证失败');
+		break;
 	case 'planned_off':
 		label = _('计划断电');
 		break;

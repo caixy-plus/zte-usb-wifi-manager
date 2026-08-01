@@ -359,6 +359,8 @@ assert_file_contains "$daemon" 'zte_validate_netdev.*netdev'
 assert_file_contains "$daemon" 'init_state'
 assert_file_contains "$daemon" '^[[:space:]]*state=credentials_missing$'
 assert_file_contains "$daemon" '^[[:space:]]*reason=device_credentials_required$'
+assert_file_contains "$daemon" '^[[:space:]]*state=authentication_failed$'
+assert_file_contains "$daemon" '^[[:space:]]*reason=device_authentication_failed$'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/session.sh" 'goformId=LOGIN'
 assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh" 'multi_data=1'
 assert_file_contains tests/fixtures/u25s/read_ok.json 'NR5G-SA'
@@ -593,6 +595,20 @@ poll_once
 assert_eq \
     "$(zte_snapshot_compose credentials_missing device_credentials_required '' \
         "$net" retired none 0 1722345678)" \
+    "$(sed -n '1p' "$status_log")"
+
+# Adapter status 3 means LOGIN was attempted and rejected. It must remain a
+# distinct, backoff-counted state instead of looking like a generic outage.
+: >"$status_log"
+last_device_json=''
+last_logged_state=''
+failures=0
+zte_read_password() { printf '%s\n' secret; }
+zte_adapter_fetch() { return 3; }
+poll_once
+assert_eq \
+    "$(zte_snapshot_compose authentication_failed device_authentication_failed '' \
+        "$net" retired none 1 1722345678)" \
     "$(sed -n '1p' "$status_log")"
 
 # Restore the configured-credential sequence used by the degradation tests.

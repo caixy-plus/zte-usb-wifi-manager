@@ -123,12 +123,12 @@ zte_adapter_fetch() {
 
 	zte_adapter_login_required || return 1
 	[ -n "$_zte_password" ] || return 2
-	zte_session_login "$_zte_host" "$_zte_password" "$_zte_jar" || return 1
+	zte_session_login "$_zte_host" "$_zte_password" "$_zte_jar" || return 3
 	_zte_resp=$(zte_http_get "$_zte_url" "$_zte_jar") || return 1
 	zte_json_is_flat_object "$_zte_resp" || return 1
 	if ! zte_adapter_has_any_field "$_zte_resp"; then
 		zte_session_login "$_zte_host" "$_zte_password" "$_zte_jar" ||
-			return 1
+			return 3
 		_zte_resp=$(zte_http_get "$_zte_url" "$_zte_jar") || return 1
 		zte_json_is_flat_object "$_zte_resp" || return 1
 		zte_adapter_has_any_field "$_zte_resp" || return 1
