@@ -86,9 +86,12 @@ QEMU 与当时的 OpenWrt 25.12.5 Cudy TR3000 实机只读 probe 见
 [r8/r3 验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
 当前源码 backend r16 / LuCI r5 已由 GitHub Actions 使用官方 OpenWrt 25.12.5
-和 24.10.7 SDK 构建为 APK/IPK，四个下载产物与 manifest 均通过 SHA256；该次
-运行未发布 Release，也未执行当前版本的 QEMU/路由器升级，详见
-[r16/r5 SDK 验证](docs/validation/2026-08-01-r16-r5-sdk.md)。
+和 24.10.7 SDK 构建为 APK/IPK，四个下载产物与 manifest 均通过 SHA256；随后
+两套官方 x86/64 镜像的全新 QEMU overlay 均完成依赖安装、procd/rpcd/ubus、
+JSON、权限、默认写门控和卸载清理验证。详见
+[r16/r5 SDK 验证](docs/validation/2026-08-01-r16-r5-sdk.md)和
+[r16/r5 QEMU 验证](docs/validation/2026-08-01-r16-r5-qemu.md)。该版本仍未发布
+Release，也未升级主路由器。
 
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
 r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在
