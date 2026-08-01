@@ -732,6 +732,11 @@ const completeStatus = {
 	device: {
 		model: 'U25S',
 		firmware: 'TEST_FIRMWARE',
+		hardware_version: 'HW-TEST',
+		webui_version: 'WEB-TEST',
+		software_version: 'SW-TEST',
+		market_name: 'U25S Test',
+		upgrade: { new_version_state: '1', current_state: 'idle' },
 		modem_state: 'connected',
 		missing: 'station_list',
 		cellular: {
@@ -913,6 +918,12 @@ test('renders device and SIM details from normalized status', function() {
 	const tree = renderPanel(completeStatus, 'device');
 	assert.strictEqual(rowValue(tree, '设备型号'), 'U25S');
 	assert.strictEqual(rowValue(tree, '固件版本'), 'TEST_FIRMWARE');
+	assert.strictEqual(rowValue(tree, '市场名称'), 'U25S Test');
+	assert.strictEqual(rowValue(tree, '硬件版本'), 'HW-TEST');
+	assert.strictEqual(rowValue(tree, '软件版本'), 'SW-TEST');
+	assert.strictEqual(rowValue(tree, 'WebUI 版本'), 'WEB-TEST');
+	assert.strictEqual(rowValue(tree, '新版本状态'), '1');
+	assert.strictEqual(rowValue(tree, '升级状态'), 'idle');
 	assert.strictEqual(rowValue(tree, 'Modem 状态'), 'connected');
 	assert.strictEqual(rowValue(tree, 'SIM 类型'), 'physical');
 	assert.strictEqual(rowValue(tree, '活动卡槽原始值'), '1');

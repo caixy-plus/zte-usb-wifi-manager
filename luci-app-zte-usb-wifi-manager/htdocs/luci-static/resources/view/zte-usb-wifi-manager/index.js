@@ -546,9 +546,16 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sim = device.sim && typeof device.sim === 'object' ? device.sim : {};
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
+	var upgrade = device.upgrade && typeof device.upgrade === 'object' ? device.upgrade : {};
 	var children = [
 		row(_('设备型号'), device.model || status.model || capabilities.model),
 		row(_('固件版本'), device.firmware),
+		row(_('市场名称'), device.market_name),
+		row(_('硬件版本'), device.hardware_version),
+		row(_('软件版本'), device.software_version),
+		row(_('WebUI 版本'), device.webui_version),
+		row(_('新版本状态'), upgrade.new_version_state),
+		row(_('升级状态'), upgrade.current_state),
 		row(_('Modem 状态'), device.modem_state),
 		row(_('SIM 类型'), sim.type),
 		row(_('活动卡槽原始值'), sim.active_slot_raw),
