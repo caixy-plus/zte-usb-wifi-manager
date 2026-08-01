@@ -194,14 +194,14 @@ if (JSON.stringify(write.ubus.zte_usb_wifi) !==
 ' "$acl"
 
 view="$luci/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js"
-for tab in overview network wifi traffic sms battery schedule device diagnostics logs; do
+for tab in overview network wifi clients traffic sms device diagnostics logs; do
     assert_file_contains "$view" "id: '$tab'"
 done
 assert_file_contains "$view" '设备写接口尚未完成实机校准'
 assert_file_contains "$view" 'status\.device'
 assert_file_contains "$view" 'is_default_route'
 assert_file_contains "$view" 'battery'
-assert_file_contains "$view" '供电控制未启用'
+assert_file_contains "$view" 'USB 断电会中断数据连接，仅用于故障恢复'
 assert_file_contains "$view" 'status\.online === true'
 assert_file_contains "$view" 'status\.online === false'
 assert_file_contains "$view" 'network\.up === true'

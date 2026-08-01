@@ -799,6 +799,7 @@ test('renders the overview panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '设备型号'), 'U25S');
 	assert.strictEqual(rowValue(tree, '设备在线'), '在线');
 	assert.strictEqual(rowValue(tree, '后端状态'), '正常');
+	assert.strictEqual(rowValue(tree, '电池状态'), '82%');
 	assert.notStrictEqual(rowValue(tree, '状态快照时间'), '—');
 });
 
@@ -814,11 +815,16 @@ test('renders the mobile-network panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '默认出口'), '否');
 });
 
-['wifi', 'traffic'].forEach(function(tabId) {
+[
+	['wifi', '尚未获取经过实机验证的 U25S Wi-Fi 数据'],
+	['clients', '尚未获取经过实机验证的 U25S 客户端数据'],
+	['traffic', '尚未获取经过实机验证的 U25S 流量数据']
+].forEach(function(testCase) {
+	const tabId = testCase[0];
 	test('renders unavailable data explicitly for ' + tabId, function() {
 		assert.strictEqual(
 			rowValue(renderPanel(completeStatus, tabId), '数据状态'),
-			'当前快照尚未提供此模块数据'
+			testCase[1]
 		);
 	});
 });
@@ -829,67 +835,16 @@ test('renders verified SMS metadata without message content', function() {
 	assert.strictEqual(text(tree).indexOf('短信正文'), -1);
 });
 
-test('renders the battery panel from normalized battery status', function() {
-	const tree = renderPanel(completeStatus, 'battery');
-	assert.strictEqual(rowValue(tree, '电池存在'), '是');
-	assert.strictEqual(rowValue(tree, '电量'), '82%');
-	assert.strictEqual(rowValue(tree, '充电状态'), '未充电');
-	assert.strictEqual(rowValue(tree, '电池值'), '4050');
-	assert.strictEqual(rowValue(tree, '电池百分比原值'), '82');
-	assert.strictEqual(rowValue(tree, '温度级别'), 'normal');
-	assert.strictEqual(rowValue(tree, '供电后端'), 'hardware');
-	assert.strictEqual(rowValue(tree, '硬件已校准'), '是');
-	assert.strictEqual(rowValue(tree, '写操作已启用'), '是');
-	assert.strictEqual(rowValue(tree, '实际供电'), 'ON');
-	assert.strictEqual(rowValue(tree, '当前可执行'), '是');
-	assert.strictEqual(rowValue(tree, '执行状态'), '就绪');
-	assert.strictEqual(rowValue(tree, '控制器读回'), '1');
-	assert.strictEqual(rowValue(tree, '电源读回'), '1');
-	assert.strictEqual(rowValue(tree, '最近动作'), 'ON');
-	assert.strictEqual(rowValue(tree, '最近动作已执行'), '是');
-	assert.strictEqual(rowValue(tree, '最近动作结果'), '成功');
-	assert.notStrictEqual(rowValue(tree, '最近动作时间'), '—');
-	assert.strictEqual(rowValue(tree, '恢复抑制'), '否');
-	assert.strictEqual(rowValue(tree, '恢复服务可用'), '是');
-	assert.strictEqual(rowValue(tree, '恢复服务运行'), '是');
-});
-
-test('shows unknown power state for a legacy snapshot without power data', function() {
-	const status = JSON.parse(JSON.stringify(completeStatus));
-	delete status.power;
-	assert.ok(text(renderPanel(status, 'overview')).indexOf('供电状态未知') !== -1);
-});
-
-test('does not claim hardware execution when recovery is unavailable', function() {
-	const status = JSON.parse(JSON.stringify(completeStatus));
-	status.power.execution = {
-		available: false,
-		reason: 'recovery_unavailable'
-	};
-	status.power.recovery.service_available = false;
-	const tree = renderPanel(status, 'battery');
-	assert.strictEqual(rowValue(tree, '当前可执行'), '否');
-	assert.strictEqual(rowValue(tree, '不可执行原因'), '恢复服务不可用');
-	assert.ok(text(renderPanel(status, 'schedule')).indexOf(
-		'硬件控制不可执行（恢复服务不可用）') !== -1);
-});
-
-test('renders the calculated charging schedule state', function() {
-	const tree = renderPanel(completeStatus, 'schedule');
-	assert.strictEqual(
-		rowValue(tree, '策略状态'),
-		'PRE_DEPARTURE'
-	);
-	assert.strictEqual(rowValue(tree, '预期供电动作'), 'ON');
-	assert.ok(text(tree).indexOf('硬件控制已启用') !== -1);
-});
-
 test('renders device and SIM details from normalized status', function() {
 	const tree = renderPanel(completeStatus, 'device');
 	assert.strictEqual(rowValue(tree, '设备型号'), 'U25S');
 	assert.strictEqual(rowValue(tree, 'Modem 状态'), 'connected');
 	assert.strictEqual(rowValue(tree, 'SIM 类型'), 'physical');
 	assert.strictEqual(rowValue(tree, '活动卡槽原始值'), '1');
+	assert.strictEqual(rowValue(tree, '电池存在'), '是');
+	assert.strictEqual(rowValue(tree, '电量'), '82%');
+	assert.strictEqual(rowValue(tree, '充电状态'), '未充电');
+	assert.strictEqual(rowValue(tree, '温度级别'), 'normal');
 });
 
 test('renders backend diagnostics without inventing data', function() {
@@ -897,6 +852,8 @@ test('renders backend diagnostics without inventing data', function() {
 	assert.strictEqual(rowValue(tree, '后端状态'), '正常');
 	assert.strictEqual(rowValue(tree, '失败次数'), '2');
 	assert.strictEqual(rowValue(tree, '缺失字段'), 'station_list');
+	assert.strictEqual(rowValue(tree, 'USB 供电读回'), 'ON');
+	assert.ok(text(tree).indexOf('USB 断电会中断数据连接，仅用于故障恢复') !== -1);
 });
 
 test('renders bounded event log entries as text', function() {

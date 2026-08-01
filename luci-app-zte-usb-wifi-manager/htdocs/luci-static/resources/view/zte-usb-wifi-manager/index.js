@@ -56,13 +56,12 @@ var callOperationStatus = rpc.declare({
 var tabs = [
 	{ id: 'overview', label: _('总览') },
 	{ id: 'network', label: _('移动网络') },
-	{ id: 'wifi', label: _('Wi-Fi 与设备') },
+	{ id: 'wifi', label: _('U25S Wi-Fi') },
+	{ id: 'clients', label: _('接入设备') },
 	{ id: 'traffic', label: _('流量') },
 	{ id: 'sms', label: _('短信') },
-	{ id: 'battery', label: _('电池与供电') },
-	{ id: 'schedule', label: _('充电日程') },
-	{ id: 'device', label: _('设备') },
-	{ id: 'diagnostics', label: _('系统与诊断') },
+	{ id: 'device', label: _('设备与系统') },
+	{ id: 'diagnostics', label: _('诊断') },
 	{ id: 'logs', label: _('日志') }
 ];
 
@@ -195,14 +194,6 @@ function powerExecutionReasonLabel(reason) {
 	return labels[reason] || null;
 }
 
-function operationOutcomeLabel(outcome) {
-	if (outcome === 'succeeded')
-		return _('成功');
-	if (outcome === 'failed')
-		return _('失败');
-	return null;
-}
-
 function powerExecutionLabel(power) {
 	var execution = power.execution && typeof power.execution === 'object'
 		? power.execution : {};
@@ -312,8 +303,6 @@ function renderOverview(status, capabilities) {
 	var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 	var network = status.network && typeof status.network === 'object' ? status.network : {};
-	var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
-	var power = status.power && typeof status.power === 'object' ? status.power : {};
 	var hasDevice = Object.keys(device).length > 0;
 
 	return panelRoot('overview', _('只读状态总览'), [
@@ -323,11 +312,9 @@ function renderOverview(status, capabilities) {
 		row(_('网络制式'), cellular.type),
 		row(_('运营商'), cellular.provider),
 		row(_('信号'), signalLabel(cellular)),
-		row(_('电量'), batteryLabel(battery)),
+		row(_('电池状态'), batteryLabel(battery)),
 		row(_('USB 上联'), uplinkLabel(network)),
 		row(_('默认出口'), yesNoLabel(network.is_default_route)),
-		row(_('电池策略'), powerExecutionLabel(power) +
-			(policy.state ? ' (' + policy.state + ')' : '')),
 		row(_('状态快照时间'), updatedLabel(status.updated))
 	]);
 }
@@ -349,49 +336,9 @@ function renderNetwork(status) {
 	]);
 }
 
-function renderUnavailableModule(tabId, title) {
+function renderUnavailableModule(tabId, title, message) {
 	return panelRoot(tabId, title, [
-		row(_('数据状态'), _('当前快照尚未提供此模块数据'))
-	]);
-}
-
-function renderBattery(status) {
-	var device = status.device && typeof status.device === 'object' ? status.device : {};
-	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
-	var power = status.power && typeof status.power === 'object' ? status.power : {};
-	var decision = power.decision && typeof power.decision === 'object'
-		? power.decision : {};
-	var recovery = power.recovery && typeof power.recovery === 'object'
-		? power.recovery : {};
-	var execution = power.execution && typeof power.execution === 'object'
-		? power.execution : {};
-
-	return panelRoot('battery', _('电池与供电'), [
-		row(_('电池存在'), yesNoLabel(battery.present)),
-		row(_('电量'), battery.percent === null || battery.percent === undefined ||
-			battery.percent === '' ? null : battery.percent + '%'),
-		row(_('充电状态'), chargingLabel(battery.charging)),
-		row(_('电池值'), battery.value),
-		row(_('电池百分比原值'), battery.pers),
-		row(_('温度级别'), battery.temperature_level),
-		row(_('供电后端'), power.backend),
-		row(_('硬件已校准'), yesNoLabel(power.calibrated)),
-		row(_('写操作已启用'), yesNoLabel(power.write_enabled)),
-		row(_('控制路径'), power.control_path),
-		row(_('控制器读回'), power.control_state),
-		row(_('电源读回'), power.supply_state),
-		row(_('实际供电'), power.observed),
-		row(_('当前可执行'), yesNoLabel(execution.available)),
-		row(execution.available === true ? _('执行状态') : _('不可执行原因'),
-			powerExecutionReasonLabel(execution.reason)),
-		row(_('最近动作'), decision.action),
-		row(_('最近动作已执行'), yesNoLabel(decision.executed)),
-		row(_('最近动作结果'), operationOutcomeLabel(decision.outcome)),
-		row(_('最近动作时间'), updatedLabel(decision.updated)),
-		row(_('动作原因'), decision.reason),
-		row(_('恢复抑制'), yesNoLabel(recovery.inhibited)),
-		row(_('恢复服务可用'), yesNoLabel(recovery.service_available)),
-		row(_('恢复服务运行'), yesNoLabel(recovery.service_running))
+		row(_('数据状态'), message || _('当前快照尚未提供此模块数据'))
 	]);
 }
 
@@ -401,17 +348,6 @@ function renderSms(status) {
 
 	return panelRoot('sms', _('短信'), [
 		row(_('短信总数'), sms.total)
-	]);
-}
-
-function renderSchedule(status) {
-	var policy = status.policy && typeof status.policy === 'object' ? status.policy : {};
-	var power = status.power && typeof status.power === 'object' ? status.power : {};
-
-	return panelRoot('schedule', _('充电日程'), [
-		row(_('策略状态'), policy.state),
-		row(_('预期供电动作'), policy.power_action),
-		row(_('执行边界'), powerExecutionLabel(power))
 	]);
 }
 
@@ -460,11 +396,17 @@ function renderSimSwitch(sim, onAction, actionBusy) {
 function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sim = device.sim && typeof device.sim === 'object' ? device.sim : {};
+	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 	var children = [
 		row(_('设备型号'), device.model || status.model || capabilities.model),
 		row(_('Modem 状态'), device.modem_state),
 		row(_('SIM 类型'), sim.type),
-		row(_('活动卡槽原始值'), sim.active_slot_raw)
+		row(_('活动卡槽原始值'), sim.active_slot_raw),
+		row(_('电池存在'), yesNoLabel(battery.present)),
+		row(_('电量'), battery.percent === null || battery.percent === undefined ||
+			battery.percent === '' ? null : battery.percent + '%'),
+		row(_('充电状态'), chargingLabel(battery.charging)),
+		row(_('温度级别'), battery.temperature_level)
 	];
 
 	if (capabilities.sim_switch === true)
@@ -475,12 +417,19 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 
 function renderDiagnostics(status) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var power = status.power && typeof status.power === 'object' ? status.power : {};
+	var recovery = power.recovery && typeof power.recovery === 'object'
+		? power.recovery : {};
 	var hasDevice = Object.keys(device).length > 0;
 
 	return panelRoot('diagnostics', _('系统与诊断'), [
 		row(_('后端状态'), stateLabel(status.state, hasDevice)),
 		row(_('失败次数'), status.failures),
-		row(_('缺失字段'), device.missing)
+		row(_('缺失字段'), device.missing),
+		row(_('USB 供电读回'), power.observed),
+		row(_('恢复服务可用'), yesNoLabel(recovery.service_available)),
+		E('div', { 'class': 'alert-message warning' },
+			_('USB 断电会中断数据连接，仅用于故障恢复。'))
 	]);
 }
 
@@ -519,15 +468,16 @@ function renderPanel(tabId, status, capabilities, logsResult, onAction,
 	case 'network':
 		return renderNetwork(status);
 	case 'wifi':
-		return renderUnavailableModule('wifi', _('Wi-Fi 与设备'));
+		return renderUnavailableModule('wifi', _('U25S Wi-Fi'),
+			_('尚未获取经过实机验证的 U25S Wi-Fi 数据'));
+	case 'clients':
+		return renderUnavailableModule('clients', _('接入设备'),
+			_('尚未获取经过实机验证的 U25S 客户端数据'));
 	case 'traffic':
-		return renderUnavailableModule('traffic', _('流量'));
+		return renderUnavailableModule('traffic', _('流量'),
+			_('尚未获取经过实机验证的 U25S 流量数据'));
 	case 'sms':
 		return renderSms(status);
-	case 'battery':
-		return renderBattery(status);
-	case 'schedule':
-		return renderSchedule(status);
 	case 'device':
 		return renderDevice(status, capabilities, onAction, actionNotice, actionBusy);
 	case 'diagnostics':
