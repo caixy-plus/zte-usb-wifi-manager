@@ -77,6 +77,8 @@
   双 SDK 构建和隔离 QEMU 生命周期验证见
   [r21/r10 SDK 验证](docs/validation/2026-08-01-r21-r10-sdk.md)与
   [r21/r10 QEMU 验证](docs/validation/2026-08-01-r21-r10-qemu.md)。
+- 阶段 4 已冻结[首版能力矩阵](docs/validation/first-release-capability-matrix.md)，
+  并完成 [r20/r9 到 r21/r10 的双版本 QEMU 升级验证](docs/validation/2026-08-01-r21-r10-upgrade-qemu.md)。
 
 当前状态不代表已经完成人工上机验收。
 

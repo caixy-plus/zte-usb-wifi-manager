@@ -71,6 +71,20 @@ assert_eq device_shutdown_enabled "$(zte_adapter_action_feature_option shutdown_
 ZTE_CAP_DEVICE_SHUTDOWN=0
 
 capability_matrix=$(zte_adapter_capabilities_json)
+if printf '%s' "$capability_matrix" | node -e '
+const fs = require("fs");
+let actual = "";
+process.stdin.on("data", chunk => actual += chunk);
+process.stdin.on("end", () => {
+    const expected = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (JSON.stringify(JSON.parse(actual)) !== JSON.stringify(expected))
+        process.exit(1);
+});
+' ./tests/fixtures/u25s/capabilities-first-release.json; then
+    pass
+else
+    fail 'first-release capability matrix changed without an explicit contract update'
+fi
 assert_eq implemented "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).cellular_read?.implementation)))')"
 assert_eq simulator_only "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).clients_read?.verification)))')"
 assert_eq spare_device_required "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).sim_switch?.verification)))')"

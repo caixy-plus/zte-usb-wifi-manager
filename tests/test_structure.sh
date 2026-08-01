@@ -470,6 +470,17 @@ assert_file_contains "$r21_qemu_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
 assert_file_contains "$r21_qemu_evidence" 'device reboot、device shutdown 六类生产'
 assert_file_contains "$r21_qemu_evidence" '没有连接 Cudy 路由器'
 
+capability_freeze=docs/validation/first-release-capability-matrix.md
+assert_file_contains "$capability_freeze" '^# 首版能力矩阵冻结$'
+assert_file_contains "$capability_freeze" 'capabilities-first-release\.json'
+assert_file_contains "$capability_freeze" '设备重启.*not_implemented.*spare_device_required.*否'
+
+r21_upgrade_evidence=docs/validation/2026-08-01-r21-r10-upgrade-qemu.md
+assert_file_contains "$r21_upgrade_evidence" '^# r20/r9 到 r21/r10 隔离 QEMU 升级验证$'
+assert_file_contains "$r21_upgrade_evidence" 'OpenWrt 25\.12\.5 APK.*PASS'
+assert_file_contains "$r21_upgrade_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
+assert_file_contains "$r21_upgrade_evidence" '自定义 UCI 值 .*77.*：PASS'
+
 assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh credentials.sh session.sh snapshot.sh netifd-adapter.sh \

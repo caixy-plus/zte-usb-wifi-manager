@@ -1,0 +1,32 @@
+{
+  "adapter": "zte_u25s",
+  "model": "U25S",
+  "login_required": true,
+  "read_status": true,
+  "sim_switch": false,
+  "cellular_write": false,
+  "wifi_write": false,
+  "traffic_write": false,
+  "sms_write": false,
+  "device_reboot": false,
+  "device_shutdown": false,
+  "feature_status": {
+    "cellular_read": { "implementation": "implemented", "verification": "local_and_qemu", "access": "read", "enabled": true },
+    "wifi_read": { "implementation": "implemented", "verification": "local_and_qemu", "access": "read", "enabled": true },
+    "clients_read": { "implementation": "implemented", "verification": "simulator_only", "access": "read", "enabled": true },
+    "traffic_read": { "implementation": "implemented", "verification": "local_and_qemu", "access": "read", "enabled": true },
+    "sms_read": { "implementation": "implemented", "verification": "simulator_only", "access": "read", "enabled": true },
+    "device_read": { "implementation": "implemented", "verification": "local_and_qemu", "access": "read", "enabled": true },
+    "sim_switch": { "implementation": "implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "cellular_write": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "wifi_write": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "traffic_write": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "sms_write": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "device_restart": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "device_shutdown": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "firmware_update": { "implementation": "native_console_only", "verification": "native_console", "access": "write", "enabled": false },
+    "factory_reset": { "implementation": "native_console_only", "verification": "native_console", "access": "write", "enabled": false },
+    "backup_restore": { "implementation": "native_console_only", "verification": "native_console", "access": "write", "enabled": false },
+    "device_password": { "implementation": "native_console_only", "verification": "native_console", "access": "write", "enabled": false }
+  }
+}
