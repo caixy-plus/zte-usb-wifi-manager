@@ -15,8 +15,8 @@
 ## 当前状态
 
 仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r16 / LuCI r5
-已经完成产品边界重置，最近完成真实 SDK/QEMU/路由器验证的发布包仍是
-backend r15 / LuCI r4：
+已经完成产品边界重置和双版本真实 SDK 构建；最近完成 QEMU/路由器验证的发布包
+仍是 backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
 - daemon 聚合设备状态和 netifd 网络状态，并通过
@@ -84,6 +84,11 @@ backend r15 / LuCI r4：
 [r15/r4 验证记录](docs/validation/2026-07-31-r15-r4-qemu.md)。历史 r8/r3 的
 QEMU 与当时的 OpenWrt 25.12.5 Cudy TR3000 实机只读 probe 见
 [r8/r3 验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
+
+当前源码 backend r16 / LuCI r5 已由 GitHub Actions 使用官方 OpenWrt 25.12.5
+和 24.10.7 SDK 构建为 APK/IPK，四个下载产物与 manifest 均通过 SHA256；该次
+运行未发布 Release，也未执行当前版本的 QEMU/路由器升级，详见
+[r16/r5 SDK 验证](docs/validation/2026-08-01-r16-r5-sdk.md)。
 
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
 r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在
