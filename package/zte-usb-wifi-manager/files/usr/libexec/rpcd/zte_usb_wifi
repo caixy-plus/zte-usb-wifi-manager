@@ -10,12 +10,13 @@ ZTE_USB_WIFI_LIB_DIR=${ZTE_USB_WIFI_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 . "$ZTE_USB_WIFI_LIB_DIR/adapter-zte-u25s-metadata.sh"
 
 STATUS_FILE=${ZTE_USB_WIFI_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
+SMS_FILE=${ZTE_USB_WIFI_SMS_FILE:-/var/run/zte-usb-wifi-manager/sms.json}
 STATE_DIR=${ZTE_USB_WIFI_STATE_DIR:-/var/run/zte-usb-wifi-manager}
 CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/credentials}
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
+		'{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
 }
 
 get_status() {
@@ -23,6 +24,15 @@ get_status() {
 		cat "$STATUS_FILE"
 	else
 		zte_adapter_framework_status_json
+	fi
+}
+
+get_sms_messages() {
+	if [ -s "$SMS_FILE" ]; then
+		cat "$SMS_FILE"
+	else
+		printf '%s\n' \
+			'{"available":false,"reason":"not_loaded","items":[]}'
 	fi
 }
 
@@ -216,6 +226,7 @@ case ${1-} in
 	call)
 		case ${2-} in
 			status) get_status ;;
+			sms_messages) get_sms_messages ;;
 			capabilities) get_capabilities ;;
 			credential_status) get_credential_status ;;
 			set_credentials) set_credentials ;;

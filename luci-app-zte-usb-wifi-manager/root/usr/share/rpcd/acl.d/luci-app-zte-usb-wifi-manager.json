@@ -5,6 +5,7 @@
       "ubus": {
         "zte_usb_wifi": [
           "status",
+          "sms_messages",
           "capabilities",
           "credential_status",
           "operation_status",

@@ -12,6 +12,7 @@ metadata=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/adapt
 work=$(mktemp -d /tmp/zte-test-rpcd.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 status_file=$work/status.json
+sms_file=$work/sms.json
 state_dir=$work/state
 credential_file=$work/credentials
 write_lib=$work/write-lib
@@ -40,6 +41,7 @@ fi
 rpcd_call() {
     ZTE_USB_WIFI_LIB_DIR=${RPCD_TEST_LIB_DIR:-$(dirname "$metadata")} \
     ZTE_USB_WIFI_STATUS_FILE=$status_file \
+    ZTE_USB_WIFI_SMS_FILE=$sms_file \
     ZTE_USB_WIFI_STATE_DIR=$state_dir \
     ZTE_USB_WIFI_CREDENTIAL_FILE=$credential_file \
     PATH="$test_bin:$PATH" \
@@ -57,7 +59,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
+assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -80,6 +82,14 @@ status=$(rpcd_call call status)
 assert_success assert_json "$status"
 assert_eq '{"online":true,"state":"ok","updated":1722345678}' "$status" \
     'rpcd status must return the cached snapshot byte-for-byte'
+
+assert_eq '{"available":false,"reason":"not_loaded","items":[]}' \
+    "$(rpcd_call call sms_messages)"
+sms_cache='{"available":true,"items":[{"id":"7","number_raw":"+8613800000000","content_encoded":"0054004500530054"}]}'
+printf '%s\n' "$sms_cache" >"$sms_file"
+chmod 600 "$sms_file"
+assert_eq "$sms_cache" "$(rpcd_call call sms_messages)" \
+    'rpcd SMS method must return only the private cache'
 
 assert_eq '{"configured":false}' "$(rpcd_call call credential_status)"
 credential_reply=$(printf '%s\n' '{"password":"PLACEHOLDER"}' |

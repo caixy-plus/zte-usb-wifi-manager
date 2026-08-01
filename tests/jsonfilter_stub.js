@@ -20,16 +20,18 @@ catch (_error) {
 	process.exit(1);
 }
 
-if (expression === '@.station_list') {
-	if (!Object.prototype.hasOwnProperty.call(value, 'station_list'))
+if (expression === '@.station_list' || expression === '@.messages') {
+	const collection = expression.slice(2);
+	if (!Object.prototype.hasOwnProperty.call(value, collection))
 		process.exit(1);
-	process.stdout.write(JSON.stringify(value.station_list) + '\n');
+	process.stdout.write(JSON.stringify(value[collection]) + '\n');
 }
-else if (expression === '@.station_list[*]') {
-	if (!Array.isArray(value.station_list))
+else if (expression === '@.station_list[*]' || expression === '@.messages[*]') {
+	const collection = expression.slice(2, expression.indexOf('['));
+	if (!Array.isArray(value[collection]))
 		process.exit(1);
-	process.stdout.write(value.station_list.map(JSON.stringify).join('\n'));
-	if (value.station_list.length)
+	process.stdout.write(value[collection].map(JSON.stringify).join('\n'));
+	if (value[collection].length)
 		process.stdout.write('\n');
 }
 else if (/^@\.[A-Za-z0-9_]+$/.test(expression)) {

@@ -32,6 +32,11 @@ case $poll_once_source in
     *'"$raw_json" "$clients_json"'*) pass ;;
     *) fail 'polling must normalize the private client collection' ;;
 esac
+case $poll_once_source in
+    *'collect_private_sms '*\
+*'write_sms_cache "$sms_json"'*) pass ;;
+    *) fail 'polling must refresh the private SMS cache' ;;
+esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
@@ -194,7 +199,7 @@ if (JSON.stringify(Object.keys(read)) !== JSON.stringify(["ubus"]))
 if (JSON.stringify(Object.keys(read.ubus)) !== JSON.stringify(["zte_usb_wifi"]))
     process.exit(1);
 if (JSON.stringify(read.ubus.zte_usb_wifi) !==
-    JSON.stringify(["status", "capabilities", "credential_status", "operation_status", "logs"]))
+    JSON.stringify(["status", "sms_messages", "capabilities", "credential_status", "operation_status", "logs"]))
     process.exit(1);
 if (JSON.stringify(write.ubus.zte_usb_wifi) !==
     JSON.stringify(["set_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action"]))
@@ -435,6 +440,7 @@ extract_daemon_function() {
 }
 eval "$(extract_daemon_function poll_once)"
 eval "$(extract_daemon_function collect_private_clients)"
+eval "$(extract_daemon_function collect_private_sms)"
 eval "$(extract_daemon_function calculate_policy)"
 eval "$(extract_daemon_function read_current_power_state)"
 eval "$(extract_daemon_function main)"
@@ -445,6 +451,7 @@ eval "$(extract_daemon_function restore_power_on)"
 eval "$(extract_daemon_function shutdown_manager)"
 eval "$(extract_daemon_function write_pid_file)"
 eval "$(extract_daemon_function remove_pid_file)"
+eval "$(extract_daemon_function write_sms_cache)"
 eval "$(extract_daemon_function record_event)"
 eval "$(extract_daemon_function record_state_change)"
 handle_planned_power_off() { return 1; }
@@ -463,6 +470,7 @@ eval "$(extract_daemon_function write_status)"
 STATE_DIR=$work/real-state
 PID_FILE=$STATE_DIR/manager.pid
 STATUS_FILE=$STATE_DIR/status.json
+SMS_FILE=$STATE_DIR/sms.json
 atomic_move_log=$work/atomic-moves
 : >"$atomic_move_log"
 # Injected into the eval-defined production write_status function.
@@ -486,6 +494,11 @@ assert_eq '{"generation":2}' "$(cat "$STATUS_FILE")" \
     'write_status must atomically replace the previous snapshot'
 assert_eq 600 "$(test_file_mode "$STATUS_FILE")" \
     'write_status must publish a mode-600 snapshot'
+write_sms_cache '{"available":true,"items":[]}'
+assert_eq '{"available":true,"items":[]}' "$(cat "$SMS_FILE")" \
+    'write_sms_cache must publish the private collection'
+assert_eq 600 "$(test_file_mode "$SMS_FILE")" \
+    'write_sms_cache must publish a mode-600 private collection'
 if find "$STATE_DIR" -name 'status.json.tmp.*' -print | grep -q .; then
     fail 'write_status left a temporary snapshot behind'
 else
@@ -552,7 +565,9 @@ zte_event_write() {
 # an invalid saved password must not be retried on every poll because the U25S
 # firmware applies a login lockout.
 PRIVATE_AUTH_BACKOFF_SECONDS=900
+SMS_POLL_INTERVAL_SECONDS=300
 private_auth_retry_after=0
+next_sms_poll_at=0
 client_fetch_count=$work/client-fetch-count
 printf 0 >"$client_fetch_count"
 zte_adapter_clients_unavailable_json() {
@@ -589,8 +604,44 @@ assert_eq '{"available":false,"reason":"read_failed","items":[]}' \
     "$clients_json"
 assert_eq 3 "$(cat "$client_fetch_count")"
 
+sms_fetch_count=$work/sms-fetch-count
+printf 0 >"$sms_fetch_count"
+zte_adapter_sms_unavailable_json() {
+    printf '{"available":false,"reason":"%s","items":[]}\n' "$1"
+}
+zte_adapter_fetch_sms() {
+    n=$(cat "$sms_fetch_count")
+    printf '%s' "$((n + 1))" >"$sms_fetch_count"
+    case $2 in
+        accepted) printf '%s\n' '{"available":true,"items":[{"id":"7","content_encoded":"005300450043005200450054"}]}' ;;
+        rejected) return 3 ;;
+        *) return 1 ;;
+    esac
+}
+private_auth_retry_after=0
+next_sms_poll_at=0
+collect_private_sms 1722345678 ''
+assert_eq '{"available":false,"reason":"credentials_missing","items":[]}' \
+    "$sms_json"
+assert_eq 0 "$(cat "$sms_fetch_count")"
+collect_private_sms 1722345678 accepted
+assert_eq '{"available":true,"items":[{"id":"7","content_encoded":"005300450043005200450054"}]}' \
+    "$sms_json"
+assert_eq 1722345978 "$next_sms_poll_at"
+assert_eq 1 "$(cat "$sms_fetch_count")"
+collect_private_sms 1722345800 accepted
+assert_eq 1 "$(cat "$sms_fetch_count")" \
+    'SMS cache must not hit the device on every status poll'
+next_sms_poll_at=0
+collect_private_sms 1722345678 rejected
+assert_eq '{"available":false,"reason":"authentication_failed","items":[]}' \
+    "$sms_json"
+assert_eq 1722346578 "$private_auth_retry_after"
+
 zte_read_password() { printf '%s\n' secret; }
 zte_adapter_fetch_clients() { return 1; }
+zte_adapter_fetch_sms() { return 1; }
+write_sms_cache() { printf '%s\n' "$1" >"$work/sms-status"; }
 zte_adapter_fetch() {
     n=$(cat "$fetch_count")
     n=$((n + 1))
@@ -622,6 +673,38 @@ schedule_pre_departure_now() { printf '0\n'; }
 read_current_power_state() { printf 'ON\n'; }
 date() { printf '%s\n' 1722345678; }
 write_status() { printf '%s\n' "$1" >>"$status_log"; }
+
+# SMS bodies belong only in the private mode-600 cache, never in the general
+# dashboard snapshot or the event log.
+: >"$status_log"
+: >"$event_call_log"
+last_device_json=''
+last_logged_state=''
+failures=0
+private_auth_retry_after=0
+next_sms_poll_at=0
+zte_read_password() { printf '%s\n' accepted; }
+zte_adapter_fetch() { printf '%s\n' "$dev1"; }
+zte_adapter_fetch_sms() {
+    printf '%s\n' '{"available":true,"items":[{"id":"7","content_encoded":"005300450043005200450054"}]}'
+}
+zte_adapter_normalize() { printf '%s\n' "$1"; }
+poll_once
+assert_eq '{"available":true,"items":[{"id":"7","content_encoded":"005300450043005200450054"}]}' \
+    "$(cat "$work/sms-status")"
+if grep -q '005300450043005200450054' "$status_log" "$event_call_log"; then
+    fail 'private SMS content leaked outside the SMS cache'
+else
+    pass
+fi
+zte_adapter_fetch_sms() { return 1; }
+: >"$status_log"
+: >"$event_call_log"
+last_device_json=''
+last_logged_state=''
+failures=0
+private_auth_retry_after=0
+next_sms_poll_at=0
 
 # Anonymous status firmware must be polled even when no credential file exists.
 anonymous_password_log=$work/anonymous-password

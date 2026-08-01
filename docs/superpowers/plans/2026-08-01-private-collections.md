@@ -8,5 +8,5 @@
 - [x] Add failing station-list projection tests with bounds and unknown-field exclusion.
 - [x] Implement the bounded station-list normalizer and authenticated fetch contract.
 - [x] Integrate client collection status into the daemon snapshot and LuCI.
-- [ ] Add a separate mode-600 SMS cache, rpcd method and privacy tests.
+- [x] Add a separate mode-600 SMS cache, rpcd method and privacy tests.
 - [ ] Run full checks and dual-version QEMU validation; commit and push.

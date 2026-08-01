@@ -13,6 +13,12 @@ var callStatus = rpc.declare({
 	reject: true
 });
 
+var callSmsMessages = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'sms_messages',
+	reject: true
+});
+
 var callCapabilities = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'capabilities',
@@ -310,7 +316,8 @@ function loadData() {
 		rpcResult(callStatus),
 		rpcResult(callCapabilities),
 		rpcResult(function() { return callLogs(50); }),
-		rpcResult(callCredentialStatus)
+		rpcResult(callCredentialStatus),
+		rpcResult(callSmsMessages)
 	]);
 }
 
@@ -508,13 +515,63 @@ function renderClients(status) {
 	return panelRoot('clients', _('接入设备'), rows);
 }
 
-function renderSms(status) {
+function smsCollectionLabel(messages, count) {
+	if (messages.available === true)
+		return _('已加载') + '（' + count + ' ' + _('条') + '）';
+	switch (messages.reason) {
+	case 'credentials_missing':
+		return _('未配置设备管理密码');
+	case 'authentication_failed':
+		return _('设备认证失败，已暂停重试');
+	case 'authentication_backoff':
+		return _('认证重试冷却中');
+	case 'read_failed':
+		return _('短信收件箱读取失败');
+	case 'not_loaded':
+		return _('短信收件箱尚未加载');
+	default:
+		return _('当前快照尚未提供短信收件箱');
+	}
+}
+
+function decodeSmsContent(value) {
+	var groups;
+	if (typeof value !== 'string' || value === '')
+		return null;
+	groups = value.match(/[A-Fa-f0-9]{1,4}/g);
+	if (!groups || groups.join('') !== value)
+		return value;
+	return groups.map(function(group) {
+		return String.fromCharCode(parseInt(group, 16));
+	}).join('');
+}
+
+function renderSms(status, messagesResult) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sms = device.sms && typeof device.sms === 'object' ? device.sms : {};
+	var messages = messagesResult && messagesResult.ok && messagesResult.value &&
+		typeof messagesResult.value === 'object' ? messagesResult.value : {};
+	var items = messages.available === true && Array.isArray(messages.items)
+		? messages.items.slice(0, 50) : [];
+	var rows = [
+		row(_('短信总数'), sms.total),
+		row(_('收件箱状态'), messagesResult && messagesResult.ok
+			? smsCollectionLabel(messages, items.length)
+			: _('无法读取短信缓存'))
+	];
 
-	return panelRoot('sms', _('短信'), [
-		row(_('短信总数'), sms.total)
-	]);
+	items.forEach(function(message, index) {
+		if (!message || typeof message !== 'object')
+			return;
+		rows.push(row(_('短信 ') + (index + 1), [
+			dash(message.number_raw),
+			message.date_raw ? ' · ' + message.date_raw : '',
+			message.tag === '1' ? ' · ' + _('未读') : ''
+		]));
+		rows.push(row(_('正文 ') + (index + 1),
+			decodeSmsContent(message.content_encoded)));
+	});
+	return panelRoot('sms', _('短信'), rows);
 }
 
 function renderTraffic(status) {
@@ -669,7 +726,7 @@ function renderLogs(logsResult) {
 	}));
 }
 
-function renderPanel(tabId, status, capabilities, logsResult, onAction,
+function renderPanel(tabId, status, capabilities, logsResult, smsResult, onAction,
 	actionNotice, actionBusy) {
 	switch (tabId) {
 	case 'network':
@@ -681,7 +738,7 @@ function renderPanel(tabId, status, capabilities, logsResult, onAction,
 	case 'traffic':
 		return renderTraffic(status);
 	case 'sms':
-		return renderSms(status);
+		return renderSms(status, smsResult);
 	case 'device':
 		return renderDevice(status, capabilities, onAction, actionNotice, actionBusy);
 	case 'diagnostics':
@@ -707,6 +764,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 			? data[2] : { ok: false, value: {} };
 		var credentialsResult = data && data[3] && typeof data[3] === 'object'
 			? data[3] : { ok: false, value: {} };
+		var smsResult = data && data[4] && typeof data[4] === 'object'
+			? data[4] : { ok: false, value: {} };
 		var alerts = [];
 
 		if (!statusResult.ok)
@@ -733,7 +792,7 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab) {
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
-			renderPanel(selectedTab, status, capabilities, logsResult,
+			renderPanel(selectedTab, status, capabilities, logsResult, smsResult,
 				onDeviceAction, actionNotice, actionBusy),
 			E('div', { 'class': 'alert-message warning' },
 				writesAvailable

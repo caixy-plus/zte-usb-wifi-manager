@@ -196,6 +196,46 @@ zte_adapter_clients_json() {
 	printf '{"available":true,"items":%s}\n' "$_zte_clients_items"
 }
 
+zte_adapter_fetch_sms_once() {
+	_zte_sms_host=$1
+	_zte_sms_jar=$2
+	_zte_sms_url="http://$_zte_sms_host/goform/goform_get_cmd_process?cmd=sms_data_total&page=0&data_per_page=50&mem_store=1&tags=10&order_by=order%20by%20id%20desc&isTest=false"
+	_zte_sms_response=$(zte_http_get "$_zte_sms_url" "$_zte_sms_jar") ||
+		return 1
+	zte_json_normalize_sms_messages "$_zte_sms_response"
+}
+
+# Read the 50 newest messages using the same inbox query contract as the
+# target WebUI. Return codes match the private client collection contract.
+zte_adapter_fetch_sms() {
+	_zte_sms_fetch_host=$1
+	_zte_sms_fetch_password=$2
+	_zte_sms_fetch_jar=$3
+
+	if _zte_sms_normalized=$(zte_adapter_fetch_sms_once \
+		"$_zte_sms_fetch_host" "$_zte_sms_fetch_jar"); then
+		printf '%s\n' "$_zte_sms_normalized"
+		return 0
+	fi
+
+	zte_adapter_login_required || return 1
+	[ -n "$_zte_sms_fetch_password" ] || return 2
+	zte_session_login "$_zte_sms_fetch_host" \
+		"$_zte_sms_fetch_password" "$_zte_sms_fetch_jar" || return 3
+	_zte_sms_normalized=$(zte_adapter_fetch_sms_once \
+		"$_zte_sms_fetch_host" "$_zte_sms_fetch_jar") || return 1
+	printf '%s\n' "$_zte_sms_normalized"
+}
+
+zte_adapter_sms_unavailable_json() {
+	case ${1-} in
+		not_loaded|credentials_missing|authentication_failed|authentication_backoff|read_failed)
+			printf '{"available":false,"reason":"%s","items":[]}\n' "$1"
+			;;
+		*) return 1 ;;
+	esac
+}
+
 # Map the target firmware's visible SIM choices to the verified card_index
 # values used by SIM_SWITCH_SIMCARD. The physical slot is index 0.
 zte_adapter_sim_card_index() {

@@ -519,3 +519,70 @@ $_zte_station_items
 EOF
     printf '%s]}\n' "$_zte_station_output"
 }
+
+# Project one SMS inbox page. Content remains in the target firmware's encoded
+# form and is decoded only for display by LuCI. Keeping the cache representation
+# lossless avoids locale-dependent conversion in minimal OpenWrt awk builds.
+zte_json_normalize_sms_messages() {
+    _zte_sms_raw=${1-}
+    [ "${#_zte_sms_raw}" -le 524288 ] || return 1
+    command -v jsonfilter >/dev/null 2>&1 || return 1
+
+    _zte_sms_list=$(jsonfilter -s "$_zte_sms_raw" \
+        -e '@.messages' 2>/dev/null) || return 1
+    case $_zte_sms_list in
+        \[*\]) ;;
+        *) return 1 ;;
+    esac
+    _zte_sms_items=$(jsonfilter -s "$_zte_sms_raw" \
+        -e '@.messages[*]' 2>/dev/null) || return 1
+
+    _zte_sms_output='{"available":true,"items":['
+    _zte_sms_separator=''
+    _zte_sms_count=0
+    while IFS= read -r _zte_sms_item; do
+        [ -n "$_zte_sms_item" ] || continue
+        _zte_sms_count=$((_zte_sms_count + 1))
+        [ "$_zte_sms_count" -le 50 ] || return 1
+
+        _zte_sms_id=$(jsonfilter -s "$_zte_sms_item" \
+            -e '@.id' 2>/dev/null) || return 1
+        case $_zte_sms_id in
+            ''|*[!A-Za-z0-9_-]*) return 1 ;;
+        esac
+        [ "${#_zte_sms_id}" -le 32 ] || return 1
+        _zte_sms_number=$(jsonfilter -s "$_zte_sms_item" \
+            -e '@.number' 2>/dev/null) || _zte_sms_number=''
+        _zte_sms_content=$(jsonfilter -s "$_zte_sms_item" \
+            -e '@.content' 2>/dev/null) || _zte_sms_content=''
+        _zte_sms_date=$(jsonfilter -s "$_zte_sms_item" \
+            -e '@.date' 2>/dev/null) || _zte_sms_date=''
+        _zte_sms_tag=$(jsonfilter -s "$_zte_sms_item" \
+            -e '@.tag' 2>/dev/null) || _zte_sms_tag=''
+        _zte_sms_group=$(jsonfilter -s "$_zte_sms_item" \
+            -e '@.draft_group_id' 2>/dev/null) || _zte_sms_group=''
+        _zte_sms_concat=$(jsonfilter -s "$_zte_sms_item" \
+            -e '@.received_all_concat_sms' 2>/dev/null) || _zte_sms_concat=''
+
+        _zte_sms_number_json=$(zte_json_optional_bounded_string \
+            "$_zte_sms_number" 128) || return 1
+        _zte_sms_content_json=$(zte_json_optional_bounded_string \
+            "$_zte_sms_content" 16384) || return 1
+        _zte_sms_date_json=$(zte_json_optional_bounded_string \
+            "$_zte_sms_date" 64) || return 1
+        _zte_sms_tag_json=$(zte_json_optional_bounded_string \
+            "$_zte_sms_tag" 16) || return 1
+        _zte_sms_group_json=$(zte_json_optional_bounded_string \
+            "$_zte_sms_group" 32) || return 1
+        _zte_sms_concat_json=$(zte_json_optional_bounded_string \
+            "$_zte_sms_concat" 16) || return 1
+
+        _zte_sms_output=$_zte_sms_output$_zte_sms_separator'{"id":"'$(
+            zte_json_escape "$_zte_sms_id"
+        )'","number_raw":'$_zte_sms_number_json',"content_encoded":'$_zte_sms_content_json',"date_raw":'$_zte_sms_date_json',"tag":'$_zte_sms_tag_json',"draft_group_id":'$_zte_sms_group_json',"received_all_concat_sms":'$_zte_sms_concat_json'}'
+        _zte_sms_separator=,
+    done <<EOF
+$_zte_sms_items
+EOF
+    printf '%s]}\n' "$_zte_sms_output"
+}

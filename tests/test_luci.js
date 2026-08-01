@@ -23,6 +23,7 @@ function E(tag, attrs, children) {
 
 const rpcBehavior = {
 	status: function() { return Promise.resolve({}); },
+	sms_messages: function() { return Promise.resolve({ available: false, reason: 'not_loaded', items: [] }); },
 	capabilities: function() { return Promise.resolve({}); },
 	logs: function() { return Promise.resolve({ events: [] }); },
 	credential_status: function() { return Promise.resolve({ configured: false }); },
@@ -79,12 +80,13 @@ function collectRows(node, rows) {
 	collectRows(node.children, rows);
 }
 
-function render(status) {
+function render(status, smsMessages) {
 	return app.render([
 		{ ok: true, value: status },
 		{ ok: true, value: {} },
 		{ ok: true, value: { events: [] } },
-		{ ok: true, value: { configured: false } }
+		{ ok: true, value: { configured: false } },
+		{ ok: true, value: smsMessages || { available: false, reason: 'not_loaded', items: [] } }
 	]);
 }
 
@@ -148,8 +150,8 @@ function deferred() {
 	return { promise: promise, resolve: resolve, reject: reject };
 }
 
-function renderPanel(status, tabId) {
-	let current = render(status);
+function renderPanel(status, tabId, smsMessages) {
+	let current = render(status, smsMessages);
 	const parent = {
 		replaceChild: function(next) {
 			current = next;
@@ -261,6 +263,7 @@ test('preserves independent RPC failures for rendering', async function() {
 
 test('declares ubus calls as rejecting and rejects numeric error replies', async function() {
 	assert.strictEqual(rpcSpecs.status.reject, true);
+	assert.strictEqual(rpcSpecs.sms_messages.reject, true);
 	assert.strictEqual(rpcSpecs.capabilities.reject, true);
 	assert.strictEqual(rpcSpecs.logs.reject, true);
 	assert.strictEqual(rpcSpecs.credential_status.reject, true);
@@ -949,10 +952,32 @@ test('renders verified traffic status', function() {
 	assert.strictEqual(rowValue(tree, '提醒阈值'), '80%');
 });
 
-test('renders verified SMS metadata without message content', function() {
-	const tree = renderPanel(completeStatus, 'sms');
+test('renders the authenticated SMS cache and decodes message content', function() {
+	const tree = renderPanel(completeStatus, 'sms', {
+		available: true,
+		items: [ {
+			id: '7',
+			number_raw: '+8613800000000',
+			content_encoded: '4F60597D',
+			date_raw: '26,08,01,09,30,00,+32',
+			tag: '1'
+		} ]
+	});
 	assert.strictEqual(rowValue(tree, '短信总数'), '3');
-	assert.strictEqual(text(tree).indexOf('短信正文'), -1);
+	assert.strictEqual(rowValue(tree, '收件箱状态'), '已加载（1 条）');
+	const panelText = text(nodesByClass(tree, 'zte-tab-panel')[0]);
+	assert.ok(panelText.indexOf('+8613800000000') !== -1);
+	assert.ok(panelText.indexOf('你好') !== -1);
+	assert.strictEqual(panelText.indexOf('4F60597D'), -1);
+});
+
+test('explains why the private SMS cache is unavailable', function() {
+	const tree = renderPanel(completeStatus, 'sms', {
+		available: false,
+		reason: 'authentication_backoff',
+		items: []
+	});
+	assert.strictEqual(rowValue(tree, '收件箱状态'), '认证重试冷却中');
 });
 
 test('renders device and SIM details from normalized status', function() {

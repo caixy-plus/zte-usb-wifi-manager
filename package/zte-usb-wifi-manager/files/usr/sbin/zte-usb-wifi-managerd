@@ -22,11 +22,13 @@ set -e
 
 STATE_DIR=/var/run/zte-usb-wifi-manager
 STATUS_FILE=$STATE_DIR/status.json
+SMS_FILE=$STATE_DIR/sms.json
 COOKIE_FILE=$STATE_DIR/cookies.txt
 PID_FILE=$STATE_DIR/manager.pid
 EVENT_LOG_MAX_BYTES=524288
 ACTION_RESULT_MAX_COUNT=50
 PRIVATE_AUTH_BACKOFF_SECONDS=900
+SMS_POLL_INTERVAL_SECONDS=300
 RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
 RECOVERY_INHIBIT_SECONDS=600
 RECOVERY_SERVICE=/etc/init.d/zte-usb-recover
@@ -258,6 +260,15 @@ write_status() {
 	printf '%s\n' "$1" >"$_zte_status_tmp"
 	chmod 600 "$_zte_status_tmp"
 	mv "$_zte_status_tmp" "$STATUS_FILE"
+}
+
+write_sms_cache() {
+	umask 077
+	mkdir -p "$STATE_DIR"
+	_zte_sms_tmp=$SMS_FILE.tmp.$$
+	printf '%s\n' "$1" >"$_zte_sms_tmp"
+	chmod 600 "$_zte_sms_tmp"
+	mv "$_zte_sms_tmp" "$SMS_FILE"
 }
 
 collect_network() {
@@ -972,6 +983,46 @@ collect_private_clients() {
 	fi
 }
 
+collect_private_sms() {
+	_zte_sms_now=$1
+	_zte_sms_password=$2
+
+	if [ -z "$_zte_sms_password" ]; then
+		sms_json=$(zte_adapter_sms_unavailable_json credentials_missing) ||
+			return 1
+		return 0
+	fi
+	if [ "$private_auth_retry_after" -gt "$_zte_sms_now" ]; then
+		sms_json=$(zte_adapter_sms_unavailable_json \
+			authentication_backoff) || return 1
+		return 0
+	fi
+	if [ "$next_sms_poll_at" -gt "$_zte_sms_now" ]; then
+		return 0
+	fi
+
+	_zte_sms_status=0
+	if _zte_sms_result=$(zte_adapter_fetch_sms \
+		"$host" "$_zte_sms_password" "$COOKIE_FILE"); then
+		sms_json=$_zte_sms_result
+		private_auth_retry_after=0
+		next_sms_poll_at=$((_zte_sms_now + SMS_POLL_INTERVAL_SECONDS))
+		return 0
+	else
+		_zte_sms_status=$?
+	fi
+	if [ "$_zte_sms_status" = 3 ]; then
+		sms_json=$(zte_adapter_sms_unavailable_json \
+			authentication_failed) || return 1
+		private_auth_retry_after=$((
+			_zte_sms_now + PRIVATE_AUTH_BACKOFF_SECONDS
+		))
+	else
+		sms_json=$(zte_adapter_sms_unavailable_json read_failed) || return 1
+	fi
+	next_sms_poll_at=$((_zte_sms_now + SMS_POLL_INTERVAL_SECONDS))
+}
+
 poll_once() {
 	if handle_planned_power_off; then
 		return 0
@@ -981,6 +1032,7 @@ poll_once() {
 	health=degraded
 	password=''
 	fetch_status=0
+	poll_now=$(date +%s)
 
 	if _zte_saved_password=$(zte_read_password "$credential_file" 2>/dev/null); then
 		password=$_zte_saved_password
@@ -988,13 +1040,27 @@ poll_once() {
 	_zte_saved_password=''
 
 	if raw_json=$(zte_adapter_fetch "$host" "$password" "$COOKIE_FILE"); then
-		collect_private_clients "$(date +%s)" "$password"
+		collect_private_clients "$poll_now" "$password"
+		collect_private_sms "$poll_now" "$password"
 		if candidate_device_json=$(zte_adapter_normalize \
 			"$raw_json" "$clients_json"); then
 			ok=1
 		fi
+		write_sms_cache "$sms_json"
 	else
 		fetch_status=$?
+		case $fetch_status in
+			2)
+				sms_json=$(zte_adapter_sms_unavailable_json \
+					credentials_missing)
+				write_sms_cache "$sms_json"
+				;;
+			3)
+				sms_json=$(zte_adapter_sms_unavailable_json \
+					authentication_failed)
+				write_sms_cache "$sms_json"
+				;;
+		esac
 	fi
 	password=''
 
@@ -1070,6 +1136,8 @@ main() {
 	last_power_action=''
 	last_logged_state=''
 	private_auth_retry_after=0
+	next_sms_poll_at=0
+	sms_json=$(zte_adapter_sms_unavailable_json not_loaded)
 	planned_power_off=0
 	next_power_probe_at=0
 	shutdown_started=0

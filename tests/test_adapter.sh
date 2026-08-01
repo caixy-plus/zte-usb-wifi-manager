@@ -210,6 +210,66 @@ assert_eq '{"available":false,"reason":"credentials_missing","items":[]}' \
     "$(zte_adapter_clients_unavailable_json credentials_missing)"
 assert_failure zte_adapter_clients_unavailable_json unknown
 
+sms_raw='{"messages":[{"id":"7","number":"+8613800000000","content":"4F60597D","date":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
+sms_expected='{"available":true,"items":[{"id":"7","number_raw":"+8613800000000","content_encoded":"4F60597D","date_raw":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
+sms_url_log=$work/sms-url
+sms_login_log=$work/sms-login
+: >"$sms_url_log"
+: >"$sms_login_log"
+zte_http_get() {
+    printf '%s\n' "$1" >>"$sms_url_log"
+    printf '%s\n' "$sms_raw"
+}
+zte_session_login() {
+    printf 'login\n' >>"$sms_login_log"
+    return 1
+}
+assert_eq "$sms_expected" \
+    "$(zte_adapter_fetch_sms 192.168.0.1 secret "$jar")"
+assert_eq 0 "$(wc -l <"$sms_login_log" | tr -d ' ')"
+assert_eq 'http://192.168.0.1/goform/goform_get_cmd_process?cmd=sms_data_total&page=0&data_per_page=50&mem_store=1&tags=10&order_by=order%20by%20id%20desc&isTest=false' \
+    "$(cat "$sms_url_log")"
+
+zte_http_get() { printf '%s\n' '{"result":"failure"}'; }
+set +e
+zte_adapter_fetch_sms 192.168.0.1 '' "$jar" >/dev/null
+sms_status=$?
+set -e
+assert_eq 2 "$sms_status"
+
+: >"$sms_login_log"
+set +e
+zte_adapter_fetch_sms 192.168.0.1 rejected "$jar" >/dev/null
+sms_status=$?
+set -e
+assert_eq 3 "$sms_status"
+assert_eq 1 "$(wc -l <"$sms_login_log" | tr -d ' ')"
+
+sms_get_count=$work/sms-get-count
+printf 0 >"$sms_get_count"
+: >"$sms_login_log"
+zte_http_get() {
+    count=$(cat "$sms_get_count")
+    count=$((count + 1))
+    printf '%s' "$count" >"$sms_get_count"
+    if [ "$count" -eq 1 ]; then
+        printf '%s\n' '{"result":"failure"}'
+    else
+        printf '%s\n' "$sms_raw"
+    fi
+}
+zte_session_login() {
+    printf 'login\n' >>"$sms_login_log"
+    return 0
+}
+assert_eq "$sms_expected" \
+    "$(zte_adapter_fetch_sms 192.168.0.1 secret "$jar")"
+assert_eq 2 "$(cat "$sms_get_count")"
+assert_eq 1 "$(wc -l <"$sms_login_log" | tr -d ' ')"
+assert_eq '{"available":false,"reason":"read_failed","items":[]}' \
+    "$(zte_adapter_sms_unavailable_json read_failed)"
+assert_failure zte_adapter_sms_unavailable_json unknown
+
 # normalize maps every field
 expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","hardware_version":null,"webui_version":null,"software_version":null,"market_name":null,"upgrade":{"new_version_state":null,"current_state":null},"modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","lte_rsrp":null,"rscp":null,"rssi":null,"roaming":null,"dial_mode":null,"wan_mode":null,"mcc":null,"mnc":null,"ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"wifi":{"enabled":null,"guest_enabled":null,"bands":{"wifi_2_4":{"ssid":null,"auth_mode":null,"clients":null},"wifi_5":{"ssid":null,"auth_mode":null,"clients":null}}},"clients":{"available":false,"reason":"not_loaded","items":[]},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":"network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state"}'
 assert_eq "$expected" "$(zte_adapter_normalize "$raw")"
