@@ -753,8 +753,8 @@ const completeStatus = {
 			pers: '82',
 			temperature_level: 'normal'
 		},
-		sms: { total: 3 }
-		,traffic: {
+		sms: { total: 3 },
+		traffic: {
 			realtime: { upload_bps: 1250, download_bps: 3400 },
 			current: { sent_bytes: 1024, received_bytes: 2048, connected_seconds: 3600 },
 			monthly: {

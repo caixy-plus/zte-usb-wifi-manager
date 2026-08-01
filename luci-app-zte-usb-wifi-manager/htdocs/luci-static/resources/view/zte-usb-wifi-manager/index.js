@@ -177,6 +177,60 @@ function chargingLabel(value) {
 	return null;
 }
 
+function unsignedNumber(value) {
+	var number = Number(value);
+	return isFinite(number) && number >= 0 && Math.floor(number) === number
+		? number : null;
+}
+
+function rateLabel(value) {
+	var number = unsignedNumber(value);
+	if (number === null)
+		return null;
+	if (number < 1000)
+		return number + ' B/s';
+	if (number < 1000000)
+		return (number / 1000).toFixed(2) + ' kB/s';
+	return (number / 1000000).toFixed(2) + ' MB/s';
+}
+
+function bytesLabel(value) {
+	var number = unsignedNumber(value);
+	var units = [ 'B', 'KiB', 'MiB', 'GiB', 'TiB' ];
+	var unit = 0;
+	if (number === null)
+		return null;
+	while (number >= 1024 && unit < units.length - 1) {
+		number /= 1024;
+		unit += 1;
+	}
+	return unit === 0 ? number + ' ' + units[unit]
+		: number.toFixed(2) + ' ' + units[unit];
+}
+
+function durationLabel(value) {
+	var seconds = unsignedNumber(value);
+	var hours;
+	var minutes;
+	if (seconds === null)
+		return null;
+	hours = Math.floor(seconds / 3600);
+	minutes = Math.floor((seconds % 3600) / 60);
+	if (hours > 0)
+		return hours + _('小时') + (minutes > 0 ? minutes + _('分钟') : '');
+	if (minutes > 0)
+		return minutes + _('分钟');
+	return seconds + _('秒');
+}
+
+function enabledLabel(value) {
+	if (value === true)
+		return _('已启用');
+	if (value === false)
+		return _('未启用');
+	return null;
+}
+
 function powerExecutionReasonLabel(reason) {
 	var labels = {
 		ready: _('就绪'),
@@ -351,6 +405,39 @@ function renderSms(status) {
 	]);
 }
 
+function renderTraffic(status) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var traffic = device.traffic && typeof device.traffic === 'object'
+		? device.traffic : {};
+	var realtime = traffic.realtime && typeof traffic.realtime === 'object'
+		? traffic.realtime : {};
+	var current = traffic.current && typeof traffic.current === 'object'
+		? traffic.current : {};
+	var monthly = traffic.monthly && typeof traffic.monthly === 'object'
+		? traffic.monthly : {};
+	var plan = traffic.plan && typeof traffic.plan === 'object' ? traffic.plan : {};
+
+	return panelRoot('traffic', _('流量'), [
+		row(_('实时上传'), rateLabel(realtime.upload_bps)),
+		row(_('实时下载'), rateLabel(realtime.download_bps)),
+		row(_('本次发送'), bytesLabel(current.sent_bytes)),
+		row(_('本次接收'), bytesLabel(current.received_bytes)),
+		row(_('本次连接时长'), durationLabel(current.connected_seconds)),
+		row(_('本月发送'), bytesLabel(monthly.sent_bytes)),
+		row(_('本月接收'), bytesLabel(monthly.received_bytes)),
+		row(_('本月连接时长'), durationLabel(monthly.connected_seconds)),
+		row(_('统计月份'), monthly.month),
+		row(_('套餐限制'), enabledLabel(plan.enabled)),
+		row(_('限制单位'), plan.unit),
+		row(_('限制值'), plan.limit),
+		row(_('提醒阈值'), plan.alert_percent === null ||
+			plan.alert_percent === undefined ? null : plan.alert_percent + '%'),
+		row(_('自动清零'), enabledLabel(plan.auto_clear)),
+		row(_('清零日'), plan.clear_day),
+		row(_('到量断网'), enabledLabel(plan.disconnect))
+	]);
+}
+
 function renderSimSwitch(sim, onAction, actionBusy) {
 	var selectedTarget = sim.type === 'sim1' || sim.type === 'sim2' ||
 		sim.type === 'sim3' || sim.type === 'physical' ? sim.type : 'physical';
@@ -399,6 +486,7 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 	var children = [
 		row(_('设备型号'), device.model || status.model || capabilities.model),
+		row(_('固件版本'), device.firmware),
 		row(_('Modem 状态'), device.modem_state),
 		row(_('SIM 类型'), sim.type),
 		row(_('活动卡槽原始值'), sim.active_slot_raw),
@@ -474,8 +562,7 @@ function renderPanel(tabId, status, capabilities, logsResult, onAction,
 		return renderUnavailableModule('clients', _('接入设备'),
 			_('尚未获取经过实机验证的 U25S 客户端数据'));
 	case 'traffic':
-		return renderUnavailableModule('traffic', _('流量'),
-			_('尚未获取经过实机验证的 U25S 流量数据'));
+		return renderTraffic(status);
 	case 'sms':
 		return renderSms(status);
 	case 'device':
