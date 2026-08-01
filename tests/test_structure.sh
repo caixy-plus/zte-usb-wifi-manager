@@ -9,6 +9,21 @@ TEST_NAME=test_structure
 
 backend=package/zte-usb-wifi-manager
 luci='luci-app-zte-usb-wifi-manager'
+config="$backend/files/etc/config/zte-usb-wifi-manager"
+daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
+
+if grep -Eq "^config (battery 'policy'|schedule 'work')$" "$config"; then
+    fail 'default config must not expose retired battery automation'
+else
+    pass
+fi
+poll_once_source=$(sed -n '/^poll_once() {$/,/^}$/p' "$daemon")
+case $poll_once_source in
+    *zte_policy_decide*|*apply_policy_action*)
+        fail 'polling must not execute battery-driven USB power actions'
+        ;;
+    *) pass ;;
+esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
@@ -321,7 +336,6 @@ assert_file_contains "$qemu_evidence" 'Release 安装与依赖.*PASS'
 assert_file_contains "$qemu_evidence" 'Release 服务与 ubus.*PASS'
 assert_file_contains "$qemu_evidence" 'Release 卸载.*PASS'
 
-daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh credentials.sh session.sh snapshot.sh netifd-adapter.sh \

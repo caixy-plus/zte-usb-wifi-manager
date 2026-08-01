@@ -637,7 +637,7 @@ test('warns when an otherwise-ok snapshot has stopped updating', function() {
 	}));
 });
 
-test('renders ten tabs and switches to the mobile-network panel', function() {
+test('renders the device-console tabs without charging automation', function() {
 	const tree = render({
 		online: true,
 		device: {
@@ -658,7 +658,13 @@ test('renders ten tabs and switches to the mobile-network panel', function() {
 			is_default_route: false
 		}
 	});
-	assert.strictEqual(nodesByClass(tree, 'zte-tab').length, 10);
+	assert.strictEqual(nodesByClass(tree, 'zte-tab').length, 9);
+	assert.strictEqual(tabById(tree, 'battery'), undefined);
+	assert.strictEqual(tabById(tree, 'schedule'), undefined);
+	assert.ok(tabById(tree, 'clients'));
+	assert.ok(text(tree).indexOf('电池状态') !== -1);
+	assert.strictEqual(source.indexOf('立即充满'), -1);
+	assert.strictEqual(source.indexOf('充电日程'), -1);
 	assert.strictEqual(nodesByClass(tree, 'zte-tab-panel').length, 1);
 	assert.strictEqual(
 		nodesByClass(tree, 'zte-tab-panel')[0].attrs['data-panel'],
