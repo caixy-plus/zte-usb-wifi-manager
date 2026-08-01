@@ -80,10 +80,10 @@ function collectRows(node, rows) {
 	collectRows(node.children, rows);
 }
 
-function render(status, smsMessages) {
+function render(status, smsMessages, capabilities) {
 	return app.render([
 		{ ok: true, value: status },
-		{ ok: true, value: {} },
+		{ ok: true, value: capabilities || {} },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: false } },
 		{ ok: true, value: smsMessages || { available: false, reason: 'not_loaded', items: [] } }
@@ -406,7 +406,33 @@ test('does not render SIM write controls when the effective capability is false'
 	tabById(current, 'device').attrs.click();
 	assert.strictEqual(nodesByTag(current, 'select').length, 0);
 	assert.strictEqual(text(current).indexOf('切换 SIM'), -1);
-	assert.ok(text(current).indexOf('当前版本仅开放只读能力') !== -1);
+	assert.ok(text(current).indexOf('详细能力状态见“系统与诊断”') !== -1);
+	tabById(current, 'overview').attrs.click();
+});
+
+test('renders precise capability readiness without bypassing legacy gates', function() {
+	const capabilities = {
+		sim_switch: false,
+		feature_status: {
+			cellular_read: { implementation: 'implemented', verification: 'local_and_qemu', access: 'read', enabled: true },
+			clients_read: { implementation: 'implemented', verification: 'simulator_only', access: 'read', enabled: true },
+			sim_switch: { implementation: 'implemented', verification: 'spare_device_required', access: 'write', enabled: true },
+			wifi_write: { implementation: 'not_implemented', verification: 'spare_device_required', access: 'write', enabled: false },
+			firmware_update: { implementation: 'native_console_only', verification: 'native_console', access: 'write', enabled: false }
+		}
+	};
+	let current = render({ state: 'ok', device: { sim: { type: 'physical' } } }, null, capabilities);
+	const parent = { replaceChild: function(next) { current = next; next.parentNode = parent; } };
+	current.parentNode = parent;
+	tabById(current, 'diagnostics').attrs.click();
+	assert.ok(text(current).indexOf('能力与校准状态') !== -1);
+	assert.strictEqual(rowValue(current, '移动网络状态'), '已实现（本地与 QEMU 已验证）');
+	assert.strictEqual(rowValue(current, '接入设备明细'), '已实现（模拟器已验证，需设备认证）');
+	assert.strictEqual(rowValue(current, 'SIM 切换'), '已实现，等待备用设备实机校准');
+	assert.strictEqual(rowValue(current, 'Wi-Fi 设置'), '尚未实现');
+	assert.strictEqual(rowValue(current, '固件更新'), '仅支持在 U25S 原生控制台操作');
+	assert.strictEqual(nodesByTag(current, 'select').length, 0,
+		'descriptive metadata must not bypass the legacy capability boolean');
 	tabById(current, 'overview').attrs.click();
 });
 

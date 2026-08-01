@@ -729,7 +729,57 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 	return panelRoot('device', _('设备'), children);
 }
 
-function renderDiagnostics(status) {
+function capabilityReadinessLabel(feature) {
+	var implementation = feature && typeof feature === 'object'
+		? feature.implementation : null;
+	var verification = feature && typeof feature === 'object'
+		? feature.verification : null;
+	var access = feature && typeof feature === 'object' ? feature.access : null;
+	if (access !== 'read' && access !== 'write')
+		return _('不可用');
+	if (implementation === 'native_console_only' && verification === 'native_console')
+		return _('仅支持在 U25S 原生控制台操作');
+	if (implementation === 'not_implemented')
+		return _('尚未实现');
+	if (implementation !== 'implemented')
+		return _('不可用');
+	if (verification === 'local_and_qemu')
+		return _('已实现（本地与 QEMU 已验证）');
+	if (verification === 'simulator_only')
+		return _('已实现（模拟器已验证，需设备认证）');
+	if (verification === 'spare_device_required')
+		return _('已实现，等待备用设备实机校准');
+	return _('不可用');
+}
+
+function renderCapabilityMatrix(capabilities) {
+	var featureStatus = capabilities && typeof capabilities.feature_status === 'object'
+		? capabilities.feature_status : null;
+	var definitions = [
+		[ 'cellular_read', _('移动网络状态') ],
+		[ 'wifi_read', _('U25S Wi-Fi 状态') ],
+		[ 'clients_read', _('接入设备明细') ],
+		[ 'traffic_read', _('流量状态') ],
+		[ 'sms_read', _('短信收件箱') ],
+		[ 'device_read', _('设备状态') ],
+		[ 'sim_switch', _('SIM 切换') ],
+		[ 'cellular_write', _('移动网络设置') ],
+		[ 'wifi_write', _('Wi-Fi 设置') ],
+		[ 'traffic_write', _('流量设置') ],
+		[ 'sms_write', _('短信操作') ],
+		[ 'firmware_update', _('固件更新') ],
+		[ 'factory_reset', _('恢复出厂设置') ],
+		[ 'backup_restore', _('备份与恢复') ],
+		[ 'device_password', _('设备密码') ]
+	];
+	if (!featureStatus)
+		return [ row(_('能力矩阵'), _('当前后端未提供能力明细')) ];
+	return definitions.map(function(definition) {
+		return row(definition[1], capabilityReadinessLabel(featureStatus[definition[0]]));
+	});
+}
+
+function renderDiagnostics(status, capabilities) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var power = status.power && typeof status.power === 'object' ? status.power : {};
 	var recovery = power.recovery && typeof power.recovery === 'object'
@@ -743,7 +793,9 @@ function renderDiagnostics(status) {
 		row(_('USB 供电读回'), power.observed),
 		row(_('恢复服务可用'), yesNoLabel(recovery.service_available)),
 		E('div', { 'class': 'alert-message warning' },
-			_('USB 断电会中断数据连接，仅用于故障恢复。'))
+			_('USB 断电会中断数据连接，仅用于故障恢复。')),
+		E('h3', {}, _('能力与校准状态')),
+		renderCapabilityMatrix(capabilities)
 	]);
 }
 
@@ -792,7 +844,7 @@ function renderPanel(tabId, status, capabilities, logsResult, smsResult, onActio
 	case 'device':
 		return renderDevice(status, capabilities, onAction, actionNotice, actionBusy);
 	case 'diagnostics':
-		return renderDiagnostics(status);
+		return renderDiagnostics(status, capabilities);
 	case 'logs':
 		return renderLogs(logsResult);
 	default:
@@ -854,8 +906,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 				onDeviceAction, actionNotice, actionBusy),
 			E('div', { 'class': 'alert-message warning' },
 				writesAvailable
-					? _('仅显示已通过实机校准并由管理员启用的写操作。')
-					: _('设备写接口尚未完成实机校准，当前版本仅开放只读能力。'))
+					? _('仅显示已通过实机校准并由管理员启用的写操作；详细能力状态见“系统与诊断”。')
+					: _('详细能力状态见“系统与诊断”；未校准操作不会显示为可用控件。'))
 		]);
 }
 
