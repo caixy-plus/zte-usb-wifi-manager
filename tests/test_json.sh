@@ -77,8 +77,8 @@ assert_failure zte_json_normalize_station_list \
 station_many=$(node -e 'process.stdout.write(JSON.stringify({station_list:Array.from({length:65},(_,i)=>({mac_addr:`02:00:00:00:00:${i.toString(16).padStart(2,"0")}`}))}))')
 assert_failure zte_json_normalize_station_list "$station_many"
 
-sms_raw='{"messages":[{"id":"7","number":"+8613800000000","content":"4F60597D","date":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1","private_extension":"MUST_NOT_LEAK"}]}'
-sms_expected='{"available":true,"items":[{"id":"7","number_raw":"+8613800000000","content_encoded":"4F60597D","date_raw":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
+sms_raw='{"messages":[{"id":"7","number":"+8600000000000","content":"4F60597D","date":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1","private_extension":"MUST_NOT_LEAK"}]}'
+sms_expected='{"available":true,"items":[{"id":"7","number_raw":"+8600000000000","content_encoded":"4F60597D","date_raw":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
 assert_eq "$sms_expected" "$(zte_json_normalize_sms_messages "$sms_raw")"
 assert_eq '{"available":true,"items":[]}' \
     "$(zte_json_normalize_sms_messages '{"messages":[]}')"

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Production functions are intentionally extracted and defined through eval
 # below, which ShellCheck 0.9 cannot model.
-# shellcheck disable=SC2218,SC2317,SC2329
+# shellcheck disable=SC2034,SC2154,SC2218,SC2317,SC2329
 set -eu
 
 TEST_NAME=test_structure
@@ -28,10 +28,14 @@ case $poll_once_source in
     *'collect_private_clients '*) pass ;;
     *) fail 'polling must collect the bounded private client collection' ;;
 esac
+# Match literal production variable references.
+# shellcheck disable=SC2016
 case $poll_once_source in
     *'"$raw_json" "$clients_json"'*) pass ;;
     *) fail 'polling must normalize the private client collection' ;;
 esac
+# Match literal production variable references.
+# shellcheck disable=SC2016
 case $poll_once_source in
     *'collect_private_sms '*\
 *'write_sms_cache "$sms_json"'*) pass ;;
@@ -243,6 +247,8 @@ assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检�
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
 assert_file_contains README.md 'LuCI 已采用设备控制台导航'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
+# Match literal Markdown backticks.
+# shellcheck disable=SC2016
 assert_file_contains README.md '独立 `0600` 私有缓存提供最近 50 条短信'
 assert_file_contains README.md '固件版本、实时/本次/本月流量和套餐状态已按目标固件契约接入只读展示'
 assert_file_contains README.md 'hardware Power Adapter'

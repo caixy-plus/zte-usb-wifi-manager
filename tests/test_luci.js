@@ -1009,7 +1009,7 @@ test('renders the authenticated SMS cache and decodes message content', function
 		available: true,
 		items: [ {
 			id: '7',
-			number_raw: '+8613800000000',
+			number_raw: '+8600000000000',
 			content_encoded: '4F60597D',
 			date_raw: '26,08,01,09,30,00,+32',
 			tag: '1'
@@ -1018,7 +1018,7 @@ test('renders the authenticated SMS cache and decodes message content', function
 	assert.strictEqual(rowValue(tree, '短信总数'), '3');
 	assert.strictEqual(rowValue(tree, '收件箱状态'), '已加载（1 条）');
 	const panelText = text(nodesByClass(tree, 'zte-tab-panel')[0]);
-	assert.ok(panelText.indexOf('+8613800000000') !== -1);
+	assert.ok(panelText.indexOf('+8600000000000') !== -1);
 	assert.ok(panelText.indexOf('你好') !== -1);
 	assert.strictEqual(panelText.indexOf('4F60597D'), -1);
 });

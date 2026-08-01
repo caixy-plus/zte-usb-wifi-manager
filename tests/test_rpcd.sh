@@ -85,7 +85,7 @@ assert_eq '{"online":true,"state":"ok","updated":1722345678}' "$status" \
 
 assert_eq '{"available":false,"reason":"not_loaded","items":[]}' \
     "$(rpcd_call call sms_messages)"
-sms_cache='{"available":true,"items":[{"id":"7","number_raw":"+8613800000000","content_encoded":"0054004500530054"}]}'
+sms_cache='{"available":true,"items":[{"id":"7","number_raw":"+8600000000000","content_encoded":"0054004500530054"}]}'
 printf '%s\n' "$sms_cache" >"$sms_file"
 chmod 600 "$sms_file"
 assert_eq "$sms_cache" "$(rpcd_call call sms_messages)" \

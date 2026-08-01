@@ -220,8 +220,8 @@ assert_eq '{"available":false,"reason":"credentials_missing","items":[]}' \
     "$(zte_adapter_clients_unavailable_json credentials_missing)"
 assert_failure zte_adapter_clients_unavailable_json unknown
 
-sms_raw='{"messages":[{"id":"7","number":"+8613800000000","content":"4F60597D","date":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
-sms_expected='{"available":true,"items":[{"id":"7","number_raw":"+8613800000000","content_encoded":"4F60597D","date_raw":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
+sms_raw='{"messages":[{"id":"7","number":"+8600000000000","content":"4F60597D","date":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
+sms_expected='{"available":true,"items":[{"id":"7","number_raw":"+8600000000000","content_encoded":"4F60597D","date_raw":"26,08,01,09,30,00,+32","tag":"1","draft_group_id":"0","received_all_concat_sms":"1"}]}'
 sms_url_log=$work/sms-url
 sms_login_log=$work/sms-login
 : >"$sms_url_log"
