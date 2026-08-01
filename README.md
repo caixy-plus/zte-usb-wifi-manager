@@ -14,9 +14,8 @@
 
 ## 当前状态
 
-仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r18 / LuCI r7
-在已完成双 SDK 和双版本 QEMU 生命周期验证的 r17/r6 基线上，新增了结构化能力
-与校准状态；最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
+仓库目前处于**设备控制台整合开发预览阶段**。backend r18 / LuCI r7 已完成本地检查、双 SDK 构建和双版本 QEMU 生命周期验证；最近完成路由器验证的发布包
+仍是 backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
 - daemon 聚合设备状态和 netifd 网络状态，并通过
@@ -102,13 +101,20 @@ JSON、权限、默认写门控和卸载清理验证。详见
 [r16/r5 QEMU 验证](docs/validation/2026-08-01-r16-r5-qemu.md)。该版本仍未发布
 Release，也未升级主路由器。
 
-当前源码 backend r17 / LuCI r6 已由 GitHub Actions 使用相同两套官方 SDK 构建，
+backend r17 / LuCI r6 已由 GitHub Actions 使用相同两套官方 SDK 构建，
 随后在两套全新、禁止访问物理局域网的 QEMU overlay 中完成全新安装、依赖解析、
 procd/rpcd/ubus、`status` / `capabilities` / `sms_messages` JSON、权限、默认写门控
 和卸载清理验证。详见
 [r17/r6 SDK 验证](docs/validation/2026-08-01-r17-r6-sdk.md)和
 [r17/r6 QEMU 验证](docs/validation/2026-08-01-r17-r6-qemu.md)。该源码仍未发布
 Release，也未升级主路由器；QEMU 结果不代替真实 U25S 认证与写接口校准。
+
+当前源码 backend r18 / LuCI r7 的结构化能力矩阵同样通过官方 OpenWrt 25.12.5
+和 24.10.7 SDK 构建，并在两套全新隔离 QEMU overlay 中验证了安装、procd、rpcd、
+`feature_status`、旧版布尔写门控、默认 `write_enabled=0` 和卸载清理。详见
+[r18/r7 SDK 验证](docs/validation/2026-08-01-r18-r7-sdk.md)和
+[r18/r7 QEMU 验证](docs/validation/2026-08-01-r18-r7-qemu.md)。该版本尚未发布
+Release，也未升级主路由器。
 
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
 r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在

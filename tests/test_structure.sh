@@ -248,6 +248,9 @@ assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 
 assert_file_contains README.md '源码 backend r18 / LuCI r7'
 assert_file_contains README.md 'docs/validation/2026-08-01-r17-r6-sdk\.md'
 assert_file_contains README.md 'docs/validation/2026-08-01-r17-r6-qemu\.md'
+assert_file_contains README.md 'docs/validation/2026-08-01-r18-r7-sdk\.md'
+assert_file_contains README.md 'docs/validation/2026-08-01-r18-r7-qemu\.md'
+assert_file_contains README.md 'backend r18 / LuCI r7 已完成本地检查、双 SDK 构建和双版本 QEMU 生命周期验证'
 assert_file_contains README.md '已实现并验证'
 assert_file_contains README.md '已实现但待备用设备实机校准'
 assert_file_contains README.md '尚未实现'
@@ -379,6 +382,22 @@ assert_file_contains "$r17_qemu_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
 assert_file_contains "$r17_qemu_evidence" 'sms_messages'
 assert_file_contains "$r17_qemu_evidence" 'write_enabled=0'
 assert_file_contains "$r17_qemu_evidence" '卸载后服务、rpcd、页面清理.*PASS'
+
+r18_sdk_evidence=docs/validation/2026-08-01-r18-r7-sdk.md
+assert_file_contains "$r18_sdk_evidence" '^# r18/r7 GitHub SDK 构建验证$'
+assert_file_contains "$r18_sdk_evidence" '30682417836'
+assert_file_contains "$r18_sdk_evidence" '89a3698262364f0009faf8d6ac1163226ada803c'
+assert_file_contains "$r18_sdk_evidence" 'OpenWrt 25\.12\.5.*PASS'
+assert_file_contains "$r18_sdk_evidence" 'OpenWrt 24\.10\.7.*PASS'
+
+r18_qemu_evidence=docs/validation/2026-08-01-r18-r7-qemu.md
+assert_file_contains "$r18_qemu_evidence" '^# r18/r7 隔离 QEMU 安装验证$'
+assert_file_contains "$r18_qemu_evidence" 'OpenWrt 25\.12\.5 APK.*PASS'
+assert_file_contains "$r18_qemu_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
+assert_file_contains "$r18_qemu_evidence" 'spare_device_required'
+assert_file_contains "$r18_qemu_evidence" 'native_console_only'
+assert_file_contains "$r18_qemu_evidence" 'write_enabled=0'
+assert_file_contains "$r18_qemu_evidence" '卸载后服务、rpcd、页面清理.*PASS'
 
 assert_file_contains "$daemon" '^set -e$'
 for library in \
