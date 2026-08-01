@@ -184,7 +184,7 @@ assert_file_contains "$sim_calibration_tool" \
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=8$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=9$'
 assert_file_contains "$luci/Makefile" '^LUCI_PKGARCH:=all$'
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'
@@ -245,7 +245,7 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '源码 backend r20 / LuCI r8'
+assert_file_contains README.md '源码 backend r20 / LuCI r9'
 assert_file_contains README.md '九类语义写请求契约'
 assert_file_contains README.md '生产写 capability 仍全部保持 0'
 assert_file_contains README.md 'docs/superpowers/plans/2026-08-01-write-request-contracts\.md'

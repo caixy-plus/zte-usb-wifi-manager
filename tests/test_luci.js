@@ -30,6 +30,9 @@ const rpcBehavior = {
 	set_credentials: function() { return Promise.resolve({ ok: true, configured: true }); },
 	clear_credentials: function() { return Promise.resolve({ ok: true, configured: false }); },
 	cellular_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
+	wifi_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
+	traffic_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
+	sms_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	operation_status: function() { return Promise.resolve({ operation_id: 'op-test', state: 'queued' }); }
 };
 const rpcSpecs = {};
@@ -151,8 +154,8 @@ function deferred() {
 	return { promise: promise, resolve: resolve, reject: reject };
 }
 
-function renderPanel(status, tabId, smsMessages) {
-	let current = render(status, smsMessages);
+function renderPanel(status, tabId, smsMessages, capabilities) {
+	let current = render(status, smsMessages, capabilities);
 	const parent = {
 		replaceChild: function(next) {
 			current = next;
@@ -273,7 +276,14 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	assert.strictEqual(rpcSpecs.clear_credentials.reject, true);
 	assert.strictEqual(rpcSpecs.clear_credentials.params, undefined);
 	assert.strictEqual(rpcSpecs.cellular_action.reject, true);
-	assert.deepStrictEqual(rpcSpecs.cellular_action.params, [ 'action', 'target' ]);
+	assert.deepStrictEqual(rpcSpecs.cellular_action.params,
+		[ 'action', 'target', 'apn', 'pdp_type', 'auth', 'username', 'password', 'mode' ]);
+	assert.deepStrictEqual(rpcSpecs.wifi_action.params,
+		[ 'action', 'enabled', 'band', 'ssid', 'security', 'password', 'channel' ]);
+	assert.deepStrictEqual(rpcSpecs.traffic_action.params,
+		[ 'action', 'enabled', 'limit_bytes', 'alert_percent', 'cycle_day', 'disconnect', 'confirm' ]);
+	assert.deepStrictEqual(rpcSpecs.sms_action.params,
+		[ 'action', 'message_id', 'number', 'content', 'confirm' ]);
 	assert.strictEqual(rpcSpecs.operation_status.reject, true);
 	assert.deepStrictEqual(rpcSpecs.operation_status.params, [ 'operation_id' ]);
 	rpcBehavior.status = function() { return Promise.resolve(4); };
@@ -281,6 +291,92 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	rpcBehavior.logs = function() { return Promise.resolve({ events: [] }); };
 	const data = await app.load();
 	assert.strictEqual(data[0].ok, false);
+});
+
+test('capability-gates every semantic write form', function() {
+	const capabilities = {
+		cellular_write: true, wifi_write: true, traffic_write: true,
+		sms_write: true, sim_switch: true
+	};
+	let tree = renderPanel({}, 'network', null, capabilities);
+	assert.ok(text(tree).indexOf('保存 APN') !== -1);
+	assert.ok(text(tree).indexOf('保存连接模式') !== -1);
+	tree = renderPanel({}, 'wifi', null, capabilities);
+	assert.ok(text(tree).indexOf('保存 Wi-Fi 设置') !== -1);
+	tree = renderPanel({}, 'traffic', null, capabilities);
+	assert.ok(text(tree).indexOf('保存流量套餐') !== -1);
+	assert.ok(text(tree).indexOf('清零流量统计') !== -1);
+	tree = renderPanel({}, 'sms', null, capabilities);
+	assert.ok(text(tree).indexOf('发送短信') !== -1);
+	assert.ok(text(tree).indexOf('标记已读') !== -1);
+	assert.ok(text(tree).indexOf('删除短信') !== -1);
+
+	assert.strictEqual(text(renderPanel({}, 'network')).indexOf('保存 APN'), -1);
+	assert.strictEqual(text(renderPanel({}, 'wifi')).indexOf('保存 Wi-Fi 设置'), -1);
+	assert.strictEqual(text(renderPanel({}, 'traffic')).indexOf('保存流量套餐'), -1);
+	assert.strictEqual(text(renderPanel({}, 'sms')).indexOf('发送短信'), -1);
+});
+
+test('submits normalized requests for each write family', async function() {
+	pollEntries.length = 0;
+	const calls = [];
+	rpcBehavior.cellular_action = function() {
+		calls.push([ 'cellular' ].concat(Array.from(arguments)));
+		return Promise.resolve({ ok: true, operation_id: 'op-cellular' });
+	};
+	rpcBehavior.wifi_action = function() {
+		calls.push([ 'wifi' ].concat(Array.from(arguments)));
+		return Promise.resolve({ ok: true, operation_id: 'op-wifi' });
+	};
+	rpcBehavior.traffic_action = function() {
+		calls.push([ 'traffic' ].concat(Array.from(arguments)));
+		return Promise.resolve({ ok: true, operation_id: 'op-traffic' });
+	};
+	rpcBehavior.sms_action = function() {
+		calls.push([ 'sms' ].concat(Array.from(arguments)));
+		return Promise.resolve({ ok: true, operation_id: 'op-sms' });
+	};
+
+	let tree = renderPanel({}, 'network', null, { cellular_write: true });
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'apn';
+	}).value = 'internet';
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '保存 APN';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[0].slice(0, 6),
+		[ 'cellular', 'set_apn', undefined, 'internet', 'ipv4v6', 'none' ]);
+
+	tree = renderPanel({}, 'wifi', null, { wifi_write: true });
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-ssid';
+	}).value = 'Fixture WiFi';
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-password';
+	}).value = 'fixture-pass';
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '保存 Wi-Fi 设置';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[1].slice(0, 8),
+		[ 'wifi', 'set_wifi', true, '2g', 'Fixture WiFi', 'wpa2_psk', 'fixture-pass', 'auto' ]);
+
+	tree = renderPanel({}, 'traffic', null, { traffic_write: true });
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '保存流量套餐';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[2].slice(0, 4),
+		[ 'traffic', 'set_traffic_plan', false, undefined ]);
+
+	tree = renderPanel({}, 'sms', null, { sms_write: true });
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'sms-number';
+	}).value = '+12025550123';
+	nodesByTag(tree, 'textarea')[0].value = 'fixture message';
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '发送短信';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[3].slice(0, 5),
+		[ 'sms', 'send_sms', undefined, '+12025550123', 'fixture message' ]);
 });
 
 test('renders a write-only U25S password entry and credential state', function() {

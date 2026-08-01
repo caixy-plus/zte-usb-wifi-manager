@@ -54,7 +54,28 @@ var callClearCredentials = rpc.declare({
 var callCellularAction = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'cellular_action',
-	params: [ 'action', 'target' ],
+	params: [ 'action', 'target', 'apn', 'pdp_type', 'auth', 'username', 'password', 'mode' ],
+	reject: true
+});
+
+var callWifiAction = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'wifi_action',
+	params: [ 'action', 'enabled', 'band', 'ssid', 'security', 'password', 'channel' ],
+	reject: true
+});
+
+var callTrafficAction = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'traffic_action',
+	params: [ 'action', 'enabled', 'limit_bytes', 'alert_percent', 'cycle_day', 'disconnect', 'confirm' ],
+	reject: true
+});
+
+var callSmsAction = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'sms_action',
+	params: [ 'action', 'message_id', 'number', 'content', 'confirm' ],
 	reject: true
 });
 
@@ -97,6 +118,55 @@ function row(label, value) {
 		E('div', { 'class': 'cbi-value-title' }, label),
 		E('div', { 'class': 'cbi-value-field' }, dash(value))
 	]);
+}
+
+function actionInput(purpose, type, value) {
+	var autocompleteValue = null;
+	if (type === 'password')
+		autocompleteValue = 'new-password';
+	var input = E('input', {
+		'class': type === 'checkbox' ? 'cbi-input-checkbox' : 'cbi-input-text',
+		'type': type || 'text',
+		'data-purpose': purpose,
+		'autocomplete': autocompleteValue
+	});
+	if (type === 'checkbox')
+		input.checked = value === true;
+	else
+		input.value = value === null || value === undefined ? '' : String(value);
+	return input;
+}
+
+function actionSelect(purpose, values, selected) {
+	var select = E('select', {
+		'class': 'cbi-input-select',
+		'data-purpose': purpose
+	}, values.map(function(item) {
+		return E('option', { 'value': item[0] }, item[1]);
+	}));
+	select.value = selected;
+	return select;
+}
+
+function actionRow(label, control) {
+	return E('div', { 'class': 'cbi-value' }, [
+		E('div', { 'class': 'cbi-value-title' }, label),
+		E('div', { 'class': 'cbi-value-field' }, control)
+	]);
+}
+
+function actionButton(label, busy, callback) {
+	return E('button', {
+		'class': 'cbi-button cbi-button-action',
+		'type': 'button',
+		'disabled': busy ? 'disabled' : null,
+		'click': callback
+	}, label);
+}
+
+function actionSection(title, children) {
+	return E('div', { 'class': 'cbi-section zte-device-action' },
+		[ E('h4', {}, title) ].concat(children));
 }
 
 function stateLabel(state, hasDevice) {
@@ -433,7 +503,7 @@ function renderOverview(status, capabilities) {
 	]);
 }
 
-function renderNetwork(status) {
+function renderNetwork(status, capabilities, onAction, actionBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
 	var radio = cellular.radio && typeof cellular.radio === 'object'
@@ -441,7 +511,7 @@ function renderNetwork(status) {
 	var pdp = cellular.pdp && typeof cellular.pdp === 'object' ? cellular.pdp : {};
 	var network = status.network && typeof status.network === 'object' ? status.network : {};
 
-	return panelRoot('network', _('移动网络'), [
+	var children = [
 		row(_('网络制式'), cellular.type),
 		row(_('运营商'), cellular.provider),
 		row(_('信号'), signalLabel(cellular)),
@@ -473,7 +543,48 @@ function renderNetwork(status) {
 		row(_('IPv4'), network.ipv4),
 		row(_('网关'), network.gateway),
 		row(_('默认出口'), yesNoLabel(network.is_default_route))
-	]);
+	];
+	if (capabilities.cellular_write === true) {
+		var apn = actionInput('apn', 'text', '');
+		var pdpSelect = actionSelect('pdp-type', [
+			[ 'ipv4', 'IPv4' ], [ 'ipv6', 'IPv6' ], [ 'ipv4v6', 'IPv4/IPv6' ]
+		], 'ipv4v6');
+		var auth = actionSelect('apn-auth', [
+			[ 'none', _('无') ], [ 'pap', 'PAP' ], [ 'chap', 'CHAP' ],
+			[ 'pap_or_chap', 'PAP/CHAP' ]
+		], 'none');
+		var username = actionInput('apn-username', 'text', '');
+		var password = actionInput('apn-password', 'password', '');
+		var mode = actionSelect('connection-mode', [
+			[ 'automatic', _('自动') ], [ 'manual', _('手动') ],
+			[ 'on_demand', _('按需') ]
+		], 'automatic');
+		children.push(actionSection(_('APN 设置'), [
+			actionRow(_('APN'), apn), actionRow(_('PDP 类型'), pdpSelect),
+			actionRow(_('认证'), auth), actionRow(_('用户名'), username),
+			actionRow(_('密码'), password),
+			actionButton(_('保存 APN'), actionBusy, function() {
+				var request = {
+					action: 'set_apn', apn: apn.value, pdp_type: pdpSelect.value,
+					auth: auth.value
+				};
+				if (auth.value !== 'none') {
+					request.username = username.value;
+					request['password'] = password.value;
+				}
+				return onAction('cellular', request, _('APN 设置'));
+			})
+		]));
+		children.push(actionSection(_('连接模式'), [
+			actionRow(_('模式'), mode),
+			actionButton(_('保存连接模式'), actionBusy, function() {
+				return onAction('cellular', {
+					action: 'set_connection_mode', mode: mode.value
+				}, _('连接模式设置'));
+			})
+		]));
+	}
+	return panelRoot('network', _('移动网络'), children);
 }
 
 function renderUnavailableModule(tabId, title, message) {
@@ -482,7 +593,7 @@ function renderUnavailableModule(tabId, title, message) {
 	]);
 }
 
-function renderWifi(status) {
+function renderWifi(status, capabilities, onAction, actionBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var wifi = device.wifi && typeof device.wifi === 'object' ? device.wifi : {};
 	var bands = wifi.bands && typeof wifi.bands === 'object' ? wifi.bands : {};
@@ -496,7 +607,7 @@ function renderWifi(status) {
 	var advanced = wifi.advanced && typeof wifi.advanced === 'object'
 		? wifi.advanced : {};
 
-	return panelRoot('wifi', _('U25S Wi-Fi'), [
+	var children = [
 		row(_('Wi-Fi 开关'), enabledLabel(wifi.enabled)),
 		row(_('访客网络'), enabledLabel(wifi.guest_enabled)),
 		row(_('2.4 GHz SSID'), wifi24.ssid),
@@ -522,7 +633,35 @@ function renderWifi(status) {
 		row(_('带宽原始值'), advanced.bandwidth_raw),
 		row(_('覆盖范围原始值'), advanced.coverage_raw),
 		row(_('休眠状态原始值'), wifi.sleep_status_raw)
-	]);
+	];
+	if (capabilities.wifi_write === true) {
+		var enabled = actionInput('wifi-enabled', 'checkbox', wifi.enabled !== false);
+		var band = actionSelect('wifi-band', [ [ '2g', '2.4 GHz' ], [ '5g', '5 GHz' ] ], '2g');
+		var ssid = actionInput('wifi-ssid', 'text', wifi24.ssid || '');
+		var security = actionSelect('wifi-security', [
+			[ 'open', _('开放') ], [ 'wpa2_psk', 'WPA2-PSK' ],
+			[ 'wpa3_sae', 'WPA3-SAE' ], [ 'wpa2_wpa3', 'WPA2/WPA3' ]
+		], 'wpa2_psk');
+		var wifiPassword = actionInput('wifi-password', 'password', '');
+		var channel = actionInput('wifi-channel', 'text', 'auto');
+		children.push(actionSection(_('Wi-Fi 设置'), [
+			actionRow(_('启用'), enabled), actionRow(_('频段'), band),
+			actionRow(_('SSID'), ssid), actionRow(_('安全模式'), security),
+			actionRow(_('密码'), wifiPassword), actionRow(_('信道'), channel),
+			actionButton(_('保存 Wi-Fi 设置'), actionBusy, function() {
+				var request = { action: 'set_wifi', enabled: enabled.checked === true };
+				if (request.enabled) {
+					request.band = band.value; request.ssid = ssid.value;
+					request.security = security.value;
+					if (security.value !== 'open')
+						request['password'] = wifiPassword.value;
+					request.channel = channel.value;
+				}
+				return onAction('wifi', request, _('Wi-Fi 设置'));
+			})
+		]));
+	}
+	return panelRoot('wifi', _('U25S Wi-Fi'), children);
 }
 
 function clientCollectionLabel(clients, count) {
@@ -625,7 +764,7 @@ function decodeSmsContent(value) {
 	}).join('');
 }
 
-function renderSms(status, messagesResult) {
+function renderSms(status, messagesResult, capabilities, onAction, actionBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sms = device.sms && typeof device.sms === 'object' ? device.sms : {};
 	var messages = messagesResult && messagesResult.ok && messagesResult.value &&
@@ -650,10 +789,42 @@ function renderSms(status, messagesResult) {
 		rows.push(row(_('正文 ') + (index + 1),
 			decodeSmsContent(message.content_encoded)));
 	});
+	if (capabilities.sms_write === true) {
+		var number = actionInput('sms-number', 'text', '');
+		var content = E('textarea', {
+			'class': 'cbi-input-textarea', 'data-purpose': 'sms-content',
+			'maxlength': '700'
+		}, '');
+		content.value = '';
+		var messageId = actionInput('sms-message-id', 'text', '');
+		var deleteConfirmation = actionInput('delete-sms', 'checkbox', false);
+		rows.push(actionSection(_('发送短信'), [
+			actionRow(_('号码'), number), actionRow(_('内容'), content),
+			actionButton(_('发送短信'), actionBusy, function() {
+				return onAction('sms', {
+					action: 'send_sms', number: number.value, content: content.value
+				}, _('短信发送'));
+			})
+		]));
+		rows.push(actionSection(_('短信管理'), [
+			actionRow(_('消息 ID'), messageId),
+			actionRow(_('删除确认'), [ deleteConfirmation, ' ', _('我确认删除该短信') ]),
+			actionButton(_('标记已读'), actionBusy, function() {
+				return onAction('sms', {
+					action: 'mark_sms_read', message_id: messageId.value
+				}, _('短信标记'));
+			}),
+			actionButton(_('删除短信'), actionBusy, function() {
+				return onAction('sms', {
+					action: 'delete_sms', message_id: messageId.value, confirm: true
+				}, _('短信删除'), deleteConfirmation, _('请先确认删除该短信。'));
+			})
+		]));
+	}
 	return panelRoot('sms', _('短信'), rows);
 }
 
-function renderTraffic(status) {
+function renderTraffic(status, capabilities, onAction, actionBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var traffic = device.traffic && typeof device.traffic === 'object'
 		? device.traffic : {};
@@ -665,7 +836,7 @@ function renderTraffic(status) {
 		? traffic.monthly : {};
 	var plan = traffic.plan && typeof traffic.plan === 'object' ? traffic.plan : {};
 
-	return panelRoot('traffic', _('流量'), [
+	var children = [
 		row(_('实时上传'), rateLabel(realtime.upload_bps)),
 		row(_('实时下载'), rateLabel(realtime.download_bps)),
 		row(_('本次发送'), bytesLabel(current.sent_bytes)),
@@ -683,7 +854,38 @@ function renderTraffic(status) {
 		row(_('自动清零'), enabledLabel(plan.auto_clear)),
 		row(_('清零日'), plan.clear_day),
 		row(_('到量断网'), enabledLabel(plan.disconnect))
-	]);
+	];
+	if (capabilities.traffic_write === true) {
+		var enabled = actionInput('traffic-enabled', 'checkbox', plan.enabled === true);
+		var limit = actionInput('traffic-limit-bytes', 'number', '10737418240');
+		var alertPercent = actionInput('traffic-alert-percent', 'number', plan.alert_percent || 90);
+		var cycleDay = actionInput('traffic-cycle-day', 'number', plan.clear_day || 1);
+		var disconnect = actionInput('traffic-disconnect', 'checkbox', plan.disconnect === true);
+		var resetConfirmation = actionInput('reset-traffic', 'checkbox', false);
+		children.push(actionSection(_('流量套餐'), [
+			actionRow(_('启用'), enabled), actionRow(_('流量上限（字节）'), limit),
+			actionRow(_('提醒阈值（%）'), alertPercent),
+			actionRow(_('周期起始日'), cycleDay), actionRow(_('到量断网'), disconnect),
+			actionButton(_('保存流量套餐'), actionBusy, function() {
+				var request = { action: 'set_traffic_plan', enabled: enabled.checked === true };
+				if (request.enabled) {
+					request.limit_bytes = Number(limit.value);
+					request.alert_percent = Number(alertPercent.value);
+					request.cycle_day = Number(cycleDay.value);
+					request.disconnect = disconnect.checked === true;
+				}
+				return onAction('traffic', request, _('流量套餐设置'));
+			})
+		]));
+		children.push(actionSection(_('流量统计清零'), [
+			actionRow(_('操作确认'), [ resetConfirmation, ' ', _('我确认清零流量统计') ]),
+			actionButton(_('清零流量统计'), actionBusy, function() {
+				return onAction('traffic', { action: 'reset_traffic', confirm: true },
+					_('流量统计清零'), resetConfirmation, _('请先确认清零流量统计。'));
+			})
+		]));
+	}
+	return panelRoot('traffic', _('流量'), children);
 }
 
 function renderSimSwitch(sim, onAction, actionBusy) {
@@ -721,7 +923,10 @@ function renderSimSwitch(sim, onAction, actionBusy) {
 			'type': 'button',
 			'disabled': actionBusy ? 'disabled' : null,
 			'click': function() {
-				return onAction(targetSelect, confirmation);
+				return onAction('cellular', {
+					action: 'switch_sim', target: targetSelect.value
+				}, _('SIM 切换'), confirmation,
+				_('请先确认该操作会短暂中断蜂窝网络。'));
 			}
 		}, _('切换 SIM'))
 	];
@@ -862,15 +1067,15 @@ function renderPanel(tabId, status, capabilities, logsResult, smsResult, onActio
 	actionNotice, actionBusy) {
 	switch (tabId) {
 	case 'network':
-		return renderNetwork(status);
+		return renderNetwork(status, capabilities, onAction, actionBusy);
 	case 'wifi':
-		return renderWifi(status);
+		return renderWifi(status, capabilities, onAction, actionBusy);
 	case 'clients':
 		return renderClients(status);
 	case 'traffic':
-		return renderTraffic(status);
+		return renderTraffic(status, capabilities, onAction, actionBusy);
 	case 'sms':
-		return renderSms(status, smsResult);
+		return renderSms(status, smsResult, capabilities, onAction, actionBusy);
 	case 'device':
 		return renderDevice(status, capabilities, onAction, actionNotice, actionBusy);
 	case 'diagnostics':
@@ -883,7 +1088,7 @@ function renderPanel(tabId, status, capabilities, logsResult, smsResult, onActio
 }
 
 function renderStatus(data, selectedTab, onSelect, onCredentialSave,
-	onCredentialClear, credentialNotice, onDeviceAction, actionNotice, actionBusy) {
+	onCredentialClear, credentialNotice, onAction, actionNotice, actionBusy) {
 		var statusResult = data && data[0] && typeof data[0] === 'object'
 			? data[0] : { ok: false, value: {} };
 		var capabilitiesResult = data && data[1] && typeof data[1] === 'object'
@@ -934,7 +1139,7 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
 			renderPanel(selectedTab, status, capabilities, logsResult, smsResult,
-				onDeviceAction, actionNotice, actionBusy),
+				onAction, actionNotice, actionBusy),
 			E('div', { 'class': 'alert-message warning' },
 				writesAvailable
 					? _('仅显示已通过实机校准并由管理员启用的写操作；详细能力状态见“系统与诊断”。')
@@ -952,6 +1157,7 @@ return view.extend({
 		var currentOperationId = null;
 		var actionSubmitting = false;
 		var operationGeneration = 0;
+		var currentOperationLabel = null;
 		var root;
 
 		function renderCurrent() {
@@ -962,7 +1168,7 @@ return view.extend({
 				saveCredentials,
 				clearCredentials,
 				credentialNotice,
-				switchSim,
+				submitAction,
 				actionNotice,
 				actionSubmitting || currentOperationId !== null
 			);
@@ -1056,42 +1262,66 @@ return view.extend({
 			});
 		}
 
-		function switchSim(targetSelect, confirmation) {
-			var target = targetSelect && typeof targetSelect.value === 'string'
-				? targetSelect.value : '';
+		function invokeAction(method, request) {
+			request = request || {};
+			switch (method) {
+			case 'cellular':
+				return callCellularAction(request.action, request.target, request.apn,
+					request.pdp_type, request.auth, request.username, request.password,
+					request.mode);
+			case 'wifi':
+				return callWifiAction(request.action, request.enabled, request.band,
+					request.ssid, request.security, request.password, request.channel);
+			case 'traffic':
+				return callTrafficAction(request.action, request.enabled,
+					request.limit_bytes, request.alert_percent, request.cycle_day,
+					request.disconnect, request.confirm);
+			case 'sms':
+				return callSmsAction(request.action, request.message_id, request.number,
+					request.content, request.confirm);
+			default:
+				return Promise.reject(new Error('unsupported action method'));
+			}
+		}
+
+		function submitAction(method, request, label, confirmation, confirmationMessage) {
 			var requestGeneration;
+			label = label || _('设备操作');
 			if (actionSubmitting || currentOperationId !== null) {
 				actionNotice = {
 					level: 'info',
-					message: _('已有 SIM 切换请求正在处理，请等待结果。')
+					message: _('已有 ') + (currentOperationLabel || _('设备操作')) +
+					_('请求正在处理，请等待结果。')
 				};
 				replace(renderCurrent());
 				return Promise.resolve();
 			}
-			if (!confirmation || confirmation.checked !== true) {
+			if (confirmationMessage && (!confirmation || confirmation.checked !== true)) {
 				actionNotice = {
 					level: 'error',
-					message: _('请先确认该操作会短暂中断蜂窝网络。')
+					message: confirmationMessage
 				};
 				replace(renderCurrent());
 				return Promise.resolve();
 			}
 			actionSubmitting = true;
+			currentOperationLabel = label;
 			operationGeneration += 1;
 			requestGeneration = operationGeneration;
 			actionNotice = {
 				level: 'info',
-				message: _('正在提交 SIM 切换请求。')
+				message: _('正在提交') + label + _('请求。')
 			};
 			replace(renderCurrent());
-			return Promise.resolve(callCellularAction('switch_sim', target)).then(function(reply) {
+			return Promise.resolve(invokeAction(method, request)).then(function(reply) {
 				if (requestGeneration !== operationGeneration)
 					return;
 				actionSubmitting = false;
 				if (!reply || reply.ok !== true || typeof reply.operation_id !== 'string') {
+					currentOperationLabel = null;
 					actionNotice = {
 						level: 'error',
-						message: _('SIM 切换请求被拒绝，请检查能力开关和事件日志。')
+						message: label + _('请求被拒绝，请检查输入、能力开关和事件日志。')
 					};
 					replace(renderCurrent());
 					return;
@@ -1106,9 +1336,10 @@ return view.extend({
 				if (requestGeneration !== operationGeneration)
 					return;
 				actionSubmitting = false;
+				currentOperationLabel = null;
 				actionNotice = {
 					level: 'error',
-					message: _('无法提交 SIM 切换请求，请检查 rpcd 服务。')
+					message: _('无法提交') + label + _('请求，请检查 rpcd 服务。')
 				};
 				replace(renderCurrent());
 			});
@@ -1117,10 +1348,12 @@ return view.extend({
 		function refreshOperation() {
 			var operationId;
 			var generation;
+			var operationLabel;
 			if (!currentOperationId)
 				return Promise.resolve();
 			operationId = currentOperationId;
 			generation = operationGeneration;
+			operationLabel = currentOperationLabel || _('设备操作');
 			return Promise.resolve(callOperationStatus(operationId)).then(function(reply) {
 				if (generation !== operationGeneration ||
 					operationId !== currentOperationId)
@@ -1134,6 +1367,7 @@ return view.extend({
 							message: _('操作记录不存在，已停止跟踪。')
 						};
 						currentOperationId = null;
+						currentOperationLabel = null;
 						operationGeneration += 1;
 					}
 					else {
@@ -1147,24 +1381,27 @@ return view.extend({
 				}
 				switch (reply.state) {
 				case 'succeeded':
-					actionNotice = { level: 'success', message: _('SIM 切换已完成。') };
+					actionNotice = { level: 'success', message: operationLabel + _('已完成。') };
 					currentOperationId = null;
+					currentOperationLabel = null;
 					operationGeneration += 1;
 					break;
 				case 'failed':
 					actionNotice = {
 						level: 'error',
-						message: _('SIM 切换失败：') + dash(reply.code)
+						message: operationLabel + _('失败：') + dash(reply.code)
 					};
 					currentOperationId = null;
+					currentOperationLabel = null;
 					operationGeneration += 1;
 					break;
 				case 'timed_out':
 					actionNotice = {
 						level: 'error',
-						message: _('SIM 切换超时：') + dash(reply.code)
+						message: operationLabel + _('超时：') + dash(reply.code)
 					};
 					currentOperationId = null;
+					currentOperationLabel = null;
 					operationGeneration += 1;
 					break;
 				case 'queued':
@@ -1172,7 +1409,7 @@ return view.extend({
 				case 'verifying':
 					actionNotice = {
 						level: 'info',
-						message: _('SIM 切换正在执行。')
+						message: operationLabel + _('正在执行。')
 					};
 					break;
 				default:
@@ -1181,6 +1418,7 @@ return view.extend({
 						message: _('无法读取操作执行状态：') + dash(reply.state)
 					};
 					currentOperationId = null;
+					currentOperationLabel = null;
 					operationGeneration += 1;
 				}
 			}, function() {
