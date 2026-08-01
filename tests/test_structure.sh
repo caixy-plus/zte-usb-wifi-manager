@@ -493,6 +493,7 @@ extract_daemon_function() {
 eval "$(extract_daemon_function poll_once)"
 eval "$(extract_daemon_function collect_private_clients)"
 eval "$(extract_daemon_function collect_private_sms)"
+eval "$(extract_daemon_function refresh_credential_revision)"
 eval "$(extract_daemon_function calculate_policy)"
 eval "$(extract_daemon_function read_current_power_state)"
 eval "$(extract_daemon_function main)"
@@ -516,6 +517,29 @@ policy_power_log=$work/policy-power
 printf 0 >"$fetch_count"
 : >"$status_log"
 : >"$policy_power_log"
+
+# A newly installed or removed credential must bypass the old authentication
+# cooldown and discard its cookie before the next device request.
+credential_file=$work/revision-credentials
+COOKIE_FILE=$work/revision-cookie
+credential_revision=revision-one
+credential_revision_result=revision-one
+private_auth_retry_after=1722349999
+next_sms_poll_at=1722349999
+printf '%s\n' old-cookie >"$COOKIE_FILE"
+zte_credential_revision() { printf '%s\n' "$credential_revision_result"; }
+assert_success refresh_credential_revision
+assert_eq 1722349999 "$private_auth_retry_after"
+assert_eq 1722349999 "$next_sms_poll_at"
+assert_success test -f "$COOKIE_FILE"
+credential_revision_result=revision-two
+assert_success refresh_credential_revision
+assert_eq revision-two "$credential_revision"
+assert_eq 0 "$private_auth_retry_after"
+assert_eq 0 "$next_sms_poll_at"
+assert_failure test -e "$COOKIE_FILE"
+# Keep unrelated poll orchestration tests independent of revision fixtures.
+refresh_credential_revision() { :; }
 
 # Exercise the production atomic writer against an isolated status path.
 eval "$(extract_daemon_function write_status)"

@@ -943,6 +943,26 @@ handle_planned_power_off() {
 	return 0
 }
 
+# Apply an atomically replaced or removed credential on the next poll. The
+# revision contains file metadata only; password content never leaves the
+# credential reader.
+refresh_credential_revision() {
+	_zte_current_credential_revision=$(
+		zte_credential_revision "$credential_file" 2>/dev/null
+	) || _zte_current_credential_revision=invalid
+	if [ "$_zte_current_credential_revision" = "$credential_revision" ]; then
+		return 0
+	fi
+	rm -f "$COOKIE_FILE" || {
+		logger -t zte-usb-wifi-manager \
+			'failed to clear stale device session after credential change'
+		return 1
+	}
+	private_auth_retry_after=0
+	next_sms_poll_at=0
+	credential_revision=$_zte_current_credential_revision
+}
+
 # Populate the private, authenticated collections without turning a partial
 # failure into a full device outage. Rejected credentials enter a cooldown so
 # a bad saved password cannot trigger the U25S login lockout on every poll.
@@ -1027,6 +1047,7 @@ poll_once() {
 	if handle_planned_power_off; then
 		return 0
 	fi
+	refresh_credential_revision || return 1
 	ok=0
 	candidate_device_json=''
 	health=degraded
@@ -1137,6 +1158,9 @@ main() {
 	last_logged_state=''
 	private_auth_retry_after=0
 	next_sms_poll_at=0
+	credential_revision=$(
+		zte_credential_revision "$credential_file" 2>/dev/null
+	) || credential_revision=invalid
 	sms_json=$(zte_adapter_sms_unavailable_json not_loaded)
 	planned_power_off=0
 	next_power_probe_at=0
