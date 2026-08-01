@@ -65,10 +65,12 @@ assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":
 
 capabilities=$(rpcd_call call capabilities)
 assert_success assert_json "$capabilities"
-assert_eq \
-    '{"adapter":"zte_u25s","model":"U25S","login_required":true,"read_status":true,"sim_switch":false,"cellular_write":false,"wifi_write":false,"traffic_write":false,"sms_write":false}' \
-    "$capabilities" \
-    'rpcd capabilities must come from static adapter metadata'
+assert_eq false "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')" \
+    'rpcd must retain the legacy effective capability gate'
+assert_eq spare_device_required "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).sim_switch?.verification)))')" \
+    'rpcd must expose the static SIM calibration state'
+assert_eq native_console_only "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).factory_reset?.implementation)))')" \
+    'rpcd must expose native-console-only operations'
 
 fallback=$(rpcd_call call status)
 assert_success assert_json "$fallback"

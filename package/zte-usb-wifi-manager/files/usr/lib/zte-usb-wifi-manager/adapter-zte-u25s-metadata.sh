@@ -59,6 +59,48 @@ zte_adapter_effective_capability_bool() {
 	fi
 }
 
+zte_adapter_feature_status_json() {
+	_zte_feature_write_enabled=${1-0}
+	_zte_feature_sim_enabled=${2-0}
+	_zte_feature_cellular_enabled=${3-0}
+	_zte_feature_wifi_enabled=${4-0}
+	_zte_feature_traffic_enabled=${5-0}
+	_zte_feature_sms_enabled=${6-0}
+	_zte_feature_sim_effective=$(zte_adapter_effective_capability_bool \
+		"$ZTE_CAP_SIM_SWITCH" "$_zte_feature_write_enabled" \
+		"$_zte_feature_sim_enabled")
+	_zte_feature_cellular_effective=$(zte_adapter_effective_capability_bool \
+		"$ZTE_CAP_CELLULAR_WRITE" "$_zte_feature_write_enabled" \
+		"$_zte_feature_cellular_enabled")
+	_zte_feature_wifi_effective=$(zte_adapter_effective_capability_bool \
+		"$ZTE_CAP_WIFI_WRITE" "$_zte_feature_write_enabled" \
+		"$_zte_feature_wifi_enabled")
+	_zte_feature_traffic_effective=$(zte_adapter_effective_capability_bool \
+		"$ZTE_CAP_TRAFFIC_WRITE" "$_zte_feature_write_enabled" \
+		"$_zte_feature_traffic_enabled")
+	_zte_feature_sms_effective=$(zte_adapter_effective_capability_bool \
+		"$ZTE_CAP_SMS_WRITE" "$_zte_feature_write_enabled" \
+		"$_zte_feature_sms_enabled")
+
+	printf '%s' '{'
+	printf '%s' '"cellular_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
+	printf '%s' '"wifi_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
+	printf '%s' '"clients_read":{"implementation":"implemented","verification":"simulator_only","access":"read","enabled":true},'
+	printf '%s' '"traffic_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
+	printf '%s' '"sms_read":{"implementation":"implemented","verification":"simulator_only","access":"read","enabled":true},'
+	printf '%s' '"device_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
+	printf '"sim_switch":{"implementation":"implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_sim_effective"
+	printf '"cellular_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_cellular_effective"
+	printf '"wifi_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_wifi_effective"
+	printf '"traffic_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_traffic_effective"
+	printf '"sms_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_sms_effective"
+	printf '%s' '"firmware_update":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
+	printf '%s' '"factory_reset":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
+	printf '%s' '"backup_restore":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
+	printf '%s' '"device_password":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false}'
+	printf '%s' '}'
+}
+
 zte_adapter_effective_capabilities_json() {
 	_zte_metadata_write_enabled=${1-0}
 	_zte_metadata_sim_enabled=${2-0}
@@ -71,13 +113,17 @@ zte_adapter_effective_capabilities_json() {
 	else
 		_zte_metadata_login_required=false
 	fi
-	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s}\n' \
+	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s,"feature_status":%s}\n' \
 		"$_zte_metadata_login_required" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SIM_SWITCH" "$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_CELLULAR_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_cellular_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_WIFI_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_wifi_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_TRAFFIC_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_traffic_enabled")" \
-		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SMS_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_sms_enabled")"
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SMS_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_sms_enabled")" \
+		"$(zte_adapter_feature_status_json \
+			"$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled" \
+			"$_zte_metadata_cellular_enabled" "$_zte_metadata_wifi_enabled" \
+			"$_zte_metadata_traffic_enabled" "$_zte_metadata_sms_enabled")"
 }
 
 zte_adapter_capabilities_json() {

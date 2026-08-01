@@ -54,9 +54,21 @@ assert_eq false "$(
 )"
 assert_failure zte_adapter_action_supported switch_sim
 
+capability_matrix=$(zte_adapter_capabilities_json)
+assert_eq implemented "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).cellular_read?.implementation)))')"
+assert_eq simulator_only "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).clients_read?.verification)))')"
+assert_eq spare_device_required "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).sim_switch?.verification)))')"
+assert_eq not_implemented "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).wifi_write?.implementation)))')"
+assert_eq native_console_only "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).firmware_update?.implementation)))')"
+assert_eq false "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).sim_switch?.enabled)))')"
+
 ZTE_CAP_SIM_SWITCH=1
 assert_success zte_adapter_action_effectively_enabled \
     switch_sim 1 1
+assert_eq true "$(
+    zte_adapter_effective_capabilities_json 1 1 0 0 0 0 |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).feature_status.sim_switch.enabled)))'
+)"
 assert_failure zte_adapter_action_effectively_enabled \
     switch_sim 0 1
 assert_failure zte_adapter_action_effectively_enabled \
