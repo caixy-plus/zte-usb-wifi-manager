@@ -44,7 +44,7 @@ esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=17$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=18$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -184,7 +184,7 @@ assert_file_contains "$sim_calibration_tool" \
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=6$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=7$'
 assert_file_contains "$luci/Makefile" '^LUCI_PKGARCH:=all$'
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'
@@ -216,7 +216,7 @@ view="$luci/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js"
 for tab in overview network wifi clients traffic sms device diagnostics logs; do
     assert_file_contains "$view" "id: '$tab'"
 done
-assert_file_contains "$view" '设备写接口尚未完成实机校准'
+assert_file_contains "$view" '未校准操作不会显示为可用控件'
 assert_file_contains "$view" 'status\.device'
 assert_file_contains "$view" 'is_default_route'
 assert_file_contains "$view" 'battery'
@@ -245,9 +245,16 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '源码 backend r17 / LuCI r6 已完成本地检查、双 SDK 构建和双版本 QEMU 生命周期验证'
+assert_file_contains README.md '源码 backend r18 / LuCI r7'
 assert_file_contains README.md 'docs/validation/2026-08-01-r17-r6-sdk\.md'
 assert_file_contains README.md 'docs/validation/2026-08-01-r17-r6-qemu\.md'
+assert_file_contains README.md '已实现并验证'
+assert_file_contains README.md '已实现但待备用设备实机校准'
+assert_file_contains README.md '尚未实现'
+assert_file_contains README.md '仅原生控制台'
+# Match literal Markdown backticks.
+# shellcheck disable=SC2016
+assert_file_contains README.md '描述性的 `feature_status` 不能启用任何写操作'
 assert_file_contains README.md 'LuCI 已采用设备控制台导航'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
 # Match literal Markdown backticks.
