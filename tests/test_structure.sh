@@ -456,6 +456,20 @@ assert_file_contains "$r20_r9_qemu_evidence" 'OpenWrt 24\.10\.7 IPK：PASS'
 assert_file_contains "$r20_r9_qemu_evidence" '全局和四类 UCI 写开关保持 0.*PASS'
 assert_file_contains "$r20_r9_qemu_evidence" '短信消息 ID 展示.*PASS'
 
+r21_sdk_evidence=docs/validation/2026-08-01-r21-r10-sdk.md
+assert_file_contains "$r21_sdk_evidence" '^# r21/r10 GitHub SDK 构建验证$'
+assert_file_contains "$r21_sdk_evidence" '30691863896'
+assert_file_contains "$r21_sdk_evidence" 'aef87a26111dc1ad35a449f0c62975edd73ade34'
+assert_file_contains "$r21_sdk_evidence" 'OpenWrt 25\.12\.5 官方 SDK APK：PASS'
+assert_file_contains "$r21_sdk_evidence" 'OpenWrt 24\.10\.7 官方 SDK IPK：PASS'
+
+r21_qemu_evidence=docs/validation/2026-08-01-r21-r10-qemu.md
+assert_file_contains "$r21_qemu_evidence" '^# r21/r10 隔离 QEMU 安装验证$'
+assert_file_contains "$r21_qemu_evidence" 'OpenWrt 25\.12\.5 APK.*PASS'
+assert_file_contains "$r21_qemu_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
+assert_file_contains "$r21_qemu_evidence" 'device reboot、device shutdown 六类生产'
+assert_file_contains "$r21_qemu_evidence" '没有连接 Cudy 路由器'
+
 assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh credentials.sh session.sh snapshot.sh netifd-adapter.sh \

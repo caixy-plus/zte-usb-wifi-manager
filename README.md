@@ -74,6 +74,9 @@
   和统一异步结果跟踪；生产 capability 与 UCI 写开关仍保持关闭，待备用设备校准。
 - backend r21 / LuCI r10 增加设备重启与关机的语义队列、独立确认和状态跟踪。
   厂商接口尚未在备用 U25S 上校准，重启与关机的独立 capability 和 UCI 开关均默认关闭。
+  双 SDK 构建和隔离 QEMU 生命周期验证见
+  [r21/r10 SDK 验证](docs/validation/2026-08-01-r21-r10-sdk.md)与
+  [r21/r10 QEMU 验证](docs/validation/2026-08-01-r21-r10-qemu.md)。
 
 当前状态不代表已经完成人工上机验收。
 
