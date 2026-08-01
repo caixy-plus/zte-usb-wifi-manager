@@ -259,6 +259,9 @@ assert_file_contains README.md 'backend r18 / LuCI r7 已完成本地检查、�
 assert_file_contains README.md 'docs/validation/2026-08-01-r19-r8-sdk\.md'
 assert_file_contains README.md 'docs/validation/2026-08-01-r19-r8-qemu\.md'
 assert_file_contains README.md 'backend r19 / LuCI r8 已完成本地检查、双 SDK 构建和双版本 QEMU 生命周期验证'
+assert_file_contains README.md 'docs/validation/2026-08-01-r20-r8-sdk\.md'
+assert_file_contains README.md 'docs/validation/2026-08-01-r20-r8-qemu\.md'
+assert_file_contains README.md 'backend r20 / LuCI r8 已完成双 SDK 构建和双版本 QEMU 生命周期验证'
 assert_file_contains README.md '已实现并验证'
 assert_file_contains README.md '已实现但待备用设备实机校准'
 assert_file_contains README.md '尚未实现'
@@ -421,6 +424,21 @@ assert_file_contains "$r19_qemu_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
 assert_file_contains "$r19_qemu_evidence" '凭据保存、状态读取、清除和幂等清除.*PASS'
 assert_file_contains "$r19_qemu_evidence" 'write_enabled=0'
 assert_file_contains "$r19_qemu_evidence" '卸载后服务、rpcd、页面和凭据清理.*PASS'
+
+r20_sdk_evidence=docs/validation/2026-08-01-r20-r8-sdk.md
+assert_file_contains "$r20_sdk_evidence" '^# r20/r8 GitHub SDK 构建验证$'
+assert_file_contains "$r20_sdk_evidence" '30685314327'
+assert_file_contains "$r20_sdk_evidence" 'bf537b458ead1ddb83422d0097f6b79a8f538eb4'
+assert_file_contains "$r20_sdk_evidence" 'OpenWrt 25\.12\.5.*PASS'
+assert_file_contains "$r20_sdk_evidence" 'OpenWrt 24\.10\.7.*PASS'
+
+r20_qemu_evidence=docs/validation/2026-08-01-r20-r8-qemu.md
+assert_file_contains "$r20_qemu_evidence" '^# r20/r8 隔离 QEMU 安装验证$'
+assert_file_contains "$r20_qemu_evidence" 'OpenWrt 25\.12\.5 APK.*PASS'
+assert_file_contains "$r20_qemu_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
+assert_file_contains "$r20_qemu_evidence" '真实 ubus 布尔请求入队.*PASS'
+assert_file_contains "$r20_qemu_evidence" 'ash 语义请求校验.*PASS'
+assert_file_contains "$r20_qemu_evidence" '生产 capability 与 UCI 写开关保持关闭.*PASS'
 
 assert_file_contains "$daemon" '^set -e$'
 for library in \

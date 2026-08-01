@@ -134,6 +134,13 @@ backend r19 / LuCI r8 已完成本地检查、双 SDK 构建和双版本 QEMU �
 [r19/r8 QEMU 验证](docs/validation/2026-08-01-r19-r8-qemu.md)。该版本尚未发布
 Release，也未升级主路由器或连接真实 U25S。
 
+backend r20 / LuCI r8 已完成双 SDK 构建和双版本 QEMU 生命周期验证。两代系统均
+通过真实 ubus 布尔请求入队、OpenWrt `ash` 语义校验、重复键与未知字段拒绝、生产
+写门控和卸载清理。详见
+[r20/r8 SDK 验证](docs/validation/2026-08-01-r20-r8-sdk.md)和
+[r20/r8 QEMU 验证](docs/validation/2026-08-01-r20-r8-qemu.md)。该源码尚未发布
+Release，也未连接真实 U25S。
+
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
 r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在
 同一设备正式升级，但单次校准 probe 仍返回 `authentication_failed`，因此并发
