@@ -1185,6 +1185,7 @@ test('renders the authenticated SMS cache and decodes message content', function
 	});
 	assert.strictEqual(rowValue(tree, '短信总数'), '3');
 	assert.strictEqual(rowValue(tree, '收件箱状态'), '已加载（1 条）');
+	assert.strictEqual(rowValue(tree, '消息 ID 1'), '7');
 	const panelText = text(nodesByClass(tree, 'zte-tab-panel')[0]);
 	assert.ok(panelText.indexOf('+8600000000000') !== -1);
 	assert.ok(panelText.indexOf('你好') !== -1);

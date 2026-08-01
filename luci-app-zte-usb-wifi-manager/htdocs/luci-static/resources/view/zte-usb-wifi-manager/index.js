@@ -788,6 +788,7 @@ function renderSms(status, messagesResult, capabilities, onAction, actionBusy) {
 		]));
 		rows.push(row(_('正文 ') + (index + 1),
 			decodeSmsContent(message.content_encoded)));
+		rows.push(row(_('消息 ID ') + (index + 1), message.id));
 	});
 	if (capabilities.sms_write === true) {
 		var number = actionInput('sms-number', 'text', '');
