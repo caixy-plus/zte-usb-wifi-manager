@@ -731,6 +731,7 @@ const completeStatus = {
 	updated: Math.floor(Date.now() / 1000),
 	device: {
 		model: 'U25S',
+		firmware: 'TEST_FIRMWARE',
 		modem_state: 'connected',
 		missing: 'station_list',
 		cellular: {
@@ -753,6 +754,25 @@ const completeStatus = {
 			temperature_level: 'normal'
 		},
 		sms: { total: 3 }
+		,traffic: {
+			realtime: { upload_bps: 1250, download_bps: 3400 },
+			current: { sent_bytes: 1024, received_bytes: 2048, connected_seconds: 3600 },
+			monthly: {
+				sent_bytes: 4096,
+				received_bytes: 8192,
+				connected_seconds: 7200,
+				month: '2026-08'
+			},
+			plan: {
+				enabled: true,
+				unit: 'data',
+				limit: '10240',
+				alert_percent: 80,
+				auto_clear: true,
+				clear_day: 1,
+				disconnect: false
+			}
+		}
 	},
 	network: {
 		up: true,
@@ -818,7 +838,6 @@ test('renders the mobile-network panel from current status', function() {
 [
 	['wifi', '尚未获取经过实机验证的 U25S Wi-Fi 数据'],
 	['clients', '尚未获取经过实机验证的 U25S 客户端数据'],
-	['traffic', '尚未获取经过实机验证的 U25S 流量数据']
 ].forEach(function(testCase) {
 	const tabId = testCase[0];
 	test('renders unavailable data explicitly for ' + tabId, function() {
@@ -827,6 +846,21 @@ test('renders the mobile-network panel from current status', function() {
 			testCase[1]
 		);
 	});
+});
+
+test('renders verified traffic status', function() {
+	const tree = renderPanel(completeStatus, 'traffic');
+	assert.strictEqual(rowValue(tree, '实时上传'), '1.25 kB/s');
+	assert.strictEqual(rowValue(tree, '实时下载'), '3.40 kB/s');
+	assert.strictEqual(rowValue(tree, '本次发送'), '1.00 KiB');
+	assert.strictEqual(rowValue(tree, '本次接收'), '2.00 KiB');
+	assert.strictEqual(rowValue(tree, '本次连接时长'), '1小时');
+	assert.strictEqual(rowValue(tree, '本月发送'), '4.00 KiB');
+	assert.strictEqual(rowValue(tree, '本月接收'), '8.00 KiB');
+	assert.strictEqual(rowValue(tree, '本月连接时长'), '2小时');
+	assert.strictEqual(rowValue(tree, '统计月份'), '2026-08');
+	assert.strictEqual(rowValue(tree, '套餐限制'), '已启用');
+	assert.strictEqual(rowValue(tree, '提醒阈值'), '80%');
 });
 
 test('renders verified SMS metadata without message content', function() {
@@ -838,6 +872,7 @@ test('renders verified SMS metadata without message content', function() {
 test('renders device and SIM details from normalized status', function() {
 	const tree = renderPanel(completeStatus, 'device');
 	assert.strictEqual(rowValue(tree, '设备型号'), 'U25S');
+	assert.strictEqual(rowValue(tree, '固件版本'), 'TEST_FIRMWARE');
 	assert.strictEqual(rowValue(tree, 'Modem 状态'), 'connected');
 	assert.strictEqual(rowValue(tree, 'SIM 类型'), 'physical');
 	assert.strictEqual(rowValue(tree, '活动卡槽原始值'), '1');
