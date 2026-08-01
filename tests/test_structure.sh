@@ -63,8 +63,6 @@ assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
     "option off_probe_interval '900'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
     "option probe_settle_seconds '15'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "config schedule 'work'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option enabled '0'"
 init_script="$backend/files/etc/init.d/zte-usb-wifi-manager"
 assert_file_contains "$init_script" '^USE_PROCD=1$'
 assert_file_contains "$init_script" \
@@ -447,6 +445,7 @@ status_log=$work/status
 policy_power_log=$work/policy-power
 printf 0 >"$fetch_count"
 : >"$status_log"
+: >"$policy_power_log"
 
 # Exercise the production atomic writer against an isolated status path.
 eval "$(extract_daemon_function write_status)"
@@ -581,7 +580,7 @@ zte_adapter_normalize() { printf '%s\n' "$1"; }
 poll_once
 assert_eq '' "$(cat "$anonymous_password_log")"
 assert_eq \
-    "$(zte_snapshot_compose ok '' "$dev1" "$net" DISABLED KEEP 0 1722345678)" \
+    "$(zte_snapshot_compose ok '' "$dev1" "$net" retired none 0 1722345678)" \
     "$(sed -n '1p' "$status_log")"
 
 # Adapter status 2 means the endpoint is reachable but needs a password.
@@ -593,7 +592,7 @@ zte_adapter_fetch() { return 2; }
 poll_once
 assert_eq \
     "$(zte_snapshot_compose credentials_missing device_credentials_required '' \
-        "$net" DISABLED KEEP 0 1722345678)" \
+        "$net" retired none 0 1722345678)" \
     "$(sed -n '1p' "$status_log")"
 
 # Restore the configured-credential sequence used by the degradation tests.
@@ -628,22 +627,22 @@ zte_adapter_normalize() {
 }
 
 poll_once
-assert_eq ON "$(cat "$policy_power_log")" \
-    'daemon must use the power adapter rather than battery charging state'
+assert_eq '' "$(cat "$policy_power_log")" \
+    'daemon polling must not evaluate battery-driven USB power actions'
 poll_once
 poll_once
 poll_once
 assert_eq \
-    "$(zte_snapshot_compose ok '' "$dev1" "$net" DISABLED KEEP 0 1722345678)" \
+    "$(zte_snapshot_compose ok '' "$dev1" "$net" retired none 0 1722345678)" \
     "$(sed -n '1p' "$status_log")"
 assert_eq \
-    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" unavailable none 1 1722345678)" \
+    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" retired none 1 1722345678)" \
     "$(sed -n '2p' "$status_log")"
 assert_eq \
-    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" unavailable none 2 1722345678)" \
+    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" retired none 2 1722345678)" \
     "$(sed -n '3p' "$status_log")"
 assert_eq \
-    "$(zte_snapshot_compose ok '' "$dev2" "$net" DISABLED KEEP 0 1722345678)" \
+    "$(zte_snapshot_compose ok '' "$dev2" "$net" retired none 0 1722345678)" \
     "$(sed -n '4p' "$status_log")"
 assert_eq \
     "$work/real-state|info|state|state_ok|1722345678|524288

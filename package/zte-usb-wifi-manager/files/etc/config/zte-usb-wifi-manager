@@ -18,18 +18,8 @@ config device 'zte'
 	option adapter 'zte_u25s'
 	option credential_file '/etc/zte-usb-wifi-manager/credentials'
 
-config battery 'policy'
-	option enabled '0'
-	option low_percent '70'
-	option high_percent '100'
-	option manual_full '0'
-
-config schedule 'work'
-	option enabled '0'
-	option weekdays '1 2 3 4 5'
-	option departure '18:00'
-	option lead_minutes '90'
-
+# USB control is retained only for fail-safe restoration and a future,
+# separately confirmed recovery action. It is never battery-policy driven.
 config power 'usb'
 	option backend 'unconfigured'
 	option control_path 'auto'

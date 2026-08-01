@@ -990,7 +990,12 @@ poll_once() {
 
 	collect_network
 
-	calculate_policy
+	# Battery data is telemetry only. USB VBUS removal interrupts the U25S data
+	# link, so normal polling must never turn the controller off in response to
+	# battery level or a schedule. Keep the legacy snapshot fields stable for
+	# upgrades while explicitly marking the retired behavior.
+	policy_state=retired
+	power_action=none
 	collect_power_snapshot
 
 	updated=$(date +%s)
