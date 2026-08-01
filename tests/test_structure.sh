@@ -27,7 +27,7 @@ esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=15$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=16$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -165,7 +165,7 @@ assert_file_contains "$sim_calibration_tool" \
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=4$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=5$'
 assert_file_contains "$luci/Makefile" '^LUCI_PKGARCH:=all$'
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'
@@ -225,8 +225,8 @@ assert_file_contains README.md 'OpenWrt 24\.10\.7'
 assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
-assert_file_contains README.md 'r15 / LuCI r4 已通过双 SDK 与 QEMU 复验'
-assert_file_contains README.md 'LuCI 十个标签已可切换'
+assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
+assert_file_contains README.md 'LuCI 已采用设备控制台导航'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
 assert_file_contains README.md '短信总数与脱敏事件日志'
 assert_file_contains README.md 'Wi-Fi 与流量仍等待经过验证的 fixture'

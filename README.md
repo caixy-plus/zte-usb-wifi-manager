@@ -3,16 +3,25 @@
 [![CI](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-面向 OpenWrt 的中兴随身 WiFi 管理工具。项目目标是在一个 LuCI 入口内统一展示通过 USB 接入的中兴设备、蜂窝网络、流量、电池、供电和诊断信息。
+面向 OpenWrt 的中兴 U25S 设备控制台整合工具。项目目标是在一个 LuCI
+入口内管理通过 USB 接入的 U25S 专属能力，包括蜂窝网络、SIM、U25S Wi-Fi、
+客户端、流量、短信、设备状态和诊断；OpenWrt 已有的 DHCP、防火墙、端口转发
+等功能不重复实现。
+
+> 本项目不再承诺智能充放电。TR3000 关闭 USB VBUS 时，U25S 的 USB 数据连接
+> 也会中断，无法实现“停止充电但保持 USB 上联”。电池信息仅作为设备状态展示；
+> USB 断电只可能作为明确会掉线的人工故障恢复动作。
 
 ## 当前状态
 
-仓库目前处于**安全门控开发预览阶段**：
+仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r16 / LuCI r5
+已经完成产品边界重置，最近完成真实 SDK/QEMU/路由器验证的发布包仍是
+backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
-- daemon 聚合设备状态、netifd 网络状态和策略监控结果，并通过
+- daemon 聚合设备状态和 netifd 网络状态，并通过
   rpcd/ubus 提供给 LuCI。
-- LuCI 十个标签已可切换；总览、移动网络、短信、电池、设备、诊断和日志页使用缓存快照。
+- LuCI 已采用设备控制台导航；总览、移动网络、短信、设备、诊断和日志页使用缓存快照。
 - 已补充读取 SIM 类型与电池扩展状态，不映射未经实机校准的卡槽语义。
 - 已展示经过验证的短信总数与脱敏事件日志；不缓存号码或短信正文。
 - Wi-Fi 与流量仍等待经过验证的 fixture，不展示推测数据。
@@ -21,13 +30,13 @@
   并接入 daemon 的登录、单次会话恢复重试、写入和操作后状态回读。
 - 模拟器覆盖九类语义写动作的成功、拒绝、超时、会话过期和读回；这些 fixture
   动作不等同于真实 U25S 写接口。
-- 已实现严格限定为 Cudy TR3000 v1 的 hardware Power Adapter：
+- 已保留严格限定为 Cudy TR3000 v1 的 hardware Power Adapter 代码，仅用于
+  旧版本遗留 OFF 状态的安全恢复和后续显式故障恢复研究：
   官方 OpenWrt `ubootmod` 固件使用 xHCI bind/unbind 和 `usb-vbus` regulator
   双重读回；导出 `modem_power` 的兼容固件继续使用固定 GPIO 节点。
   两种 profile 都必须与板型精确匹配，默认仍以 `calibrated=0` 锁定。
-- 真实断电前会写入带期限的 inhibit 并停止 `zte-usb-recover`，恢复供电后再启动；
-  设备动作执行期间禁止断电，守护进程退出时强制恢复供电；独立协调实例会在主
-  守护进程失效时继续处理过期 inhibit。
+- daemon 正常轮询不会计算或执行任何电池驱动的 USB 供电动作。启动和退出时
+  仍会尝试恢复旧版本可能遗留的 OFF 状态，避免升级后设备被困在断电状态。
 - 连续读取失败会触发轮询退避，快照会保留最后可信的设备状态。
 - 已加入加速稳定性测试和脱敏 72 小时采样/验证工具，覆盖日志轮转、动作结果限额、
   权限、临时文件、RSS、文件句柄、状态新鲜度与恢复互锁；
@@ -51,8 +60,8 @@
 
 ## 安装
 
-> 项目目前是安全门控开发预览版，尚未发布稳定版本，也尚未完成真实 U25S 写接口、
-> TR3000 USB 供电和 72 小时稳定性验收。建议先在备用 OpenWrt 设备上验证。
+> 项目目前是安全门控开发预览版，尚未发布稳定版本，也尚未完成全部真实 U25S
+> 写接口和 72 小时稳定性验收。建议先在备用 OpenWrt 设备上验证。
 > 不要强制安装与固件版本、target 或架构不匹配的包。
 
 当前构建与验证证据：
@@ -91,10 +100,10 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 满电枚举修复与实机状态恢复见
 [r14 电池充电枚举校准](docs/validation/2026-07-31-r14-battery-charging.md)。
 
-当前源码的预发布入口为 `v0.1.0-rc1-r15`；只有维护者显式创建并推送与包元数据
+当前源码对应的下一预发布标签为 `v0.1.0-rc1-r16`，尚未发布；只有维护者显式创建并推送与包元数据
 匹配的 tag 才会发布。带 `-rc` 的 tag 自动创建 prerelease，稳定版 tag 创建普通
-Release。当前 r15 / LuCI r4 已通过双 SDK 与 QEMU 复验，但这不代表真实设备写接口、
-USB 供电或 72 小时稳定性验收已经完成。
+Release。已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验，但不包含本次
+产品边界重置，也不代表真实设备写接口或 72 小时稳定性验收已经完成。
 
 当前候选安装包已发布到
 [v0.1.0-rc1-r15 prerelease](https://github.com/caixy-plus/zte-usb-wifi-manager/releases/tag/v0.1.0-rc1-r15)，
@@ -209,7 +218,6 @@ uci commit zte-usb-wifi-manager
 
 ```sh
 uci set zte-usb-wifi-manager.main.write_enabled='0'
-uci set zte-usb-wifi-manager.policy.enabled='0'
 uci commit zte-usb-wifi-manager
 ```
 
@@ -237,45 +245,12 @@ cat /var/run/zte-usb-wifi-manager/status.json
 
 请勿在 Issue 中粘贴密码、Cookie、认证摘要、IMEI、IMSI、ICCID、手机号或短信内容。
 
-### 备用硬件供电校准
+### USB 故障恢复研究工具
 
-以下命令会真实关闭 USB 供电，只能在备用 TR3000 v1 与备用 U25S 台架执行，
-不能在承担上网任务的主路由器上运行。
-
-先做只读探测：
-
-```sh
-/usr/libexec/zte-usb-power-calibrate probe
-```
-
-确认使用的是备用硬件后执行一次短暂断电校准：
-
-```sh
-/usr/libexec/zte-usb-power-calibrate execute I_AM_ON_SPARE_HARDWARE
-```
-
-如果校准期间 ON 读回失败，工具会保留 inhibit 和校准锁，并保持 manager/recovery
-停止，避免断电时发生竞争。硬件恢复可写后执行安全重试：
-
-```sh
-/usr/libexec/zte-usb-power-calibrate recover
-```
-
-只有确认 ON 读回并恢复原有服务状态后，`recover` 才会清除标记和锁。
-
-工具会先停止管理守护进程与 `zte-usb-recover`，验证控制入口和实际
-`usb-vbus` 供电均已关闭且 `eth2` 消失，再恢复供电并等待 `eth2`
-重新出现且 U25S 管理接口可读。任一环节失败或收到
-退出信号都会执行 best-effort 上电和服务恢复。只有输出中所有布尔项均为 `true`，
-才可在该备用设备临时启用：
-
-```sh
-uci set zte-usb-wifi-manager.usb.backend='hardware'
-uci set zte-usb-wifi-manager.usb.calibrated='1'
-uci set zte-usb-wifi-manager.main.write_enabled='1'
-uci commit zte-usb-wifi-manager
-/etc/init.d/zte-usb-wifi-manager restart
-```
+仓库保留的 `zte-usb-power-calibrate` 会真实关闭整个 USB 端口，数据连接必然
+中断。它不是充电管理功能，不应在日常使用或承担上网任务的路由器上运行。
+开发者只能在备用 TR3000 v1 与备用 U25S 台架上使用其 `probe`、`execute` 和
+`recover` 子命令研究显式故障恢复。正式 LuCI 页面目前不提供 USB 断电按钮。
 
 ### 备用 U25S SIM 写接口校准
 
@@ -438,15 +413,15 @@ Shell/JSON 语法和敏感信息模式检查。
 - 密码、Cookie、号卡身份和短信正文不得进入仓库或日志。
 - LuCI 不直接执行 shell。
 - 未校准的设备能力必须返回 unsupported，不得仅通过隐藏按钮控制。
-- 计划中的 USB 供电动作必须先完成板级入口和恢复机制验证。
+- USB 供电不得由电量或日程触发；未来若开放人工恢复，必须明确提示数据会中断。
 
 ## 路线
 
 1. ✅ 已接入 U25S 只读登录和批量状态读取。
 2. 补齐经过脱敏和审核的 Wi-Fi、流量及短信元数据 fixture。
 3. 在备用 TR3000 + U25S 上逐项校准设备写接口和操作后验证。
-4. 校准真实 USB 供电入口，并验证 `zte-usb-recover` 对 inhibit 的消费。
-5. 完成备用硬件 72 小时稳定性测试，再进行主路由器只读验收。
+4. 实现设备设置、短信、SIM 和系统动作的逐项回读验证。
+5. 完成备用硬件 72 小时稳定性测试，再进行主路由器安全验收。
 
 ## 贡献
 

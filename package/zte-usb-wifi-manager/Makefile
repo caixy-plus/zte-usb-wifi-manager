@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=15
+PKG_RELEASE:=16
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
@@ -18,8 +18,7 @@ define Package/zte-usb-wifi-manager
 endef
 
 define Package/zte-usb-wifi-manager/description
-  Safety-gated monitoring, device actions, and battery policy service for a
-  ZTE U25S connected to OpenWrt over USB.
+  U25S device-console integration and safely gated device actions for OpenWrt.
 endef
 
 define Build/Compile
