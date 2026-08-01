@@ -436,6 +436,28 @@ function renderWifi(status) {
 	]);
 }
 
+function renderClients(status) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var wifi = device.wifi && typeof device.wifi === 'object' ? device.wifi : {};
+	var bands = wifi.bands && typeof wifi.bands === 'object' ? wifi.bands : {};
+	var wifi24 = bands.wifi_2_4 && typeof bands.wifi_2_4 === 'object'
+		? bands.wifi_2_4 : {};
+	var wifi5 = bands.wifi_5 && typeof bands.wifi_5 === 'object'
+		? bands.wifi_5 : {};
+	var total = null;
+
+	if (typeof wifi24.clients === 'number' && wifi24.clients >= 0 &&
+		typeof wifi5.clients === 'number' && wifi5.clients >= 0)
+		total = wifi24.clients + wifi5.clients;
+
+	return panelRoot('clients', _('接入设备'), [
+		row(_('接入设备总数'), total),
+		row(_('2.4 GHz 客户端'), wifi24.clients),
+		row(_('5 GHz 客户端'), wifi5.clients),
+		row(_('明细状态'), _('等待有效认证 fixture 校准'))
+	]);
+}
+
 function renderSms(status) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sms = device.sms && typeof device.sms === 'object' ? device.sms : {};
@@ -598,8 +620,7 @@ function renderPanel(tabId, status, capabilities, logsResult, onAction,
 	case 'wifi':
 		return renderWifi(status);
 	case 'clients':
-		return renderUnavailableModule('clients', _('接入设备'),
-			_('尚未获取经过实机验证的 U25S 客户端数据'));
+		return renderClients(status);
 	case 'traffic':
 		return renderTraffic(status);
 	case 'sms':

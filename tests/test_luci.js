@@ -858,18 +858,6 @@ test('renders the mobile-network panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '默认出口'), '否');
 });
 
-[
-	['clients', '尚未获取经过实机验证的 U25S 客户端数据'],
-].forEach(function(testCase) {
-	const tabId = testCase[0];
-	test('renders unavailable data explicitly for ' + tabId, function() {
-		assert.strictEqual(
-			rowValue(renderPanel(completeStatus, tabId), '数据状态'),
-			testCase[1]
-		);
-	});
-});
-
 test('renders verified Wi-Fi summary without credentials', function() {
 	const tree = renderPanel(completeStatus, 'wifi');
 	assert.strictEqual(rowValue(tree, 'Wi-Fi 开关'), '已启用');
@@ -881,6 +869,23 @@ test('renders verified Wi-Fi summary without credentials', function() {
 	assert.strictEqual(rowValue(tree, '5 GHz 安全模式'), 'WPA3PSK');
 	assert.strictEqual(rowValue(tree, '5 GHz 客户端'), '1');
 	assert.strictEqual(text(nodesByClass(tree, 'zte-tab-panel')[0]).indexOf('密码'), -1);
+});
+
+test('renders aggregate client counts without exposing identifiers', function() {
+	const tree = renderPanel(completeStatus, 'clients');
+	assert.strictEqual(rowValue(tree, '接入设备总数'), '3');
+	assert.strictEqual(rowValue(tree, '2.4 GHz 客户端'), '2');
+	assert.strictEqual(rowValue(tree, '5 GHz 客户端'), '1');
+	assert.strictEqual(rowValue(tree, '明细状态'), '等待有效认证 fixture 校准');
+	const panelText = text(nodesByClass(tree, 'zte-tab-panel')[0]);
+	assert.strictEqual(panelText.indexOf('MAC'), -1);
+	assert.strictEqual(panelText.indexOf('192.168.'), -1);
+});
+
+test('keeps aggregate client total unknown when a band count is missing', function() {
+	const status = JSON.parse(JSON.stringify(completeStatus));
+	status.device.wifi.bands.wifi_5.clients = null;
+	assert.strictEqual(rowValue(renderPanel(status, 'clients'), '接入设备总数'), '—');
 });
 
 test('renders verified traffic status', function() {
