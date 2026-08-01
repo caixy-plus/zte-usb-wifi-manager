@@ -440,6 +440,20 @@ assert_file_contains "$r20_qemu_evidence" '真实 ubus 布尔请求入队.*PASS'
 assert_file_contains "$r20_qemu_evidence" 'ash 语义请求校验.*PASS'
 assert_file_contains "$r20_qemu_evidence" '生产 capability 与 UCI 写开关保持关闭.*PASS'
 
+r20_r9_sdk_evidence=docs/validation/2026-08-01-r20-r9-sdk.md
+assert_file_contains "$r20_r9_sdk_evidence" '^# r20/r9 GitHub SDK 构建验证$'
+assert_file_contains "$r20_r9_sdk_evidence" '30686313456'
+assert_file_contains "$r20_r9_sdk_evidence" '71566e96f703cc26f28a658dc4e1ce220d9495e0'
+assert_file_contains "$r20_r9_sdk_evidence" 'OpenWrt 25\.12\.5 官方 SDK APK：PASS'
+assert_file_contains "$r20_r9_sdk_evidence" 'OpenWrt 24\.10\.7 官方 SDK IPK：PASS'
+
+r20_r9_qemu_evidence=docs/validation/2026-08-01-r20-r9-qemu.md
+assert_file_contains "$r20_r9_qemu_evidence" '^# r20/r9 隔离 QEMU 安装验证$'
+assert_file_contains "$r20_r9_qemu_evidence" 'OpenWrt 25\.12\.5 APK：PASS'
+assert_file_contains "$r20_r9_qemu_evidence" 'OpenWrt 24\.10\.7 IPK：PASS'
+assert_file_contains "$r20_r9_qemu_evidence" '全局和四类 UCI 写开关保持 0.*PASS'
+assert_file_contains "$r20_r9_qemu_evidence" '短信消息 ID 展示.*PASS'
+
 assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh credentials.sh session.sh snapshot.sh netifd-adapter.sh \

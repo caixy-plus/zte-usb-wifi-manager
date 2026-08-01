@@ -15,7 +15,7 @@
 ## 当前状态
 
 仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r20 / LuCI r9
-已完成本地自动化验证；最近完成双 SDK 和双版本 QEMU 生命周期验证的是 r20/r8；
+已完成本地自动化、双 SDK 和双版本 QEMU 生命周期验证；
 最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
@@ -141,6 +141,13 @@ backend r20 / LuCI r8 已完成双 SDK 构建和双版本 QEMU 生命周期验�
 写门控和卸载清理。详见
 [r20/r8 SDK 验证](docs/validation/2026-08-01-r20-r8-sdk.md)和
 [r20/r8 QEMU 验证](docs/validation/2026-08-01-r20-r8-qemu.md)。该源码尚未发布
+Release，也未连接真实 U25S。
+
+backend r20 / LuCI r9 已为九类语义动作补齐 capability 门控表单、危险操作确认、
+统一异步状态跟踪和短信消息 ID 展示。GitHub 官方双 SDK 构建与两套全新隔离 QEMU
+overlay 均验证了安装、版本、rpcd/ubus、LuCI 资源、生产写门控和卸载清理。详见
+[r20/r9 SDK 验证](docs/validation/2026-08-01-r20-r9-sdk.md)和
+[r20/r9 QEMU 验证](docs/validation/2026-08-01-r20-r9-qemu.md)。该源码尚未发布
 Release，也未连接真实 U25S。
 
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
