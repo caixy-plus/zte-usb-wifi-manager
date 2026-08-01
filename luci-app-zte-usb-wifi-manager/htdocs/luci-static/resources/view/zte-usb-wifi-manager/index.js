@@ -127,6 +127,18 @@ function signalLabel(cellular) {
 	return null;
 }
 
+function dbmLabel(value) {
+	if (value === null || value === undefined || value === '')
+		return null;
+	return value + ' dBm';
+}
+
+function operatorCodeLabel(cellular) {
+	if (!cellular.mcc || !cellular.mnc)
+		return null;
+	return cellular.mcc + '-' + cellular.mnc;
+}
+
 function batteryLabel(battery) {
 	if (battery.present === false)
 		return _('未检测到电池');
@@ -382,6 +394,13 @@ function renderNetwork(status) {
 		row(_('网络制式'), cellular.type),
 		row(_('运营商'), cellular.provider),
 		row(_('信号'), signalLabel(cellular)),
+		row(_('LTE RSRP'), dbmLabel(cellular.lte_rsrp)),
+		row(_('RSCP'), dbmLabel(cellular.rscp)),
+		row(_('RSSI'), dbmLabel(cellular.rssi)),
+		row(_('漫游状态'), cellular.roaming),
+		row(_('拨号模式'), cellular.dial_mode),
+		row(_('WAN 模式'), cellular.wan_mode),
+		row(_('运营商代码'), operatorCodeLabel(cellular)),
 		row(_('PPP 状态'), cellular.ppp_status),
 		row(_('USB 上联'), uplinkLabel(network)),
 		row(_('IPv4'), network.ipv4),

@@ -133,9 +133,26 @@ raw=$(zte_adapter_fetch 192.168.0.1 secret "$jar")
 assert_eq "$(cat "$fixtures/read_ok.json")" "$raw"
 
 # normalize maps every field
-expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":""}'
+expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","lte_rsrp":null,"rscp":null,"rssi":null,"roaming":null,"dial_mode":null,"wan_mode":null,"mcc":null,"mnc":null,"ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":"network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc"}'
 assert_eq "$expected" "$(zte_adapter_normalize "$raw")"
 assert_success node -e 'JSON.parse(process.argv[1])' "$expected"
+
+# Preserve the current firmware's additional radio and connection fields as
+# normalized, nullable strings. Their device enums remain uninterpreted until
+# authenticated fixtures prove their complete value sets.
+extended_cellular=$(zte_adapter_normalize \
+    '{"network_lte_rsrp":"-72","network_rscp":"-81","lte_rssi":"-55","network_simcard_roam":"0","dial_mode":"auto_dial","opms_wan_mode":"PPP","network_rmcc":"460","network_rmnc":"00"}')
+assert_eq '-72' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.lte_rsrp))')"
+assert_eq '-81' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.rscp))')"
+assert_eq '-55' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.rssi))')"
+assert_eq '0' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.roaming))')"
+assert_eq 'auto_dial' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.dial_mode))')"
+assert_eq 'PPP' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.wan_mode))')"
+assert_eq '460' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.mcc))')"
+assert_eq '00' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.mnc))')"
+
+empty_extended=$(zte_adapter_normalize '{"network_type":"LTE"}')
+assert_eq null "$(printf '%s' "$empty_extended" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).cellular.lte_rsrp)))')"
 
 # The target U25S WebUI treats battery_charging=2 as fully charged, not an
 # invalid state. It must normalize to false so a full battery cannot make the
@@ -224,7 +241,7 @@ case $out in
     *) fail "missing SMS fields not nulled: $out" ;;
 esac
 case $out in
-    *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total,wa_inner_version,flux_realtime_tx_thrpt,flux_realtime_rx_thrpt,flux_realtime_tx_bytes,flux_realtime_rx_bytes,flux_realtime_time,flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time,date_month,flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect"'*) pass ;;
+    *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total,network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wa_inner_version,flux_realtime_tx_thrpt,flux_realtime_rx_thrpt,flux_realtime_tx_bytes,flux_realtime_rx_bytes,flux_realtime_time,flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time,date_month,flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect"'*) pass ;;
     *) fail "missing list wrong: $out" ;;
 esac
 

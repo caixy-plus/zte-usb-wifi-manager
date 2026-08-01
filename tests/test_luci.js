@@ -739,6 +739,14 @@ const completeStatus = {
 			provider: '中国移动',
 			signalbar: '4',
 			rsrp: '-68',
+			lte_rsrp: '-72',
+			rscp: '-81',
+			rssi: '-55',
+			roaming: '0',
+			dial_mode: 'auto_dial',
+			wan_mode: 'PPP',
+			mcc: '460',
+			mnc: '00',
 			ppp_status: 'ipv4_ipv6_connected'
 		},
 		sim: {
@@ -828,6 +836,13 @@ test('renders the mobile-network panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '网络制式'), 'NR5G-SA');
 	assert.strictEqual(rowValue(tree, '运营商'), '中国移动');
 	assert.strictEqual(rowValue(tree, '信号'), '-68 dBm');
+	assert.strictEqual(rowValue(tree, 'LTE RSRP'), '-72 dBm');
+	assert.strictEqual(rowValue(tree, 'RSCP'), '-81 dBm');
+	assert.strictEqual(rowValue(tree, 'RSSI'), '-55 dBm');
+	assert.strictEqual(rowValue(tree, '漫游状态'), '0');
+	assert.strictEqual(rowValue(tree, '拨号模式'), 'auto_dial');
+	assert.strictEqual(rowValue(tree, 'WAN 模式'), 'PPP');
+	assert.strictEqual(rowValue(tree, '运营商代码'), '460-00');
 	assert.strictEqual(rowValue(tree, 'PPP 状态'), 'ipv4_ipv6_connected');
 	assert.strictEqual(rowValue(tree, 'USB 上联'), '已连接 (eth2)');
 	assert.strictEqual(rowValue(tree, 'IPv4'), '192.168.0.2');

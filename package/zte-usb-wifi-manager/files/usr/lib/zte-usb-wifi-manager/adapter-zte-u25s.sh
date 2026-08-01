@@ -181,6 +181,16 @@ zte_adapter_normalize() {
 	_zte_signalbar=$(zte_json_flat_get "$_zte_raw" network_signalbar)
 	_zte_provider=$(zte_json_flat_get "$_zte_raw" network_provider_fullname)
 	_zte_rsrp=$(zte_json_flat_get "$_zte_raw" Z5g_rsrp)
+	_zte_lte_rsrp=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_lte_rsrp)
+	_zte_rscp=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rscp)
+	_zte_rssi=$(zte_adapter_json_nonempty_field "$_zte_raw" lte_rssi)
+	_zte_roaming=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_simcard_roam)
+	_zte_dial_mode=$(zte_adapter_json_nonempty_field "$_zte_raw" dial_mode)
+	_zte_wan_mode=$(zte_adapter_json_nonempty_field "$_zte_raw" opms_wan_mode)
+	_zte_mcc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmcc)
+	_zte_mnc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmnc)
 	_zte_ppp=$(zte_json_flat_get "$_zte_raw" ppp_status)
 	_zte_slot=$(zte_adapter_json_field "$_zte_raw" simcard_active_slot_temp)
 	_zte_sim_type=$(zte_adapter_json_field "$_zte_raw" usim_esim_type)
@@ -281,13 +291,15 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","firmware":%s,"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"model":"%s","firmware":%s,"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_MODEL" "$_zte_firmware" \
 		"$(zte_json_escape "$_zte_modem_state")" \
 		"$(zte_json_escape "$_zte_net_type")" \
 		"$(zte_json_escape "$_zte_provider")" \
 		"$(zte_json_escape "$_zte_signalbar")" \
 		"$(zte_json_escape "$_zte_rsrp")" \
+		"$_zte_lte_rsrp" "$_zte_rscp" "$_zte_rssi" "$_zte_roaming" \
+		"$_zte_dial_mode" "$_zte_wan_mode" "$_zte_mcc" "$_zte_mnc" \
 		"$(zte_json_escape "$_zte_ppp")" \
 		"$_zte_slot" "$_zte_sim_type" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
