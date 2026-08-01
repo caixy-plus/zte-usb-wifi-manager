@@ -753,6 +753,14 @@ const completeStatus = {
 			active_slot_raw: '1',
 			type: 'physical'
 		},
+		wifi: {
+			enabled: true,
+			guest_enabled: false,
+			bands: {
+				wifi_2_4: { ssid: 'Lab-24', auth_mode: 'WPA2PSK', clients: 2 },
+				wifi_5: { ssid: 'Lab-5', auth_mode: 'WPA3PSK', clients: 1 }
+			}
+		},
 		battery: {
 			present: true,
 			percent: 82,
@@ -851,7 +859,6 @@ test('renders the mobile-network panel from current status', function() {
 });
 
 [
-	['wifi', '尚未获取经过实机验证的 U25S Wi-Fi 数据'],
 	['clients', '尚未获取经过实机验证的 U25S 客户端数据'],
 ].forEach(function(testCase) {
 	const tabId = testCase[0];
@@ -861,6 +868,19 @@ test('renders the mobile-network panel from current status', function() {
 			testCase[1]
 		);
 	});
+});
+
+test('renders verified Wi-Fi summary without credentials', function() {
+	const tree = renderPanel(completeStatus, 'wifi');
+	assert.strictEqual(rowValue(tree, 'Wi-Fi 开关'), '已启用');
+	assert.strictEqual(rowValue(tree, '访客网络'), '未启用');
+	assert.strictEqual(rowValue(tree, '2.4 GHz SSID'), 'Lab-24');
+	assert.strictEqual(rowValue(tree, '2.4 GHz 安全模式'), 'WPA2PSK');
+	assert.strictEqual(rowValue(tree, '2.4 GHz 客户端'), '2');
+	assert.strictEqual(rowValue(tree, '5 GHz SSID'), 'Lab-5');
+	assert.strictEqual(rowValue(tree, '5 GHz 安全模式'), 'WPA3PSK');
+	assert.strictEqual(rowValue(tree, '5 GHz 客户端'), '1');
+	assert.strictEqual(text(nodesByClass(tree, 'zte-tab-panel')[0]).indexOf('密码'), -1);
 });
 
 test('renders verified traffic status', function() {

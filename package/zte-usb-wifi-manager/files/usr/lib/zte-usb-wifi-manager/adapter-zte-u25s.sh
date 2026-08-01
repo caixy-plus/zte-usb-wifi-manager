@@ -192,6 +192,22 @@ zte_adapter_normalize() {
 	_zte_mcc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmcc)
 	_zte_mnc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmnc)
 	_zte_ppp=$(zte_json_flat_get "$_zte_raw" ppp_status)
+	_zte_wifi_enabled=$(zte_adapter_optional_bool_json \
+		"$_zte_raw" wifi_onoff_state) || return 1
+	_zte_wifi_guest=$(zte_adapter_optional_bool_json \
+		"$_zte_raw" guest_switch) || return 1
+	_zte_wifi_24_ssid=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" wifi_chip1_ssid1_ssid)
+	_zte_wifi_24_auth=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" wifi_chip1_ssid1_auth_mode)
+	_zte_wifi_24_clients=$(zte_adapter_uint_json \
+		"$_zte_raw" wifi_chip1_ssid1_access_sta_num 0) || return 1
+	_zte_wifi_5_ssid=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" wifi_chip2_ssid1_ssid)
+	_zte_wifi_5_auth=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" wifi_chip2_ssid1_auth_mode)
+	_zte_wifi_5_clients=$(zte_adapter_uint_json \
+		"$_zte_raw" wifi_chip2_ssid1_access_sta_num 0) || return 1
 	_zte_slot=$(zte_adapter_json_field "$_zte_raw" simcard_active_slot_temp)
 	_zte_sim_type=$(zte_adapter_json_field "$_zte_raw" usim_esim_type)
 	_zte_battery_value=$(zte_adapter_json_field "$_zte_raw" battery_value)
@@ -291,7 +307,7 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","firmware":%s,"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"model":"%s","firmware":%s,"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}}},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_MODEL" "$_zte_firmware" \
 		"$(zte_json_escape "$_zte_modem_state")" \
 		"$(zte_json_escape "$_zte_net_type")" \
@@ -302,6 +318,9 @@ zte_adapter_normalize() {
 		"$_zte_dial_mode" "$_zte_wan_mode" "$_zte_mcc" "$_zte_mnc" \
 		"$(zte_json_escape "$_zte_ppp")" \
 		"$_zte_slot" "$_zte_sim_type" \
+		"$_zte_wifi_enabled" "$_zte_wifi_guest" \
+		"$_zte_wifi_24_ssid" "$_zte_wifi_24_auth" "$_zte_wifi_24_clients" \
+		"$_zte_wifi_5_ssid" "$_zte_wifi_5_auth" "$_zte_wifi_5_clients" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
 		"$_zte_battery_value" "$_zte_battery_pers" "$_zte_temperature_level" \
 		"$_zte_realtime_tx" "$_zte_realtime_rx" \

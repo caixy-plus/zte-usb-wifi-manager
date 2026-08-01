@@ -415,6 +415,27 @@ function renderUnavailableModule(tabId, title, message) {
 	]);
 }
 
+function renderWifi(status) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	var wifi = device.wifi && typeof device.wifi === 'object' ? device.wifi : {};
+	var bands = wifi.bands && typeof wifi.bands === 'object' ? wifi.bands : {};
+	var wifi24 = bands.wifi_2_4 && typeof bands.wifi_2_4 === 'object'
+		? bands.wifi_2_4 : {};
+	var wifi5 = bands.wifi_5 && typeof bands.wifi_5 === 'object'
+		? bands.wifi_5 : {};
+
+	return panelRoot('wifi', _('U25S Wi-Fi'), [
+		row(_('Wi-Fi 开关'), enabledLabel(wifi.enabled)),
+		row(_('访客网络'), enabledLabel(wifi.guest_enabled)),
+		row(_('2.4 GHz SSID'), wifi24.ssid),
+		row(_('2.4 GHz 安全模式'), wifi24.auth_mode),
+		row(_('2.4 GHz 客户端'), wifi24.clients),
+		row(_('5 GHz SSID'), wifi5.ssid),
+		row(_('5 GHz 安全模式'), wifi5.auth_mode),
+		row(_('5 GHz 客户端'), wifi5.clients)
+	]);
+}
+
 function renderSms(status) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sms = device.sms && typeof device.sms === 'object' ? device.sms : {};
@@ -575,8 +596,7 @@ function renderPanel(tabId, status, capabilities, logsResult, onAction,
 	case 'network':
 		return renderNetwork(status);
 	case 'wifi':
-		return renderUnavailableModule('wifi', _('U25S Wi-Fi'),
-			_('尚未获取经过实机验证的 U25S Wi-Fi 数据'));
+		return renderWifi(status);
 	case 'clients':
 		return renderUnavailableModule('clients', _('接入设备'),
 			_('尚未获取经过实机验证的 U25S 客户端数据'));
