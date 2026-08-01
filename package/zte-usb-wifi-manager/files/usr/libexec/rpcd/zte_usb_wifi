@@ -16,7 +16,7 @@ CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/creden
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
+		'{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}'
 }
 
 get_status() {
@@ -93,6 +93,14 @@ set_credentials() {
 	fi
 	_zte_password=''
 	printf '%s\n' '{"ok":true,"configured":true}'
+}
+
+clear_credentials() {
+	if ! zte_clear_password "$CREDENTIAL_FILE"; then
+		printf '%s\n' '{"ok":false,"error":"credential_clear_failed"}'
+		return
+	fi
+	printf '%s\n' '{"ok":true,"configured":false}'
 }
 
 get_logs() {
@@ -230,6 +238,7 @@ case ${1-} in
 			capabilities) get_capabilities ;;
 			credential_status) get_credential_status ;;
 			set_credentials) set_credentials ;;
+			clear_credentials) clear_credentials ;;
 			operation_status) get_operation_status ;;
 			logs) get_logs ;;
 			cellular_action|wifi_action|traffic_action|sms_action)

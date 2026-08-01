@@ -59,7 +59,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
+assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String"},"wifi_action":{"action":"String"},"traffic_action":{"action":"String"},"sms_action":{"action":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -108,6 +108,17 @@ assert_eq '{"ok":false,"error":"invalid_password"}' \
     "$(printf '%s\n' '{"password":""}' | rpcd_call call set_credentials)"
 assert_eq '{"ok":false,"error":"invalid_password"}' \
     "$(printf '%s\n' 'not-json' | rpcd_call call set_credentials)"
+chmod 644 "$credential_file"
+assert_eq '{"ok":false,"error":"credential_clear_failed"}' \
+    "$(rpcd_call call clear_credentials)"
+assert_success test -f "$credential_file"
+chmod 600 "$credential_file"
+assert_eq '{"ok":true,"configured":false}' \
+    "$(rpcd_call call clear_credentials)"
+assert_failure test -e "$credential_file"
+assert_eq '{"ok":true,"configured":false}' \
+    "$(rpcd_call call clear_credentials)" \
+    'clearing absent credentials must be idempotent'
 
 mkdir -p "$state_dir/actions/pending"
 operation_id=op-1722345678-1234

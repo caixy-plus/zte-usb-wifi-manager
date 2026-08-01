@@ -45,6 +45,12 @@ var callSetCredentials = rpc.declare({
 	reject: true
 });
 
+var callClearCredentials = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'clear_credentials',
+	reject: true
+});
+
 var callCellularAction = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'cellular_action',
@@ -344,7 +350,7 @@ function panelRoot(tabId, title, children) {
 	}, [ E('h3', {}, title) ].concat(children));
 }
 
-function renderCredentialEntry(credentialsResult, onSave, notice) {
+function renderCredentialEntry(credentialsResult, onSave, onClear, notice) {
 	var value = credentialsResult && credentialsResult.ok &&
 		credentialsResult.value && typeof credentialsResult.value === 'object'
 		? credentialsResult.value : {};
@@ -373,6 +379,29 @@ function renderCredentialEntry(credentialsResult, onSave, notice) {
 		E('div', { 'class': 'cbi-value-description' },
 			_('密码仅写入路由器的 root 0600 文件；页面不会读取或保存密码副本。'))
 	];
+	if (value.configured === true) {
+		var clearConfirmation = E('input', {
+			'type': 'checkbox',
+			'data-purpose': 'clear-credentials'
+		});
+		children.push(E('div', { 'class': 'cbi-value' }, [
+			E('div', { 'class': 'cbi-value-title' }, _('清除登录凭据')),
+			E('div', { 'class': 'cbi-value-field' }, [
+				E('label', {}, [
+					clearConfirmation,
+					' ',
+					_('确认从路由器删除已保存的 U25S 管理密码')
+				]),
+				E('button', {
+					'class': 'cbi-button cbi-button-remove',
+					'type': 'button',
+					'click': function() {
+						return onClear(clearConfirmation);
+					}
+				}, _('清除本地凭据'))
+			])
+		]));
+	}
 
 	if (notice)
 		children.push(E('div', {
@@ -668,7 +697,8 @@ function renderSimSwitch(sim, onAction, actionBusy) {
 	]);
 	var confirmation = E('input', {
 		'type': 'checkbox',
-		'class': 'cbi-input-checkbox'
+		'class': 'cbi-input-checkbox',
+		'data-purpose': 'switch-sim'
 	});
 	var children;
 
@@ -853,7 +883,7 @@ function renderPanel(tabId, status, capabilities, logsResult, smsResult, onActio
 }
 
 function renderStatus(data, selectedTab, onSelect, onCredentialSave,
-	credentialNotice, onDeviceAction, actionNotice, actionBusy) {
+	onCredentialClear, credentialNotice, onDeviceAction, actionNotice, actionBusy) {
 		var statusResult = data && data[0] && typeof data[0] === 'object'
 			? data[0] : { ok: false, value: {} };
 		var capabilitiesResult = data && data[1] && typeof data[1] === 'object'
@@ -898,7 +928,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 				}, _('打开 U25S 原生控制台'))
 			]) : null,
 			alerts,
-			renderCredentialEntry(credentialsResult, onCredentialSave, credentialNotice),
+			renderCredentialEntry(credentialsResult, onCredentialSave,
+				onCredentialClear, credentialNotice),
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab) {
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
@@ -929,6 +960,7 @@ return view.extend({
 				activeTab,
 				selectTab,
 				saveCredentials,
+				clearCredentials,
 				credentialNotice,
 				switchSim,
 				actionNotice,
@@ -986,6 +1018,39 @@ return view.extend({
 				credentialNotice = {
 					level: 'error',
 					message: _('密码保存失败，请检查 rpcd 服务和权限。')
+				};
+				replace(renderCurrent());
+			});
+		}
+
+		function clearCredentials(confirmation) {
+			if (!confirmation || confirmation.checked !== true) {
+				credentialNotice = {
+					level: 'error',
+					message: _('请先确认清除路由器中保存的 U25S 管理密码。')
+				};
+				replace(renderCurrent());
+				return Promise.resolve();
+			}
+			return Promise.resolve(callClearCredentials()).then(function(reply) {
+				if (!reply || reply.ok !== true || reply.configured !== false) {
+					credentialNotice = {
+						level: 'error',
+						message: _('本地管理凭据清除失败，请检查后端日志。')
+					};
+					replace(renderCurrent());
+					return;
+				}
+				currentData[3] = { ok: true, value: { configured: false } };
+				credentialNotice = {
+					level: 'success',
+					message: _('本地管理凭据已清除。')
+				};
+				replace(renderCurrent());
+			}, function() {
+				credentialNotice = {
+					level: 'error',
+					message: _('本地管理凭据清除失败，请检查 rpcd 服务和权限。')
 				};
 				replace(renderCurrent());
 			});

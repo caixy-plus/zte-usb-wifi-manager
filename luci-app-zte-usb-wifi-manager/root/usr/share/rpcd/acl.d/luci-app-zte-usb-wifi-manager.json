@@ -17,6 +17,7 @@
       "ubus": {
         "zte_usb_wifi": [
           "set_credentials",
+          "clear_credentials",
           "cellular_action",
           "wifi_action",
           "traffic_action",

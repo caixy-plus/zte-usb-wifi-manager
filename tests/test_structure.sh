@@ -208,7 +208,7 @@ if (JSON.stringify(read.ubus.zte_usb_wifi) !==
     JSON.stringify(["status", "sms_messages", "capabilities", "credential_status", "operation_status", "logs"]))
     process.exit(1);
 if (JSON.stringify(write.ubus.zte_usb_wifi) !==
-    JSON.stringify(["set_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action"]))
+    JSON.stringify(["set_credentials", "clear_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action"]))
     process.exit(1);
 ' "$acl"
 

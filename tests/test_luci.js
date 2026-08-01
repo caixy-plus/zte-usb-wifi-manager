@@ -28,6 +28,7 @@ const rpcBehavior = {
 	logs: function() { return Promise.resolve({ events: [] }); },
 	credential_status: function() { return Promise.resolve({ configured: false }); },
 	set_credentials: function() { return Promise.resolve({ ok: true, configured: true }); },
+	clear_credentials: function() { return Promise.resolve({ ok: true, configured: false }); },
 	cellular_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	operation_status: function() { return Promise.resolve({ operation_id: 'op-test', state: 'queued' }); }
 };
@@ -269,6 +270,8 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	assert.strictEqual(rpcSpecs.credential_status.reject, true);
 	assert.strictEqual(rpcSpecs.set_credentials.reject, true);
 	assert.deepStrictEqual(rpcSpecs.set_credentials.params, [ 'password' ]);
+	assert.strictEqual(rpcSpecs.clear_credentials.reject, true);
+	assert.strictEqual(rpcSpecs.clear_credentials.params, undefined);
 	assert.strictEqual(rpcSpecs.cellular_action.reject, true);
 	assert.deepStrictEqual(rpcSpecs.cellular_action.params, [ 'action', 'target' ]);
 	assert.strictEqual(rpcSpecs.operation_status.reject, true);
@@ -329,6 +332,49 @@ test('submits and clears the password without claiming authentication', async fu
 	assert.strictEqual(text(current).indexOf('登录成功'), -1);
 });
 
+test('requires confirmation before clearing the saved local credential', async function() {
+	let clearCalls = 0;
+	rpcBehavior.clear_credentials = function() {
+		clearCalls += 1;
+		return Promise.resolve({ ok: true, configured: false });
+	};
+	let current = app.render([
+		{ ok: true, value: { state: 'ok' } },
+		{ ok: true, value: {} },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: true } }
+	]);
+	const parent = {
+		replaceChild: function(next) {
+			current = next;
+			next.parentNode = parent;
+		}
+	};
+	current.parentNode = parent;
+	let confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs['data-purpose'] === 'clear-credentials';
+	});
+	let clearButton = nodesByTag(current, 'button').find(function(button) {
+		return text(button) === '清除本地凭据';
+	});
+	assert.ok(confirmation);
+	assert.ok(clearButton);
+	await clearButton.attrs.click();
+	assert.strictEqual(clearCalls, 0);
+	assert.ok(text(current).indexOf('请先确认清除路由器中保存的 U25S 管理密码') !== -1);
+	confirmation = nodesByTag(current, 'input').find(function(input) {
+		return input.attrs['data-purpose'] === 'clear-credentials';
+	});
+	clearButton = nodesByTag(current, 'button').find(function(button) {
+		return text(button) === '清除本地凭据';
+	});
+	confirmation.checked = true;
+	await clearButton.attrs.click();
+	assert.strictEqual(clearCalls, 1);
+	assert.ok(text(current).indexOf('本地管理凭据已清除') !== -1);
+	assert.ok(text(current).indexOf('未保存管理密码') !== -1);
+});
+
 test('gates SIM switching by capability and reports asynchronous completion', async function() {
 	pollEntries.length = 0;
 	let submitted = null;
@@ -362,7 +408,7 @@ test('gates SIM switching by capability and reports asynchronous completion', as
 
 	let select = nodesByTag(current, 'select')[0];
 	let confirmation = nodesByTag(current, 'input').find(function(input) {
-		return input.attrs.type === 'checkbox';
+		return input.attrs['data-purpose'] === 'switch-sim';
 	});
 	let actionButton = nodesByTag(current, 'button').find(function(button) {
 		return text(button) === '切换 SIM';
@@ -378,7 +424,7 @@ test('gates SIM switching by capability and reports asynchronous completion', as
 
 	select = nodesByTag(current, 'select')[0];
 	confirmation = nodesByTag(current, 'input').find(function(input) {
-		return input.attrs.type === 'checkbox';
+		return input.attrs['data-purpose'] === 'switch-sim';
 	});
 	actionButton = nodesByTag(current, 'button').find(function(button) {
 		return text(button) === '切换 SIM';
@@ -459,7 +505,7 @@ test('stops polling and reports timed-out or invalid operation states', async fu
 	tabById(current, 'device').attrs.click();
 	let select = nodesByTag(current, 'select')[0];
 	let confirmation = nodesByTag(current, 'input').find(function(input) {
-		return input.attrs.type === 'checkbox';
+		return input.attrs['data-purpose'] === 'switch-sim';
 	});
 	let button = nodesByTag(current, 'button').find(function(candidate) {
 		return text(candidate) === '切换 SIM';
@@ -482,7 +528,7 @@ test('stops polling and reports timed-out or invalid operation states', async fu
 	tabById(current, 'device').attrs.click();
 	select = nodesByTag(current, 'select')[0];
 	confirmation = nodesByTag(current, 'input').find(function(input) {
-		return input.attrs.type === 'checkbox';
+		return input.attrs['data-purpose'] === 'switch-sim';
 	});
 	button = nodesByTag(current, 'button').find(function(candidate) {
 		return text(candidate) === '切换 SIM';
@@ -526,7 +572,7 @@ test('guards duplicate submissions and ignores a late status from an old operati
 	tabById(current, 'device').attrs.click();
 	let select = nodesByTag(current, 'select')[0];
 	let confirmation = nodesByTag(current, 'input').find(function(input) {
-		return input.attrs.type === 'checkbox';
+		return input.attrs['data-purpose'] === 'switch-sim';
 	});
 	let button = nodesByTag(current, 'button').find(function(candidate) {
 		return text(candidate) === '切换 SIM';
@@ -559,7 +605,7 @@ test('guards duplicate submissions and ignores a late status from an old operati
 	};
 	select = nodesByTag(current, 'select')[0];
 	confirmation = nodesByTag(current, 'input').find(function(input) {
-		return input.attrs.type === 'checkbox';
+		return input.attrs['data-purpose'] === 'switch-sim';
 	});
 	button = nodesByTag(current, 'button').find(function(candidate) {
 		return text(candidate) === '切换 SIM';
@@ -602,7 +648,7 @@ test('keeps an active operation guarded across a transient status RPC failure', 
 	tabById(current, 'device').attrs.click();
 	let select = nodesByTag(current, 'select')[0];
 	let confirmation = nodesByTag(current, 'input').find(function(input) {
-		return input.attrs.type === 'checkbox';
+		return input.attrs['data-purpose'] === 'switch-sim';
 	});
 	let button = nodesByTag(current, 'button').find(function(candidate) {
 		return text(candidate) === '切换 SIM';
