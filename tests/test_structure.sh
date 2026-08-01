@@ -245,6 +245,9 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
+assert_file_contains README.md '源码 backend r17 / LuCI r6 已完成本地检查、双 SDK 构建和双版本 QEMU 生命周期验证'
+assert_file_contains README.md 'docs/validation/2026-08-01-r17-r6-sdk\.md'
+assert_file_contains README.md 'docs/validation/2026-08-01-r17-r6-qemu\.md'
 assert_file_contains README.md 'LuCI 已采用设备控制台导航'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
 # Match literal Markdown backticks.
@@ -354,6 +357,21 @@ assert_file_contains "$qemu_evidence" 'Release 文件完整性.*PASS'
 assert_file_contains "$qemu_evidence" 'Release 安装与依赖.*PASS'
 assert_file_contains "$qemu_evidence" 'Release 服务与 ubus.*PASS'
 assert_file_contains "$qemu_evidence" 'Release 卸载.*PASS'
+
+r17_sdk_evidence=docs/validation/2026-08-01-r17-r6-sdk.md
+assert_file_contains "$r17_sdk_evidence" '^# r17/r6 GitHub SDK 构建验证$'
+assert_file_contains "$r17_sdk_evidence" '30681487669'
+assert_file_contains "$r17_sdk_evidence" 'c8fca36d263c82f2cf83210c3a14f9fc64fca36f'
+assert_file_contains "$r17_sdk_evidence" 'OpenWrt 25\.12\.5.*PASS'
+assert_file_contains "$r17_sdk_evidence" 'OpenWrt 24\.10\.7.*PASS'
+
+r17_qemu_evidence=docs/validation/2026-08-01-r17-r6-qemu.md
+assert_file_contains "$r17_qemu_evidence" '^# r17/r6 隔离 QEMU 安装验证$'
+assert_file_contains "$r17_qemu_evidence" 'OpenWrt 25\.12\.5 APK.*PASS'
+assert_file_contains "$r17_qemu_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
+assert_file_contains "$r17_qemu_evidence" 'sms_messages'
+assert_file_contains "$r17_qemu_evidence" 'write_enabled=0'
+assert_file_contains "$r17_qemu_evidence" '卸载后服务、rpcd、页面清理.*PASS'
 
 assert_file_contains "$daemon" '^set -e$'
 for library in \
