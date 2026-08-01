@@ -296,6 +296,14 @@ zte_adapter_normalize() {
 		"$_zte_raw" network_simcard_roam)
 	_zte_dial_mode=$(zte_adapter_json_nonempty_field "$_zte_raw" dial_mode)
 	_zte_wan_mode=$(zte_adapter_json_nonempty_field "$_zte_raw" opms_wan_mode)
+	_zte_connection_mode=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" ConnectionMode)
+	_zte_auto_roaming=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" autoConnectWhenRoaming)
+	_zte_network_mode=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_current_network_mode)
+	_zte_network_selection=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" network_net_select_mode)
 	_zte_mcc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmcc)
 	_zte_mnc=$(zte_adapter_json_nonempty_field "$_zte_raw" network_rmnc)
 	_zte_ppp=$(zte_json_flat_get "$_zte_raw" ppp_status)
@@ -315,6 +323,27 @@ zte_adapter_normalize() {
 		"$_zte_raw" wifi_chip2_ssid1_auth_mode)
 	_zte_wifi_5_clients=$(zte_adapter_uint_json \
 		"$_zte_raw" wifi_chip2_ssid1_access_sta_num 0) || return 1
+	_zte_wifi_radio_off=$(zte_adapter_json_nonempty_field "$_zte_raw" RadioOff)
+	_zte_wifi_primary_ssid=$(zte_adapter_json_nonempty_field "$_zte_raw" SSID1)
+	_zte_wifi_primary_auth=$(zte_adapter_json_nonempty_field "$_zte_raw" AuthMode)
+	_zte_wifi_primary_hidden=$(zte_adapter_json_nonempty_field "$_zte_raw" HideSSID)
+	_zte_wifi_primary_max=$(zte_adapter_json_nonempty_field "$_zte_raw" MAX_Access_num)
+	_zte_wifi_primary_isolation=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" NoForwarding)
+	_zte_wifi_guest_raw=$(zte_adapter_json_nonempty_field "$_zte_raw" m_ssid_enable)
+	_zte_wifi_guest_ssid=$(zte_adapter_json_nonempty_field "$_zte_raw" m_SSID)
+	_zte_wifi_guest_auth=$(zte_adapter_json_nonempty_field "$_zte_raw" m_AuthMode)
+	_zte_wifi_guest_hidden=$(zte_adapter_json_nonempty_field "$_zte_raw" m_HideSSID)
+	_zte_wifi_guest_max=$(zte_adapter_json_nonempty_field "$_zte_raw" m_MAX_Access_num)
+	_zte_wifi_guest_isolation=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" m_NoForwarding)
+	_zte_wifi_mode=$(zte_adapter_json_nonempty_field "$_zte_raw" WirelessMode)
+	_zte_wifi_country=$(zte_adapter_json_nonempty_field "$_zte_raw" CountryCode)
+	_zte_wifi_channel=$(zte_adapter_json_nonempty_field "$_zte_raw" Channel)
+	_zte_wifi_bandwidth=$(zte_adapter_json_nonempty_field "$_zte_raw" wifi_11n_cap)
+	_zte_wifi_coverage=$(zte_adapter_json_nonempty_field "$_zte_raw" wifi_coverage)
+	_zte_wifi_sleep=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" SleepStatusForSingleChipCpe)
 	_zte_slot=$(zte_adapter_json_field "$_zte_raw" simcard_active_slot_temp)
 	_zte_sim_type=$(zte_adapter_json_field "$_zte_raw" usim_esim_type)
 	_zte_battery_value=$(zte_adapter_json_field "$_zte_raw" battery_value)
@@ -426,7 +455,7 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}}},"clients":%s,"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"connection_mode":%s,"auto_roaming_raw":%s,"network_mode_raw":%s,"network_selection_mode_raw":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}},"radio_off_raw":%s,"primary":{"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"guest":{"enabled_raw":%s,"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"advanced":{"mode_raw":%s,"country_raw":%s,"channel_raw":%s,"bandwidth_raw":%s,"coverage_raw":%s},"sleep_status_raw":%s},"clients":%s,"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_MODEL" "$_zte_firmware" \
 		"$_zte_hardware_version" "$_zte_webui_version" \
 		"$_zte_software_version" "$_zte_market_name" \
@@ -437,12 +466,24 @@ zte_adapter_normalize() {
 		"$(zte_json_escape "$_zte_signalbar")" \
 		"$(zte_json_escape "$_zte_rsrp")" \
 		"$_zte_lte_rsrp" "$_zte_rscp" "$_zte_rssi" "$_zte_roaming" \
-		"$_zte_dial_mode" "$_zte_wan_mode" "$_zte_mcc" "$_zte_mnc" \
+		"$_zte_dial_mode" "$_zte_wan_mode" \
+		"$_zte_connection_mode" "$_zte_auto_roaming" \
+		"$_zte_network_mode" "$_zte_network_selection" \
+		"$_zte_mcc" "$_zte_mnc" \
 		"$(zte_json_escape "$_zte_ppp")" \
 		"$_zte_slot" "$_zte_sim_type" \
 		"$_zte_wifi_enabled" "$_zte_wifi_guest" \
 		"$_zte_wifi_24_ssid" "$_zte_wifi_24_auth" "$_zte_wifi_24_clients" \
 		"$_zte_wifi_5_ssid" "$_zte_wifi_5_auth" "$_zte_wifi_5_clients" \
+		"$_zte_wifi_radio_off" \
+		"$_zte_wifi_primary_ssid" "$_zte_wifi_primary_auth" \
+		"$_zte_wifi_primary_hidden" "$_zte_wifi_primary_max" \
+		"$_zte_wifi_primary_isolation" \
+		"$_zte_wifi_guest_raw" "$_zte_wifi_guest_ssid" \
+		"$_zte_wifi_guest_auth" "$_zte_wifi_guest_hidden" \
+		"$_zte_wifi_guest_max" "$_zte_wifi_guest_isolation" \
+		"$_zte_wifi_mode" "$_zte_wifi_country" "$_zte_wifi_channel" \
+		"$_zte_wifi_bandwidth" "$_zte_wifi_coverage" "$_zte_wifi_sleep" \
 		"$_zte_clients" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
 		"$_zte_battery_value" "$_zte_battery_pers" "$_zte_temperature_level" \

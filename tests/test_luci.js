@@ -760,6 +760,10 @@ const completeStatus = {
 			roaming: '0',
 			dial_mode: 'auto_dial',
 			wan_mode: 'PPP',
+			connection_mode: 'auto_dial',
+			auto_roaming_raw: '1',
+			network_mode_raw: 'LTE_NR',
+			network_selection_mode_raw: 'auto',
 			mcc: '460',
 			mnc: '00',
 			ppp_status: 'ipv4_ipv6_connected'
@@ -774,7 +778,21 @@ const completeStatus = {
 			bands: {
 				wifi_2_4: { ssid: 'Lab-24', auth_mode: 'WPA2PSK', clients: 2 },
 				wifi_5: { ssid: 'Lab-5', auth_mode: 'WPA3PSK', clients: 1 }
-			}
+			},
+			radio_off_raw: '0',
+			primary: {
+				ssid: 'Primary', auth_mode: 'WPA3PSK', hidden_raw: '0',
+				max_clients_raw: '16', isolation_raw: '1'
+			},
+			guest: {
+				enabled_raw: '1', ssid: 'Guest', auth_mode: 'WPA2PSK',
+				hidden_raw: '1', max_clients_raw: '4', isolation_raw: '1'
+			},
+			advanced: {
+				mode_raw: '11ax', country_raw: 'CN', channel_raw: '36',
+				bandwidth_raw: '80MHz', coverage_raw: '2'
+			},
+			sleep_status_raw: '0'
 		},
 		clients: {
 			available: true,
@@ -879,6 +897,10 @@ test('renders the mobile-network panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '漫游状态'), '0');
 	assert.strictEqual(rowValue(tree, '拨号模式'), 'auto_dial');
 	assert.strictEqual(rowValue(tree, 'WAN 模式'), 'PPP');
+	assert.strictEqual(rowValue(tree, '连接模式'), 'auto_dial');
+	assert.strictEqual(rowValue(tree, '漫游自动连接原始值'), '1');
+	assert.strictEqual(rowValue(tree, '网络偏好原始值'), 'LTE_NR');
+	assert.strictEqual(rowValue(tree, '选网模式原始值'), 'auto');
 	assert.strictEqual(rowValue(tree, '运营商代码'), '460-00');
 	assert.strictEqual(rowValue(tree, 'PPP 状态'), 'ipv4_ipv6_connected');
 	assert.strictEqual(rowValue(tree, 'USB 上联'), '已连接 (eth2)');
@@ -897,7 +919,22 @@ test('renders verified Wi-Fi summary without credentials', function() {
 	assert.strictEqual(rowValue(tree, '5 GHz SSID'), 'Lab-5');
 	assert.strictEqual(rowValue(tree, '5 GHz 安全模式'), 'WPA3PSK');
 	assert.strictEqual(rowValue(tree, '5 GHz 客户端'), '1');
+	assert.strictEqual(rowValue(tree, '主网络 SSID'), 'Primary');
+	assert.strictEqual(rowValue(tree, '访客 SSID'), 'Guest');
+	assert.strictEqual(rowValue(tree, '信道原始值'), '36');
+	assert.strictEqual(rowValue(tree, '带宽原始值'), '80MHz');
+	assert.strictEqual(rowValue(tree, '休眠状态原始值'), '0');
 	assert.strictEqual(text(nodesByClass(tree, 'zte-tab-panel')[0]).indexOf('密码'), -1);
+});
+
+test('links to the native U25S console through the management gateway', function() {
+	const tree = render(completeStatus);
+	const link = nodesByTag(tree, 'a').find(function(node) {
+		return text(node) === '打开 U25S 原生控制台';
+	});
+	assert.ok(link);
+	assert.strictEqual(link.attrs.href, 'http://192.168.0.1/');
+	assert.strictEqual(link.attrs.rel, 'noreferrer noopener');
 });
 
 test('renders aggregate counts and authenticated client details', function() {

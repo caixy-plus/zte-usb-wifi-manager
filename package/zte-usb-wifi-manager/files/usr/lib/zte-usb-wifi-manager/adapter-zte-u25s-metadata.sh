@@ -26,6 +26,9 @@ ZTE_READ_FIELDS=$ZTE_READ_FIELDS',hardware_version,web_version,wa_version,device
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',wa_inner_version,flux_realtime_tx_thrpt,flux_realtime_rx_thrpt,flux_realtime_tx_bytes,flux_realtime_rx_bytes,flux_realtime_time'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time,date_month,flux_data_volume_limit_switch,flux_data_volume_limit_unit'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',ConnectionMode,autoConnectWhenRoaming,network_current_network_mode,network_net_select_mode'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',RadioOff,SSID1,AuthMode,HideSSID,MAX_Access_num,NoForwarding,m_ssid_enable,m_SSID,m_AuthMode,m_HideSSID,m_MAX_Access_num,m_NoForwarding'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',WirelessMode,CountryCode,Channel,wifi_11n_cap,wifi_coverage,SleepStatusForSingleChipCpe'
 
 # These variables are the sourced adapter contract and are consumed by other
 # library files after this metadata file returns.

@@ -148,6 +148,15 @@ function operatorCodeLabel(cellular) {
 	return cellular.mcc + '-' + cellular.mnc;
 }
 
+function nativeConsoleUrl(status) {
+	var network = status.network && typeof status.network === 'object'
+		? status.network : {};
+	if (typeof network.gateway !== 'string' ||
+		!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(network.gateway))
+		return null;
+	return 'http://' + network.gateway + '/';
+}
+
 function batteryLabel(battery) {
 	if (battery.present === false)
 		return _('未检测到电池');
@@ -410,6 +419,10 @@ function renderNetwork(status) {
 		row(_('漫游状态'), cellular.roaming),
 		row(_('拨号模式'), cellular.dial_mode),
 		row(_('WAN 模式'), cellular.wan_mode),
+		row(_('连接模式'), cellular.connection_mode),
+		row(_('漫游自动连接原始值'), cellular.auto_roaming_raw),
+		row(_('网络偏好原始值'), cellular.network_mode_raw),
+		row(_('选网模式原始值'), cellular.network_selection_mode_raw),
 		row(_('运营商代码'), operatorCodeLabel(cellular)),
 		row(_('PPP 状态'), cellular.ppp_status),
 		row(_('USB 上联'), uplinkLabel(network)),
@@ -433,6 +446,11 @@ function renderWifi(status) {
 		? bands.wifi_2_4 : {};
 	var wifi5 = bands.wifi_5 && typeof bands.wifi_5 === 'object'
 		? bands.wifi_5 : {};
+	var primary = wifi.primary && typeof wifi.primary === 'object'
+		? wifi.primary : {};
+	var guest = wifi.guest && typeof wifi.guest === 'object' ? wifi.guest : {};
+	var advanced = wifi.advanced && typeof wifi.advanced === 'object'
+		? wifi.advanced : {};
 
 	return panelRoot('wifi', _('U25S Wi-Fi'), [
 		row(_('Wi-Fi 开关'), enabledLabel(wifi.enabled)),
@@ -442,7 +460,24 @@ function renderWifi(status) {
 		row(_('2.4 GHz 客户端'), wifi24.clients),
 		row(_('5 GHz SSID'), wifi5.ssid),
 		row(_('5 GHz 安全模式'), wifi5.auth_mode),
-		row(_('5 GHz 客户端'), wifi5.clients)
+		row(_('5 GHz 客户端'), wifi5.clients),
+		row(_('无线开关原始值'), wifi.radio_off_raw),
+		row(_('主网络 SSID'), primary.ssid),
+		row(_('主网络安全模式'), primary.auth_mode),
+		row(_('主网络隐藏原始值'), primary.hidden_raw),
+		row(_('主网络最大客户端'), primary.max_clients_raw),
+		row(_('主网络隔离原始值'), primary.isolation_raw),
+		row(_('访客 SSID'), guest.ssid),
+		row(_('访客安全模式'), guest.auth_mode),
+		row(_('访客隐藏原始值'), guest.hidden_raw),
+		row(_('访客最大客户端'), guest.max_clients_raw),
+		row(_('访客隔离原始值'), guest.isolation_raw),
+		row(_('无线模式原始值'), advanced.mode_raw),
+		row(_('国家/地区原始值'), advanced.country_raw),
+		row(_('信道原始值'), advanced.channel_raw),
+		row(_('带宽原始值'), advanced.bandwidth_raw),
+		row(_('覆盖范围原始值'), advanced.coverage_raw),
+		row(_('休眠状态原始值'), wifi.sleep_status_raw)
 	]);
 }
 
@@ -767,6 +802,7 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 		var smsResult = data && data[4] && typeof data[4] === 'object'
 			? data[4] : { ok: false, value: {} };
 		var alerts = [];
+		var consoleUrl = nativeConsoleUrl(status);
 
 		if (!statusResult.ok)
 			alerts.push(E('div', { 'class': 'alert-message error' },
@@ -787,6 +823,13 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 			capabilities.traffic_write === true || capabilities.sms_write === true;
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
+			consoleUrl ? E('p', { 'class': 'zte-native-console' }, [
+				E('a', {
+					'href': consoleUrl,
+					'target': '_blank',
+					'rel': 'noreferrer noopener'
+				}, _('打开 U25S 原生控制台'))
+			]) : null,
 			alerts,
 			renderCredentialEntry(credentialsResult, onCredentialSave, credentialNotice),
 			E('div', { 'class': 'zte-tabs' }, tabs.map(function(tab) {

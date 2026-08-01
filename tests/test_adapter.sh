@@ -30,6 +30,16 @@ assert_eq false "$(
 )"
 ZTE_LOGIN_REQUIRED=1
 
+case $ZTE_READ_FIELDS in
+    *Password*|*WPAPSK*|*passwd*|*sim_iccid*|*imei*|*imsi*)
+        fail 'read field allowlist contains a credential or unique identifier'
+        ;;
+    *ConnectionMode*network_current_network_mode*RadioOff*SSID1*WirelessMode*SleepStatusForSingleChipCpe*)
+        pass
+        ;;
+    *) fail 'read field allowlist is missing console parity fields' ;;
+esac
+
 # Capability JSON and action gates must use the same compile-time flags.
 ZTE_CAP_SIM_SWITCH=1
 assert_eq true "$(
@@ -272,6 +282,10 @@ assert_failure zte_adapter_sms_unavailable_json unknown
 
 # normalize maps every field
 expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","hardware_version":null,"webui_version":null,"software_version":null,"market_name":null,"upgrade":{"new_version_state":null,"current_state":null},"modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","lte_rsrp":null,"rscp":null,"rssi":null,"roaming":null,"dial_mode":null,"wan_mode":null,"mcc":null,"mnc":null,"ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"wifi":{"enabled":null,"guest_enabled":null,"bands":{"wifi_2_4":{"ssid":null,"auth_mode":null,"clients":null},"wifi_5":{"ssid":null,"auth_mode":null,"clients":null}}},"clients":{"available":false,"reason":"not_loaded","items":[]},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":"network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state"}'
+expected=$(printf '%s' "$expected" | sed \
+    -e 's/"wan_mode":null,/"wan_mode":null,"connection_mode":null,"auto_roaming_raw":null,"network_mode_raw":null,"network_selection_mode_raw":null,/' \
+    -e 's/}}},"clients"/}},"radio_off_raw":null,"primary":{"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"guest":{"enabled_raw":null,"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"advanced":{"mode_raw":null,"country_raw":null,"channel_raw":null,"bandwidth_raw":null,"coverage_raw":null},"sleep_status_raw":null},"clients"/' \
+    -e 's/current_upgrade_state"}/current_upgrade_state,ConnectionMode,autoConnectWhenRoaming,network_current_network_mode,network_net_select_mode,RadioOff,SSID1,AuthMode,HideSSID,MAX_Access_num,NoForwarding,m_ssid_enable,m_SSID,m_AuthMode,m_HideSSID,m_MAX_Access_num,m_NoForwarding,WirelessMode,CountryCode,Channel,wifi_11n_cap,wifi_coverage,SleepStatusForSingleChipCpe"}/')
 assert_eq "$expected" "$(zte_adapter_normalize "$raw")"
 assert_success node -e 'JSON.parse(process.argv[1])' "$expected"
 
@@ -283,6 +297,14 @@ extended_cellular=$(zte_adapter_normalize \
 assert_eq '-72' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.lte_rsrp))')"
 assert_eq '-81' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.rscp))')"
 assert_eq '-55' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.rssi))')"
+
+console_status=$(zte_adapter_normalize '{"ConnectionMode":"auto_dial","autoConnectWhenRoaming":"1","network_current_network_mode":"LTE_NR","network_net_select_mode":"manual","RadioOff":"0","SSID1":"Primary","AuthMode":"WPA3PSK","HideSSID":"0","MAX_Access_num":"16","NoForwarding":"1","m_ssid_enable":"1","m_SSID":"Guest","m_AuthMode":"WPA2PSK","m_HideSSID":"1","m_MAX_Access_num":"4","m_NoForwarding":"1","WirelessMode":"11ax","CountryCode":"CN","Channel":"36","wifi_11n_cap":"80MHz","wifi_coverage":"2","SleepStatusForSingleChipCpe":"0"}')
+assert_eq auto_dial "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.connection_mode))')"
+assert_eq LTE_NR "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.network_mode_raw))')"
+assert_eq Primary "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).wifi.primary.ssid))')"
+assert_eq Guest "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).wifi.guest.ssid))')"
+assert_eq 36 "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).wifi.advanced.channel_raw))')"
+assert_eq 0 "$(printf '%s' "$console_status" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).wifi.sleep_status_raw))')"
 assert_eq '0' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.roaming))')"
 assert_eq 'auto_dial' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.dial_mode))')"
 assert_eq 'PPP' "$(printf '%s' "$extended_cellular" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).cellular.wan_mode))')"
@@ -404,6 +426,7 @@ case $out in
     *) fail "missing SMS fields not nulled: $out" ;;
 esac
 case $out in
+    *'"missing":"mc_modem_main_state,network_signalbar,'*',flux_limited_disconnect,ConnectionMode,'*',SleepStatusForSingleChipCpe"'*) pass ;;
     *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total,network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state,wa_inner_version,flux_realtime_tx_thrpt,flux_realtime_rx_thrpt,flux_realtime_tx_bytes,flux_realtime_rx_bytes,flux_realtime_time,flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time,date_month,flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect"'*) pass ;;
     *) fail "missing list wrong: $out" ;;
 esac
