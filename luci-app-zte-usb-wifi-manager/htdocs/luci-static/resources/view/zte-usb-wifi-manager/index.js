@@ -79,6 +79,13 @@ var callSmsAction = rpc.declare({
 	reject: true
 });
 
+var callDeviceAction = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'device_action',
+	params: [ 'action', 'confirm' ],
+	reject: true
+});
+
 var callOperationStatus = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'operation_status',
@@ -962,6 +969,44 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 	if (capabilities.sim_switch === true)
 		children.push(renderSimSwitch(sim, onAction, actionBusy));
 
+	if (capabilities.device_reboot === true || capabilities.device_shutdown === true) {
+		[ {
+			action: 'reboot_device',
+			capability: 'device_reboot',
+			purpose: 'device-reboot-confirm',
+			label: _('重启 U25S'),
+			warning: _('我确认重启会暂时中断移动网络连接。')
+		}, {
+			action: 'shutdown_device',
+			capability: 'device_shutdown',
+			purpose: 'device-shutdown-confirm',
+			label: _('关闭 U25S'),
+			warning: _('我确认关机后需要人工恢复设备供电或开机。')
+		} ].forEach(function(definition) {
+			if (capabilities[definition.capability] !== true)
+				return;
+			var confirmation = E('input', {
+				'type': 'checkbox',
+				'class': 'cbi-input-checkbox',
+				'data-purpose': definition.purpose
+			});
+			children.push(E('div', { 'class': 'cbi-section zte-device-action' }, [
+				E('label', { 'class': 'cbi-value' }, [ confirmation, ' ', definition.warning ]),
+				E('button', {
+					'class': 'cbi-button cbi-button-negative',
+					'type': 'button',
+					'disabled': actionBusy ? 'disabled' : null,
+					'click': function() {
+						return onAction('device', {
+							action: definition.action,
+							confirm: true
+						}, definition.label, confirmation, definition.warning);
+					}
+				}, definition.label)
+			]));
+		});
+	}
+
 	return panelRoot('device', _('设备'), children);
 }
 
@@ -1003,6 +1048,8 @@ function renderCapabilityMatrix(capabilities) {
 		[ 'wifi_write', _('Wi-Fi 设置') ],
 		[ 'traffic_write', _('流量设置') ],
 		[ 'sms_write', _('短信操作') ],
+		[ 'device_restart', _('设备重启') ],
+		[ 'device_shutdown', _('设备关机') ],
 		[ 'firmware_update', _('固件更新') ],
 		[ 'factory_reset', _('恢复出厂设置') ],
 		[ 'backup_restore', _('备份与恢复') ],
@@ -1123,7 +1170,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 
 		var writesAvailable = capabilities.sim_switch === true ||
 			capabilities.cellular_write === true || capabilities.wifi_write === true ||
-			capabilities.traffic_write === true || capabilities.sms_write === true;
+			capabilities.traffic_write === true || capabilities.sms_write === true ||
+			capabilities.device_reboot === true || capabilities.device_shutdown === true;
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
 			consoleUrl ? E('p', { 'class': 'zte-native-console' }, [
@@ -1280,6 +1328,8 @@ return view.extend({
 			case 'sms':
 				return callSmsAction(request.action, request.message_id, request.number,
 					request.content, request.confirm);
+			case 'device':
+				return callDeviceAction(request.action, request.confirm);
 			default:
 				return Promise.reject(new Error('unsupported action method'));
 			}

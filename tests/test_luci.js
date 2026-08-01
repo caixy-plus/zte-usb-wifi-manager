@@ -33,6 +33,7 @@ const rpcBehavior = {
 	wifi_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	traffic_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	sms_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
+	device_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	operation_status: function() { return Promise.resolve({ operation_id: 'op-test', state: 'queued' }); }
 };
 const rpcSpecs = {};
@@ -284,6 +285,8 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 		[ 'action', 'enabled', 'limit_bytes', 'alert_percent', 'cycle_day', 'disconnect', 'confirm' ]);
 	assert.deepStrictEqual(rpcSpecs.sms_action.params,
 		[ 'action', 'message_id', 'number', 'content', 'confirm' ]);
+	assert.deepStrictEqual(rpcSpecs.device_action.params, [ 'action', 'confirm' ]);
+	assert.strictEqual(rpcSpecs.device_action.reject, true);
 	assert.strictEqual(rpcSpecs.operation_status.reject, true);
 	assert.deepStrictEqual(rpcSpecs.operation_status.params, [ 'operation_id' ]);
 	rpcBehavior.status = function() { return Promise.resolve(4); };
@@ -296,7 +299,7 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 test('capability-gates every semantic write form', function() {
 	const capabilities = {
 		cellular_write: true, wifi_write: true, traffic_write: true,
-		sms_write: true, sim_switch: true
+		sms_write: true, sim_switch: true, device_reboot: true, device_shutdown: true
 	};
 	let tree = renderPanel({}, 'network', null, capabilities);
 	assert.ok(text(tree).indexOf('保存 APN') !== -1);
@@ -310,11 +313,72 @@ test('capability-gates every semantic write form', function() {
 	assert.ok(text(tree).indexOf('发送短信') !== -1);
 	assert.ok(text(tree).indexOf('标记已读') !== -1);
 	assert.ok(text(tree).indexOf('删除短信') !== -1);
+	tree = renderPanel({}, 'device', null, capabilities);
+	assert.ok(text(tree).indexOf('重启 U25S') !== -1);
+	assert.ok(text(tree).indexOf('关闭 U25S') !== -1);
 
 	assert.strictEqual(text(renderPanel({}, 'network')).indexOf('保存 APN'), -1);
 	assert.strictEqual(text(renderPanel({}, 'wifi')).indexOf('保存 Wi-Fi 设置'), -1);
 	assert.strictEqual(text(renderPanel({}, 'traffic')).indexOf('保存流量套餐'), -1);
 	assert.strictEqual(text(renderPanel({}, 'sms')).indexOf('发送短信'), -1);
+	assert.strictEqual(text(renderPanel({}, 'device')).indexOf('重启 U25S'), -1);
+});
+
+test('requires independent confirmation and submits device controls', async function() {
+	pollEntries.length = 0;
+	const calls = [];
+	rpcBehavior.device_action = function() {
+		calls.push(Array.from(arguments));
+		return Promise.resolve({ ok: true, operation_id: 'op-device' });
+	};
+	let tree = renderPanel({}, 'device', null,
+		{ device_reboot: true, device_shutdown: true });
+	const reboot = nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '重启 U25S';
+	});
+	const confirmations = nodesByTag(tree, 'input').filter(function(node) {
+		return node.attrs.type === 'checkbox' &&
+			String(node.attrs['data-purpose'] || '').indexOf('device-') === 0;
+	});
+	assert.strictEqual(confirmations.length, 2);
+	await reboot.attrs.click();
+	assert.strictEqual(calls.length, 0);
+
+	tree = renderPanel({}, 'device', null,
+		{ device_reboot: true, device_shutdown: true });
+	const rebootConfirmation = nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'device-reboot-confirm';
+	});
+	rebootConfirmation.checked = true;
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '重启 U25S';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[0], [ 'reboot_device', true ]);
+
+	tree = renderPanel({}, 'device', null,
+		{ device_reboot: true, device_shutdown: true });
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'device-reboot-confirm';
+	}).checked = true;
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '关闭 U25S';
+	}).attrs.click();
+	assert.strictEqual(calls.length, 1, 'reboot confirmation must not authorize shutdown');
+
+	tree = renderPanel({}, 'device', null,
+		{ device_reboot: true, device_shutdown: true });
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'device-shutdown-confirm';
+	}).checked = true;
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '关闭 U25S';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[1], [ 'shutdown_device', true ]);
+
+	assert.strictEqual(text(renderPanel({}, 'device', null,
+		{ device_reboot: true })).indexOf('关闭 U25S'), -1);
+	assert.strictEqual(text(renderPanel({}, 'device', null,
+		{ device_shutdown: true })).indexOf('重启 U25S'), -1);
 });
 
 test('submits normalized requests for each write family', async function() {

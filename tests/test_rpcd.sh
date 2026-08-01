@@ -59,7 +59,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"}}' \
+assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -148,6 +148,8 @@ for method_action in \
     traffic_action:set_traffic_plan \
     traffic_action:reset_traffic \
     sms_action:send_sms \
+    device_action:reboot_device \
+    device_action:shutdown_device \
     sms_action:delete_sms \
     sms_action:mark_sms_read
 do
@@ -180,6 +182,8 @@ sed \
     -e 's/^ZTE_CAP_WIFI_WRITE=0$/ZTE_CAP_WIFI_WRITE=1/' \
     -e 's/^ZTE_CAP_TRAFFIC_WRITE=0$/ZTE_CAP_TRAFFIC_WRITE=1/' \
     -e 's/^ZTE_CAP_SMS_WRITE=0$/ZTE_CAP_SMS_WRITE=1/' \
+    -e 's/^ZTE_CAP_DEVICE_REBOOT=0$/ZTE_CAP_DEVICE_REBOOT=1/' \
+    -e 's/^ZTE_CAP_DEVICE_SHUTDOWN=0$/ZTE_CAP_DEVICE_SHUTDOWN=1/' \
     "$metadata" >"$write_lib/adapter-zte-u25s-metadata.sh"
 # The generated stub must expand this variable when it executes, not here.
 # shellcheck disable=SC2016
@@ -192,6 +196,8 @@ printf '%s\n' \
     '  "-q get zte-usb-wifi-manager.writes.wifi_write_enabled") value=${ZTE_TEST_WIFI_WRITE_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.traffic_write_enabled") value=${ZTE_TEST_TRAFFIC_WRITE_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.sms_write_enabled") value=${ZTE_TEST_SMS_WRITE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.device_reboot_enabled") value=${ZTE_TEST_DEVICE_REBOOT_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.device_shutdown_enabled") value=${ZTE_TEST_DEVICE_SHUTDOWN_ENABLED:-0} ;;' \
     '  *) exit 1 ;;' \
     'esac' \
     'printf "%s\n" "$value"' >"$test_bin/uci"
@@ -209,6 +215,16 @@ assert_eq true "$(printf '%s' "$effective_capabilities" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
 assert_eq false "$(printf '%s' "$effective_capabilities" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).wifi_write)))')"
+independent_device_capabilities=$(
+    ZTE_TEST_WRITE_ENABLED=1 \
+    ZTE_TEST_DEVICE_REBOOT_ENABLED=1 \
+    ZTE_TEST_DEVICE_SHUTDOWN_ENABLED=0 \
+        rpcd_call call capabilities
+)
+assert_eq true "$(printf '%s' "$independent_device_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).device_reboot)))')"
+assert_eq false "$(printf '%s' "$independent_device_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).device_shutdown)))')"
 globally_disabled_capabilities=$(
     ZTE_TEST_WRITE_ENABLED=0 \
     ZTE_TEST_SIM_SWITCH_ENABLED=1 \
@@ -318,6 +334,18 @@ read_queued=$(printf '%s\n' \
     ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SMS_WRITE_ENABLED=1 \
         rpcd_call call sms_action)
 assert_queued_action "$read_queued" message_id 42
+
+reboot_queued=$(printf '%s\n' \
+    '{"action":"reboot_device","confirm":true}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_DEVICE_REBOOT_ENABLED=1 \
+        rpcd_call call device_action)
+assert_queued_action "$reboot_queued" confirm true
+
+shutdown_queued=$(printf '%s\n' \
+    '{"action":"shutdown_device","confirm":true}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_DEVICE_SHUTDOWN_ENABLED=1 \
+        rpcd_call call device_action)
+assert_queued_action "$shutdown_queued" confirm true
 
 unknown_field=$(printf '%s\n' \
     '{"action":"set_wifi","enabled":false,"goformId":"UNREVIEWED"}' |

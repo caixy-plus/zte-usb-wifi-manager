@@ -116,7 +116,8 @@ jobs:
           esac
           printf '%s\n' \
             "$release_summary" \
-            'Includes capability-gated SIM controls plus effective power execution status, readback, recovery coordination, and truthful decision audit records; uncalibrated production writes remain locked.' \
+            'U25S management-console preview with cached cellular, Wi-Fi, client, traffic, SMS, device, diagnostic, and log views.' \
+            'Eleven semantic write requests are capability-gated; all uncalibrated production writes, including independent reboot and shutdown controls, remain locked by default.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md

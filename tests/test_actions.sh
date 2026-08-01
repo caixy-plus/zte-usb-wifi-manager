@@ -21,11 +21,11 @@ state=$work/state
 
 for action in \
     switch_sim set_apn set_connection_mode set_wifi set_traffic_plan \
-    reset_traffic send_sms delete_sms mark_sms_read
+    reset_traffic send_sms delete_sms mark_sms_read reboot_device shutdown_device
 do
     assert_success zte_action_type_valid "$action"
 done
-for action in '' reboot_device 'switch sim' '../switch_sim' SWITCH_SIM; do
+for action in '' factory_reset 'switch sim' '../switch_sim' SWITCH_SIM; do
     assert_failure zte_action_type_valid "$action"
 done
 

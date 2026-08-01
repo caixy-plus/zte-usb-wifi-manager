@@ -3,7 +3,7 @@
 zte_action_type_valid() {
 	case ${1-} in
 		switch_sim|set_apn|set_connection_mode|set_wifi|set_traffic_plan|\
-reset_traffic|send_sms|delete_sms|mark_sms_read)
+reset_traffic|send_sms|delete_sms|mark_sms_read|reboot_device|shutdown_device)
 			return 0
 			;;
 		*)

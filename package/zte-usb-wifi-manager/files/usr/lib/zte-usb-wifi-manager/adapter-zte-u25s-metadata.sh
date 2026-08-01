@@ -17,6 +17,8 @@ ZTE_CAP_CELLULAR_WRITE=0
 ZTE_CAP_WIFI_WRITE=0
 ZTE_CAP_TRAFFIC_WRITE=0
 ZTE_CAP_SMS_WRITE=0
+ZTE_CAP_DEVICE_REBOOT=0
+ZTE_CAP_DEVICE_SHUTDOWN=0
 
 ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_exist,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc'
@@ -37,6 +39,7 @@ ZTE_READ_FIELDS=$ZTE_READ_FIELDS',network_lte_ca_pcell_arfcn,lte_ca_scell_arfcn,
 : "$ZTE_ADAPTER_ID" "$ZTE_ADAPTER_MODEL" "$ZTE_CAP_SIM_SWITCH"
 : "$ZTE_CAP_CELLULAR_WRITE" "$ZTE_CAP_WIFI_WRITE" "$ZTE_CAP_SMS_WRITE"
 : "$ZTE_CAP_TRAFFIC_WRITE"
+: "$ZTE_CAP_DEVICE_REBOOT" "$ZTE_CAP_DEVICE_SHUTDOWN"
 : "$ZTE_LOGIN_REQUIRED" "$ZTE_READ_FIELDS"
 
 zte_adapter_login_required() {
@@ -66,6 +69,8 @@ zte_adapter_feature_status_json() {
 	_zte_feature_wifi_enabled=${4-0}
 	_zte_feature_traffic_enabled=${5-0}
 	_zte_feature_sms_enabled=${6-0}
+	_zte_feature_reboot_enabled=${7-0}
+	_zte_feature_shutdown_enabled=${8-0}
 	_zte_feature_sim_effective=$(zte_adapter_effective_capability_bool \
 		"$ZTE_CAP_SIM_SWITCH" "$_zte_feature_write_enabled" \
 		"$_zte_feature_sim_enabled")
@@ -81,6 +86,12 @@ zte_adapter_feature_status_json() {
 	_zte_feature_sms_effective=$(zte_adapter_effective_capability_bool \
 		"$ZTE_CAP_SMS_WRITE" "$_zte_feature_write_enabled" \
 		"$_zte_feature_sms_enabled")
+	_zte_feature_reboot_effective=$(zte_adapter_effective_capability_bool \
+		"$ZTE_CAP_DEVICE_REBOOT" "$_zte_feature_write_enabled" \
+		"$_zte_feature_reboot_enabled")
+	_zte_feature_shutdown_effective=$(zte_adapter_effective_capability_bool \
+		"$ZTE_CAP_DEVICE_SHUTDOWN" "$_zte_feature_write_enabled" \
+		"$_zte_feature_shutdown_enabled")
 
 	printf '%s' '{'
 	printf '%s' '"cellular_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
@@ -94,6 +105,8 @@ zte_adapter_feature_status_json() {
 	printf '"wifi_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_wifi_effective"
 	printf '"traffic_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_traffic_effective"
 	printf '"sms_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_sms_effective"
+	printf '"device_restart":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_reboot_effective"
+	printf '"device_shutdown":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_shutdown_effective"
 	printf '%s' '"firmware_update":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
 	printf '%s' '"factory_reset":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
 	printf '%s' '"backup_restore":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
@@ -108,26 +121,31 @@ zte_adapter_effective_capabilities_json() {
 	_zte_metadata_wifi_enabled=${4-0}
 	_zte_metadata_traffic_enabled=${5-0}
 	_zte_metadata_sms_enabled=${6-0}
+	_zte_metadata_reboot_enabled=${7-0}
+	_zte_metadata_shutdown_enabled=${8-0}
 	if zte_adapter_login_required; then
 		_zte_metadata_login_required=true
 	else
 		_zte_metadata_login_required=false
 	fi
-	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s,"feature_status":%s}\n' \
+	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s,"device_reboot":%s,"device_shutdown":%s,"feature_status":%s}\n' \
 		"$_zte_metadata_login_required" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SIM_SWITCH" "$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_CELLULAR_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_cellular_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_WIFI_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_wifi_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_TRAFFIC_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_traffic_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SMS_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_sms_enabled")" \
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_DEVICE_REBOOT" "$_zte_metadata_write_enabled" "$_zte_metadata_reboot_enabled")" \
+		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_DEVICE_SHUTDOWN" "$_zte_metadata_write_enabled" "$_zte_metadata_shutdown_enabled")" \
 		"$(zte_adapter_feature_status_json \
 			"$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled" \
 			"$_zte_metadata_cellular_enabled" "$_zte_metadata_wifi_enabled" \
-			"$_zte_metadata_traffic_enabled" "$_zte_metadata_sms_enabled")"
+			"$_zte_metadata_traffic_enabled" "$_zte_metadata_sms_enabled" \
+			"$_zte_metadata_reboot_enabled" "$_zte_metadata_shutdown_enabled")"
 }
 
 zte_adapter_capabilities_json() {
-	zte_adapter_effective_capabilities_json 1 1 1 1 1 1
+	zte_adapter_effective_capabilities_json 1 1 1 1 1 1 1 1
 }
 
 zte_adapter_action_supported() {
@@ -137,6 +155,8 @@ zte_adapter_action_supported() {
 		set_wifi) [ "$ZTE_CAP_WIFI_WRITE" = 1 ] ;;
 		set_traffic_plan|reset_traffic) [ "$ZTE_CAP_TRAFFIC_WRITE" = 1 ] ;;
 		send_sms|delete_sms|mark_sms_read) [ "$ZTE_CAP_SMS_WRITE" = 1 ] ;;
+		reboot_device) [ "$ZTE_CAP_DEVICE_REBOOT" = 1 ] ;;
+		shutdown_device) [ "$ZTE_CAP_DEVICE_SHUTDOWN" = 1 ] ;;
 		*) return 1 ;;
 	esac
 }
@@ -158,6 +178,8 @@ zte_adapter_action_feature_option() {
 		set_wifi) printf '%s\n' wifi_write_enabled ;;
 		set_traffic_plan|reset_traffic) printf '%s\n' traffic_write_enabled ;;
 		send_sms|delete_sms|mark_sms_read) printf '%s\n' sms_write_enabled ;;
+		reboot_device) printf '%s\n' device_reboot_enabled ;;
+		shutdown_device) printf '%s\n' device_shutdown_enabled ;;
 		*) return 1 ;;
 	esac
 }
@@ -370,6 +392,11 @@ zte_adapter_action_payload_valid() {
 				'action message_id' 'action message_id' || return 1
 			zte_adapter_payload_message_id "$(zte_json_flat_get \
 				"$_zte_metadata_payload" message_id)"
+			;;
+		reboot_device|shutdown_device)
+			zte_adapter_payload_schema "$_zte_metadata_payload" \
+				'action confirm' 'action confirm' || return 1
+			[ "$(zte_json_flat_get "$_zte_metadata_payload" confirm)" = true ]
 			;;
 		*) return 1 ;;
 	esac

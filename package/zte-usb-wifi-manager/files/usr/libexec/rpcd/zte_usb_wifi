@@ -16,7 +16,7 @@ CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/creden
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"}}'
+		'{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"}}'
 }
 
 get_status() {
@@ -68,9 +68,16 @@ get_capabilities() {
 	_zte_cap_sms=$(
 		uci -q get zte-usb-wifi-manager.writes.sms_write_enabled 2>/dev/null
 	) || _zte_cap_sms=0
+	_zte_cap_reboot=$(
+		uci -q get zte-usb-wifi-manager.writes.device_reboot_enabled 2>/dev/null
+	) || _zte_cap_reboot=0
+	_zte_cap_shutdown=$(
+		uci -q get zte-usb-wifi-manager.writes.device_shutdown_enabled 2>/dev/null
+	) || _zte_cap_shutdown=0
 	zte_adapter_effective_capabilities_json \
 		"$_zte_cap_write" "$_zte_cap_sim" "$_zte_cap_cellular" \
-		"$_zte_cap_wifi" "$_zte_cap_traffic" "$_zte_cap_sms"
+		"$_zte_cap_wifi" "$_zte_cap_traffic" "$_zte_cap_sms" \
+		"$_zte_cap_reboot" "$_zte_cap_shutdown"
 }
 
 set_credentials() {
@@ -148,6 +155,10 @@ traffic_action:reset_traffic|\
 sms_action:send_sms|\
 sms_action:delete_sms|\
 sms_action:mark_sms_read)
+			return 0
+			;;
+		device_action:reboot_device|\
+device_action:shutdown_device)
 			return 0
 			;;
 		*)
@@ -241,7 +252,7 @@ case ${1-} in
 			clear_credentials) clear_credentials ;;
 			operation_status) get_operation_status ;;
 			logs) get_logs ;;
-			cellular_action|wifi_action|traffic_action|sms_action)
+			cellular_action|wifi_action|traffic_action|sms_action|device_action)
 				handle_action "$2"
 				;;
 			*) exit 1 ;;

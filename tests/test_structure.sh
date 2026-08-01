@@ -44,7 +44,7 @@ esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=20$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=21$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -78,6 +78,8 @@ assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option ce
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option wifi_write_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option traffic_write_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option sms_write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option device_reboot_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option device_shutdown_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
     "option off_probe_interval '900'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
@@ -184,7 +186,7 @@ assert_file_contains "$sim_calibration_tool" \
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=9$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=10$'
 assert_file_contains "$luci/Makefile" '^LUCI_PKGARCH:=all$'
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'
@@ -208,7 +210,7 @@ if (JSON.stringify(read.ubus.zte_usb_wifi) !==
     JSON.stringify(["status", "sms_messages", "capabilities", "credential_status", "operation_status", "logs"]))
     process.exit(1);
 if (JSON.stringify(write.ubus.zte_usb_wifi) !==
-    JSON.stringify(["set_credentials", "clear_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action"]))
+    JSON.stringify(["set_credentials", "clear_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action", "device_action"]))
     process.exit(1);
 ' "$acl"
 
@@ -245,7 +247,7 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '源码 backend r20 / LuCI r9'
+assert_file_contains README.md '源码 backend r21 / LuCI r10'
 assert_file_contains README.md '九类语义写请求契约'
 assert_file_contains README.md '生产写 capability 仍全部保持 0'
 assert_file_contains README.md 'docs/superpowers/plans/2026-08-01-write-request-contracts\.md'
@@ -1039,6 +1041,8 @@ config_get() {
         wifi_write_enabled) wifi_write_enabled=0 ;;
         traffic_write_enabled) traffic_write_enabled=0 ;;
         sms_write_enabled) sms_write_enabled=0 ;;
+        device_reboot_enabled) device_reboot_enabled=0 ;;
+        device_shutdown_enabled) device_shutdown_enabled=0 ;;
         poll_interval) poll_interval=30 ;;
         failure_threshold) failure_threshold=3 ;;
         host) host=192.168.0.1 ;;

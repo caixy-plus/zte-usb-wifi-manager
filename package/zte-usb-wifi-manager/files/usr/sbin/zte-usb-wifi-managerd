@@ -48,6 +48,8 @@ load_config() {
 	wifi_write_enabled=''
 	traffic_write_enabled=''
 	sms_write_enabled=''
+	device_reboot_enabled=''
+	device_shutdown_enabled=''
 	poll_interval=''
 	failure_threshold=''
 	host=''
@@ -76,6 +78,8 @@ load_config() {
 	config_get wifi_write_enabled writes wifi_write_enabled 0
 	config_get traffic_write_enabled writes traffic_write_enabled 0
 	config_get sms_write_enabled writes sms_write_enabled 0
+	config_get device_reboot_enabled writes device_reboot_enabled 0
+	config_get device_shutdown_enabled writes device_shutdown_enabled 0
 	config_get poll_interval main poll_interval 30
 	config_get failure_threshold main failure_threshold 3
 	config_get host zte host 192.168.0.1
@@ -130,8 +134,9 @@ load_config() {
 	}
 	case $enabled:$write_enabled:$sim_switch_enabled:\
 $cellular_write_enabled:$wifi_write_enabled:$traffic_write_enabled:\
-$sms_write_enabled:$battery_enabled:$manual_full:$schedule_enabled in
-		[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]) ;;
+$sms_write_enabled:$device_reboot_enabled:$device_shutdown_enabled:\
+$battery_enabled:$manual_full:$schedule_enabled in
+		[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]) ;;
 		*)
 			logger -t zte-usb-wifi-manager 'invalid policy flags'
 			return 1
@@ -192,6 +197,12 @@ configured_action_enabled() {
 			;;
 		send_sms|delete_sms|mark_sms_read)
 			_zte_configured_feature=$sms_write_enabled
+			;;
+		reboot_device)
+			_zte_configured_feature=$device_reboot_enabled
+			;;
+		shutdown_device)
+			_zte_configured_feature=$device_shutdown_enabled
 			;;
 		*) return 1 ;;
 	esac

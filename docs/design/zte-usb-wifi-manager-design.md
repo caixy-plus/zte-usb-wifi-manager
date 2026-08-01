@@ -533,6 +533,7 @@ config integration 'recovery'
 | `sms_list` | 文件夹、分页 | 返回短信元数据 |
 | `sms_get` | 消息 ID | 按需读取正文 |
 | `sms_action` | 发送/保存/删除/已读 | 执行短信动作 |
+| `device_action` | `action`、`confirm` | 排队执行经能力门控的重启或关机；未校准时拒绝 |
 | `logs` | `level`、`limit` | 返回脱敏事件日志 |
 
 每个方法都必须配置 rpcd ACL。危险写操作还需要服务端再次验证参数和当前状态，不能只依赖前端确认。
