@@ -17,23 +17,23 @@
 - Modify: `tests/test_adapter.sh`
 - Modify: `tests/test_luci.js`
 
-- [ ] **Step 1: Extend the synthetic successful fixture**
+- [x] **Step 1: Extend the synthetic successful fixture**
 
 Add non-identifying fixture values for firmware version, current and monthly
 traffic, plan switch/unit/limit/alert, auto-clear day and disconnect behavior.
 
-- [ ] **Step 2: Assert the normalized contract**
+- [x] **Step 2: Assert the normalized contract**
 
 Require `device.firmware` plus `device.traffic` with nested `realtime`,
 `current`, `monthly`, and `plan` objects. Empty firmware counters normalize to
 integer zero; configured numeric strings remain integers.
 
-- [ ] **Step 3: Assert LuCI traffic and device rendering**
+- [x] **Step 3: Assert LuCI traffic and device rendering**
 
 Require the traffic tab to render rates, bytes, durations and plan state from
 the normalized snapshot, and the device tab to render firmware version.
 
-- [ ] **Step 4: Run focused tests and verify RED**
+- [x] **Step 4: Run focused tests and verify RED**
 
 Run `./tests/test_adapter.sh && node tests/test_luci.js`. Expected: adapter
 normalization assertions fail because the fields are not implemented.
@@ -47,23 +47,23 @@ normalization assertions fail because the fields are not implemented.
 - Modify: `tests/fixtures/u25s/read_missing_fields.json`
 - Modify: `tests/test_adapter.sh`
 
-- [ ] **Step 1: Add exact observed fields to `ZTE_READ_FIELDS` and simulator allowlist**
+- [x] **Step 1: Add exact observed fields to `ZTE_READ_FIELDS` and simulator allowlist**
 
 Use the field names captured in the target `service.js`; do not use wildcards
 or request identifiers such as ICCID/IMEI.
 
-- [ ] **Step 2: Add strict numeric helpers**
+- [x] **Step 2: Add strict numeric helpers**
 
 Create an adapter helper that accepts an absent field as JSON null, an empty
 counter as zero only when requested by the caller, and otherwise accepts only
 unsigned decimal strings. Invalid counter syntax rejects the snapshot.
 
-- [ ] **Step 3: Emit the normalized traffic and firmware objects**
+- [x] **Step 3: Emit the normalized traffic and firmware objects**
 
 Keep all JSON assembly inside the adapter and escape firmware text. Preserve
 missing configuration fields as null rather than inventing defaults.
 
-- [ ] **Step 4: Run adapter and simulator tests and verify GREEN**
+- [x] **Step 4: Run adapter and simulator tests and verify GREEN**
 
 Run `./tests/test_adapter.sh && ./tests/test_u25s_simulator.sh` and expect both
 suites to pass.
@@ -74,18 +74,18 @@ suites to pass.
 - Modify: `luci-app-zte-usb-wifi-manager/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js`
 - Modify: `tests/test_luci.js`
 
-- [ ] **Step 1: Add byte, rate, duration and enabled-state presentation helpers**
+- [x] **Step 1: Add byte, rate, duration and enabled-state presentation helpers**
 
 Helpers must preserve null as an em dash and distinguish zero from unknown.
 Use bounded, deterministic unit formatting without browser locale dependence.
 
-- [ ] **Step 2: Replace the traffic placeholder**
+- [x] **Step 2: Replace the traffic placeholder**
 
 Render current upload/download rate, current sent/received bytes and duration,
 monthly sent/received bytes and duration, and plan enabled/unit/limit/alert/
 clear-day/disconnect state.
 
-- [ ] **Step 3: Add firmware to Device and run LuCI tests**
+- [x] **Step 3: Add firmware to Device and run LuCI tests**
 
 Run `node tests/test_luci.js` and expect all assertions to pass.
 
@@ -96,21 +96,21 @@ Run `node tests/test_luci.js` and expect all assertions to pass.
 - Modify: `README.md`
 - Modify: `docs/superpowers/plans/2026-08-01-traffic-device-read.md`
 
-- [ ] **Step 1: Record schema-only evidence**
+- [x] **Step 1: Record schema-only evidence**
 
 Document field names, response types, empty-value behavior and the fact that no
 raw SSID, client identifier, firmware value or credential was captured.
 
-- [ ] **Step 2: Update current status and complete the checklist**
+- [x] **Step 2: Update current status and complete the checklist**
 
 State that traffic and firmware reads are implemented from verified contracts;
 do not claim a write capability.
 
-- [ ] **Step 3: Run `make check` and inspect the exit code**
+- [x] **Step 3: Run `make check` and inspect the exit code**
 
 Expected: every suite and shellcheck exits zero.
 
-- [ ] **Step 4: Commit and push**
+- [x] **Step 4: Commit and push**
 
 Use focused commits for tests, adapter, LuCI, and documentation, then push
 `codex/phase1-phase2`.

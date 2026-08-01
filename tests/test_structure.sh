@@ -229,7 +229,7 @@ assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 
 assert_file_contains README.md 'LuCI 已采用设备控制台导航'
 assert_file_contains README.md 'SIM 类型与电池扩展状态'
 assert_file_contains README.md '短信总数与脱敏事件日志'
-assert_file_contains README.md 'Wi-Fi 与流量仍等待经过验证的 fixture'
+assert_file_contains README.md '固件版本、实时/本次/本月流量和套餐状态已按目标固件契约接入只读展示'
 assert_file_contains README.md 'hardware Power Adapter'
 # Match literal Markdown backticks.
 # shellcheck disable=SC2016
