@@ -62,4 +62,4 @@
 - [x] Add failing documentation and release assertions for backend r19 / LuCI r8.
 - [x] Update package releases and explain immediate retry plus local credential removal.
 - [x] Run `make check`, secret scan and `git diff --check`; audit that all device write capabilities remain false.
-- [ ] Commit, push, build with both official SDKs, and validate both packages in isolated QEMU.
+- [x] Commit, push, build with both official SDKs, and validate both packages in isolated QEMU.

@@ -15,7 +15,7 @@
 ## 当前状态
 
 仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r19 / LuCI r8
-在已完成双 SDK 和双版本 QEMU 生命周期验证的 r18/r7 基线上改善设备登录体验；
+已完成双 SDK 和双版本 QEMU 生命周期验证，并改善设备登录体验；
 最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
@@ -120,6 +120,13 @@ backend r18 / LuCI r7 已完成本地检查、双 SDK 构建和双版本 QEMU �
 [r18/r7 SDK 验证](docs/validation/2026-08-01-r18-r7-sdk.md)和
 [r18/r7 QEMU 验证](docs/validation/2026-08-01-r18-r7-qemu.md)。该版本尚未发布
 Release，也未升级主路由器。
+
+backend r19 / LuCI r8 已完成本地检查、双 SDK 构建和双版本 QEMU 生命周期验证。
+两套全新隔离环境均验证了凭据保存、状态读取、清除和幂等清除，且 rpcd 响应不回显
+密码；安装、procd/rpcd/ubus、默认写门控、权限和卸载清理也全部通过。详见
+[r19/r8 SDK 验证](docs/validation/2026-08-01-r19-r8-sdk.md)和
+[r19/r8 QEMU 验证](docs/validation/2026-08-01-r19-r8-qemu.md)。该版本尚未发布
+Release，也未升级主路由器或连接真实 U25S。
 
 目标固件登录脚本后续复核发现第一轮 SHA-256 也必须使用大写十六进制；backend
 r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在
