@@ -55,6 +55,23 @@ READ_FIELDS = {
     "battery_pers",
     "battery_temperature_level",
     "sms_data_total",
+	"wa_inner_version",
+	"flux_realtime_tx_thrpt",
+	"flux_realtime_rx_thrpt",
+	"flux_realtime_tx_bytes",
+	"flux_realtime_rx_bytes",
+	"flux_realtime_time",
+	"flux_monthly_tx_bytes",
+	"flux_monthly_rx_bytes",
+	"flux_monthly_time",
+	"date_month",
+	"flux_data_volume_limit_switch",
+	"flux_data_volume_limit_unit",
+	"flux_data_volume_limit_size",
+	"flux_data_volume_alert_percent",
+	"flux_auto_clear_flow_data_switch",
+	"flux_clear_date",
+	"flux_limited_disconnect",
 }
 
 

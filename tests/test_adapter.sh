@@ -224,9 +224,24 @@ case $out in
     *) fail "missing SMS fields not nulled: $out" ;;
 esac
 case $out in
-    *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total"'*) pass ;;
+    *'"missing":"mc_modem_main_state,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total,wa_inner_version,flux_realtime_tx_thrpt,flux_realtime_rx_thrpt,flux_realtime_tx_bytes,flux_realtime_rx_bytes,flux_realtime_time,flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time,date_month,flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect"'*) pass ;;
     *) fail "missing list wrong: $out" ;;
 esac
+
+# Empty counters follow the target service.js behavior and become zero, while
+# malformed counters and non-boolean plan flags reject the candidate snapshot.
+empty_traffic_out=$(zte_adapter_normalize \
+    '{"flux_realtime_tx_thrpt":"","flux_monthly_rx_bytes":""}')
+assert_eq 0 "$(node -e 'const v=JSON.parse(process.argv[1]);process.stdout.write(String(v.traffic.realtime.upload_bps))' "$empty_traffic_out")"
+assert_eq 0 "$(node -e 'const v=JSON.parse(process.argv[1]);process.stdout.write(String(v.traffic.monthly.received_bytes))' "$empty_traffic_out")"
+for invalid_response in \
+    '{"flux_realtime_tx_thrpt":"01"}' \
+    '{"flux_monthly_rx_bytes":"-1"}' \
+    '{"flux_data_volume_alert_percent":"80%"}' \
+    '{"flux_data_volume_limit_switch":"yes"}'
+do
+    assert_failure zte_adapter_normalize "$invalid_response"
+done
 
 # malformed response fails without any retry
 get_calls=$work/get-calls

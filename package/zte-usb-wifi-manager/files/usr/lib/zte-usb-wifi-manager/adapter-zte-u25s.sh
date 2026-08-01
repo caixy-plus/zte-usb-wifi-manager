@@ -37,6 +37,62 @@ zte_adapter_json_field() {
 	fi
 }
 
+# Print one field as a JSON string, using null for an absent or empty value.
+zte_adapter_json_nonempty_field() {
+	if ! zte_json_flat_has "$1" "$2"; then
+		printf 'null'
+		return
+	fi
+	_zte_json_nonempty_value=$(zte_json_flat_get "$1" "$2")
+	if [ -z "$_zte_json_nonempty_value" ]; then
+		printf 'null'
+	else
+		printf '"%s"' "$(zte_json_escape "$_zte_json_nonempty_value")"
+	fi
+}
+
+# Print an unsigned decimal field as a JSON number. The third argument controls
+# whether firmware-defined empty counters become zero (1) or remain unknown (0).
+zte_adapter_uint_json() {
+	_zte_uint_json_source=$1
+	_zte_uint_json_field=$2
+	_zte_uint_json_empty_zero=${3-0}
+	if ! zte_json_flat_has "$_zte_uint_json_source" "$_zte_uint_json_field"; then
+		printf 'null'
+		return
+	fi
+	_zte_uint_json_value=$(zte_json_flat_get \
+		"$_zte_uint_json_source" "$_zte_uint_json_field")
+	if [ -z "$_zte_uint_json_value" ]; then
+		if [ "$_zte_uint_json_empty_zero" = 1 ]; then
+			printf '0'
+		else
+			printf 'null'
+		fi
+		return
+	fi
+	zte_is_uint "$_zte_uint_json_value" || return 1
+	case $_zte_uint_json_value in
+		0|[1-9]|[1-9][0-9]*) printf '%s' "$_zte_uint_json_value" ;;
+		*) return 1 ;;
+	esac
+}
+
+# Print a 0/1 device option as JSON false/true, or null when absent/empty.
+zte_adapter_optional_bool_json() {
+	if ! zte_json_flat_has "$1" "$2"; then
+		printf 'null'
+		return
+	fi
+	_zte_optional_bool_value=$(zte_json_flat_get "$1" "$2")
+	case $_zte_optional_bool_value in
+		'') printf 'null' ;;
+		0) printf 'false' ;;
+		1) printf 'true' ;;
+		*) return 1 ;;
+	esac
+}
+
 # Succeed when the response contains at least one known read field.
 zte_adapter_has_any_field() {
 	_zte_old_ifs=$IFS
@@ -133,6 +189,39 @@ zte_adapter_normalize() {
 	_zte_temperature_level=$(
 		zte_adapter_json_field "$_zte_raw" battery_temperature_level
 	)
+	_zte_firmware=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" wa_inner_version)
+	_zte_realtime_tx=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_realtime_tx_thrpt 1) || return 1
+	_zte_realtime_rx=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_realtime_rx_thrpt 1) || return 1
+	_zte_current_tx=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_realtime_tx_bytes 1) || return 1
+	_zte_current_rx=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_realtime_rx_bytes 1) || return 1
+	_zte_current_time=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_realtime_time 1) || return 1
+	_zte_monthly_tx=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_monthly_tx_bytes 1) || return 1
+	_zte_monthly_rx=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_monthly_rx_bytes 1) || return 1
+	_zte_monthly_time=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_monthly_time 1) || return 1
+	_zte_month=$(zte_adapter_json_nonempty_field "$_zte_raw" date_month)
+	_zte_plan_enabled=$(zte_adapter_optional_bool_json \
+		"$_zte_raw" flux_data_volume_limit_switch) || return 1
+	_zte_plan_unit=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" flux_data_volume_limit_unit)
+	_zte_plan_limit=$(zte_adapter_json_nonempty_field \
+		"$_zte_raw" flux_data_volume_limit_size)
+	_zte_plan_alert=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_data_volume_alert_percent 0) || return 1
+	_zte_plan_auto_clear=$(zte_adapter_optional_bool_json \
+		"$_zte_raw" flux_auto_clear_flow_data_switch) || return 1
+	_zte_plan_clear_day=$(zte_adapter_uint_json \
+		"$_zte_raw" flux_clear_date 0) || return 1
+	_zte_plan_disconnect=$(zte_adapter_optional_bool_json \
+		"$_zte_raw" flux_limited_disconnect) || return 1
 
 	if zte_json_flat_has "$_zte_raw" battery_exist; then
 		_zte_present_raw=$(zte_json_flat_get "$_zte_raw" battery_exist)
@@ -192,8 +281,8 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"sms":{"total":%s},"missing":"%s"}\n' \
-		"$ZTE_ADAPTER_MODEL" \
+	printf '{"online":true,"model":"%s","firmware":%s,"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
+		"$ZTE_ADAPTER_MODEL" "$_zte_firmware" \
 		"$(zte_json_escape "$_zte_modem_state")" \
 		"$(zte_json_escape "$_zte_net_type")" \
 		"$(zte_json_escape "$_zte_provider")" \
@@ -203,6 +292,12 @@ zte_adapter_normalize() {
 		"$_zte_slot" "$_zte_sim_type" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
 		"$_zte_battery_value" "$_zte_battery_pers" "$_zte_temperature_level" \
+		"$_zte_realtime_tx" "$_zte_realtime_rx" \
+		"$_zte_current_tx" "$_zte_current_rx" "$_zte_current_time" \
+		"$_zte_monthly_tx" "$_zte_monthly_rx" "$_zte_monthly_time" \
+		"$_zte_month" "$_zte_plan_enabled" "$_zte_plan_unit" \
+		"$_zte_plan_limit" "$_zte_plan_alert" "$_zte_plan_auto_clear" \
+		"$_zte_plan_clear_day" "$_zte_plan_disconnect" \
 		"$_zte_sms_total" \
 		"$(zte_json_escape "$_zte_missing")"
 }

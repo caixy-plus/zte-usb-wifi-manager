@@ -18,6 +18,9 @@ ZTE_CAP_TRAFFIC_WRITE=0
 ZTE_CAP_SMS_WRITE=0
 
 ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_exist,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',wa_inner_version,flux_realtime_tx_thrpt,flux_realtime_rx_thrpt,flux_realtime_tx_bytes,flux_realtime_rx_bytes,flux_realtime_time'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time,date_month,flux_data_volume_limit_switch,flux_data_volume_limit_unit'
+ZTE_READ_FIELDS=$ZTE_READ_FIELDS',flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect'
 
 # These variables are the sourced adapter contract and are consumed by other
 # library files after this metadata file returns.
