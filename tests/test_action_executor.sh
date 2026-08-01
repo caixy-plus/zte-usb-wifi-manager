@@ -197,8 +197,8 @@ assert_eq write_failed "$(
 )"
 assert_eq 2 "$(wc -l <"$login_log" | tr -d ' ')"
 
-# The verified target firmware has HAS_LOGIN:false. Anonymous mode must not
-# reject an empty credential or attempt LOGIN before its gated write.
+# An explicitly configured HAS_LOGIN:false firmware variant must not reject an
+# empty credential or attempt LOGIN before its gated write.
 # shellcheck disable=SC2034
 ZTE_LOGIN_REQUIRED=0
 : >"$login_log"

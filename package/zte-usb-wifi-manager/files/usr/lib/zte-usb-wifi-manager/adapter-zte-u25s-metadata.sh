@@ -5,9 +5,10 @@
 ZTE_ADAPTER_ID=zte_u25s
 ZTE_ADAPTER_MODEL=U25S
 
-# The target firmware's published WebUI config declares HAS_LOGIN:false. Its
-# own service layer therefore treats the device as logged in without LOGIN.
-ZTE_LOGIN_REQUIRED=0
+# The current target firmware's published WebUI config declares HAS_LOGIN:true
+# and PASSWORD_ENCODE:true. Anonymous reads are still probed first, but every
+# write must have an authenticated session.
+ZTE_LOGIN_REQUIRED=1
 
 # Write capabilities remain disabled until their request parameters and
 # recovery behavior have been calibrated on the target firmware.

@@ -14,21 +14,21 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/adapter-zte-u25s.sh"
 . "$lib/snapshot.sh"
 
-# The inspected target firmware advertises HAS_LOGIN:false and its WebUI
-# therefore treats the device as logged in without a LOGIN exchange.
-assert_eq 0 "${ZTE_LOGIN_REQUIRED:-missing}"
-assert_failure zte_adapter_login_required
-assert_eq false "$(
-    zte_adapter_capabilities_json |
-        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).login_required)))'
-)"
-ZTE_LOGIN_REQUIRED=1
+# The current target firmware advertises HAS_LOGIN:true. Writes must therefore
+# authenticate, while read paths may still accept a valid anonymous probe.
+assert_eq 1 "${ZTE_LOGIN_REQUIRED:-missing}"
 assert_success zte_adapter_login_required
 assert_eq true "$(
     zte_adapter_capabilities_json |
         node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).login_required)))'
 )"
 ZTE_LOGIN_REQUIRED=0
+assert_failure zte_adapter_login_required
+assert_eq false "$(
+    zte_adapter_capabilities_json |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).login_required)))'
+)"
+ZTE_LOGIN_REQUIRED=1
 
 # Capability JSON and action gates must use the same compile-time flags.
 ZTE_CAP_SIM_SWITCH=1
@@ -99,7 +99,6 @@ assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
 
 # If the anonymous probe is valid JSON but has no known status fields, an
 # absent password is a distinct "credentials required" outcome.
-ZTE_LOGIN_REQUIRED=1
 : >"$jar"
 : >"$anonymous_logins"
 # Injected into zte_adapter_fetch from the sourced production library.
@@ -111,10 +110,10 @@ anonymous_status=$?
 set -e
 assert_eq 2 "$anonymous_status"
 assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
-ZTE_LOGIN_REQUIRED=0
 
-# A stale optional credential must never make HAS_LOGIN:false firmware enter
+# An explicitly configured HAS_LOGIN:false firmware variant must never enter
 # LOGIN after a malformed or unknown anonymous response.
+ZTE_LOGIN_REQUIRED=0
 : >"$anonymous_logins"
 set +e
 zte_adapter_fetch 192.168.0.1 stale-optional-password "$jar" >/dev/null
@@ -122,6 +121,7 @@ anonymous_status=$?
 set -e
 assert_eq 1 "$anonymous_status"
 assert_eq 0 "$(wc -l <"$anonymous_logins" | tr -d ' ')"
+ZTE_LOGIN_REQUIRED=1
 
 # fetch with a warm cookie jar performs no login
 : >"$jar"

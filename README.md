@@ -83,9 +83,9 @@ QEMU 与当时的 OpenWrt 25.12.5 Cudy TR3000 实机只读 probe 见
 r9 已完成双 SDK 构建并正式升级。backend r10 随后加入跨进程登录串行化并在
 同一设备正式升级，但单次校准 probe 仍返回 `authentication_failed`，因此并发
 不是该认证失败的根因。backend r11 对齐了登录 POST 和成功码并在同一设备正式
-升级，但唯一一次 probe 仍返回 `authentication_failed`。随后对目标固件
-`config.js` 和 `service.js` 的被动复核确认 `HAS_LOGIN:false`：原生 WebUI 根本
-不会执行 LOGIN。backend r12 按该契约改为匿名读取后，实机 probe 已越过认证并
+升级，但唯一一次 probe 仍返回 `authentication_failed`。随后当时对目标固件
+`config.js` 和 `service.js` 的被动复核曾判断 `HAS_LOGIN:false`。backend r12
+按该契约改为匿名读取后，实机 probe 已越过认证并
 准确停在 modem 状态检查；只读响应确认目标枚举为 `modem_init_complete`。backend
 r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。随后守护进程
 暴露出目标固件在满电时返回 `battery_charging=2`；backend r14 已修复实机满电状态枚举，
@@ -100,6 +100,13 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 [r13 modem 状态校准](docs/validation/2026-07-31-r13-modem-state.md)。
 满电枚举修复与实机状态恢复见
 [r14 电池充电枚举校准](docs/validation/2026-07-31-r14-battery-charging.md)。
+
+2026-08-01 对当前设备静态资源再次核验后，`config.js` 明确为
+`HAS_LOGIN:true`、`PASSWORD_ENCODE:true`，登录页也会执行双 SHA-256 认证；项目
+因此恢复“写操作必须登录”的安全契约，但仍允许状态读取先尝试匿名探测。当前保存
+的凭据被设备以登录结果码 `3` 拒绝，认证模块与全部写操作在有效凭据完成校准前
+继续保持关闭。详见
+[认证契约复核](docs/validation/2026-08-01-auth-contract-recheck.md)。
 
 当前源码对应的下一预发布标签为 `v0.1.0-rc1-r16`，尚未发布；只有维护者显式创建并推送与包元数据
 匹配的 tag 才会发布。带 `-rc` 的 tag 自动创建 prerelease，稳定版 tag 创建普通

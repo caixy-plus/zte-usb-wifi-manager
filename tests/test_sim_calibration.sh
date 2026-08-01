@@ -426,8 +426,8 @@ assert_eq \
     '{"ok":true,"mode":"probe","active_target":"sim2","modem_ready":true,"network_registered":true,"ppp_ready":true}' \
     "$result"
 
-# The target firmware advertises HAS_LOGIN:false. Its readiness probe must use
-# the anonymous status path without requiring a credential or calling LOGIN.
+# An explicitly configured HAS_LOGIN:false firmware variant must use the
+# anonymous readiness path without requiring a credential or calling LOGIN.
 ZTE_TEST_ROUTE_MATCH=0
 export ZTE_TEST_ROUTE_MATCH
 assert_probe_failure device_route_mismatch \
