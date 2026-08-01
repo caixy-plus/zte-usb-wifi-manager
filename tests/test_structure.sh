@@ -40,7 +40,7 @@ esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=16$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=17$'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
@@ -180,7 +180,7 @@ assert_file_contains "$sim_calibration_tool" \
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=5$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=6$'
 assert_file_contains "$luci/Makefile" '^LUCI_PKGARCH:=all$'
 assert_file_contains "$menu" '"path": "zte-usb-wifi-manager/index"'
 assert_file_contains "$menu" '"title": "中兴随身 WiFi"'

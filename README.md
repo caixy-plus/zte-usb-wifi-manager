@@ -14,7 +14,7 @@
 
 ## 当前状态
 
-仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r16 / LuCI r5
+仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r17 / LuCI r6
 已经完成产品边界重置和双版本真实 SDK 构建；最近完成 QEMU/路由器验证的发布包
 仍是 backend r15 / LuCI r4：
 
@@ -90,7 +90,7 @@
 QEMU 与当时的 OpenWrt 25.12.5 Cudy TR3000 实机只读 probe 见
 [r8/r3 验证记录](docs/validation/2026-07-31-r8-r3-qemu.md)。
 
-当前源码 backend r16 / LuCI r5 已由 GitHub Actions 使用官方 OpenWrt 25.12.5
+上一构建基线 backend r16 / LuCI r5 已由 GitHub Actions 使用官方 OpenWrt 25.12.5
 和 24.10.7 SDK 构建为 APK/IPK，四个下载产物与 manifest 均通过 SHA256；随后
 两套官方 x86/64 镜像的全新 QEMU overlay 均完成依赖安装、procd/rpcd/ubus、
 JSON、权限、默认写门控和卸载清理验证。详见
@@ -129,7 +129,7 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 后端现会把登录被拒绝单独报告为 `authentication_failed`，LuCI 显示“设备认证
 失败”，并继续使用失败退避，避免把错误密码伪装成普通离线或在锁定期频繁重试。
 
-当前源码对应的下一预发布标签为 `v0.1.0-rc1-r16`，尚未发布；只有维护者显式创建并推送与包元数据
+当前源码对应的下一预发布标签为 `v0.1.0-rc1-r17`，尚未发布；只有维护者显式创建并推送与包元数据
 匹配的 tag 才会发布。带 `-rc` 的 tag 自动创建 prerelease，稳定版 tag 创建普通
 Release。已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验，但不包含本次
 产品边界重置，也不代表真实设备写接口或 72 小时稳定性验收已经完成。
