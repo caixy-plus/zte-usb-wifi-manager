@@ -68,7 +68,7 @@ assert_eq 'password=PLACEHOLDER' "$(cat "$real_file")"
 
 clear_file=$work/clear-credentials
 assert_success zte_clear_password "$clear_file"
-printf '%s\n' 'password=clear me' >"$clear_file"
+printf '%s\n' 'password=PLACEHOLDER' >"$clear_file"
 chmod 644 "$clear_file"
 assert_failure zte_clear_password "$clear_file"
 assert_success test -f "$clear_file"
