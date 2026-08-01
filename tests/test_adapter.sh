@@ -62,6 +62,10 @@ mkdir -p "$work"
 jar=$work/cookies.txt
 printf x >"$jar"
 
+jsonfilter() {
+    node ./tests/jsonfilter_stub.js "$@"
+}
+
 # device flag mapping
 assert_eq true "$(zte_adapter_bool 1)"
 assert_eq false "$(zte_adapter_bool 0)"
@@ -140,8 +144,74 @@ zte_http_get() { cat "$fixtures/read_ok.json"; }
 raw=$(zte_adapter_fetch 192.168.0.1 secret "$jar")
 assert_eq "$(cat "$fixtures/read_ok.json")" "$raw"
 
+# Authenticated private collections have explicit status codes and never use
+# the broad status field list.
+client_raw='{"station_list":[{"mac_addr":"AA:BB:CC:DD:EE:FF","hostname":"Lab client","ip_addr":"192.0.2.10","ssid_index":"1","interfacetype":"WIFI1","ULSpeed":"12","DLSpeed":"34"}]}'
+client_expected='{"available":true,"items":[{"mac":"AA:BB:CC:DD:EE:FF","hostname":"Lab client","ip":"192.0.2.10","ssid_index":"1","interface":"WIFI1","upload_rate_raw":"12","download_rate_raw":"34"}]}'
+client_url_log=$work/client-url
+client_login_log=$work/client-login
+: >"$client_url_log"
+: >"$client_login_log"
+zte_http_get() {
+    printf '%s\n' "$1" >>"$client_url_log"
+    printf '%s\n' "$client_raw"
+}
+zte_session_login() {
+    printf 'login\n' >>"$client_login_log"
+    return 1
+}
+assert_eq "$client_expected" \
+    "$(zte_adapter_fetch_clients 192.168.0.1 secret "$jar")"
+assert_eq 0 "$(wc -l <"$client_login_log" | tr -d ' ')"
+assert_eq 'http://192.168.0.1/goform/goform_get_cmd_process?cmd=station_list&isTest=false' \
+    "$(cat "$client_url_log")"
+
+zte_http_get() { printf '%s\n' '{"result":"failure"}'; }
+set +e
+zte_adapter_fetch_clients 192.168.0.1 '' "$jar" >/dev/null
+client_status=$?
+set -e
+assert_eq 2 "$client_status"
+
+: >"$client_login_log"
+set +e
+zte_adapter_fetch_clients 192.168.0.1 rejected "$jar" >/dev/null
+client_status=$?
+set -e
+assert_eq 3 "$client_status"
+assert_eq 1 "$(wc -l <"$client_login_log" | tr -d ' ')"
+
+client_get_count=$work/client-get-count
+printf 0 >"$client_get_count"
+: >"$client_login_log"
+zte_http_get() {
+    count=$(cat "$client_get_count")
+    count=$((count + 1))
+    printf '%s' "$count" >"$client_get_count"
+    if [ "$count" -eq 1 ]; then
+        printf '%s\n' '{"result":"failure"}'
+    else
+        printf '%s\n' "$client_raw"
+    fi
+}
+zte_session_login() {
+    printf 'login\n' >>"$client_login_log"
+    return 0
+}
+assert_eq "$client_expected" \
+    "$(zte_adapter_fetch_clients 192.168.0.1 secret "$jar")"
+assert_eq 2 "$(cat "$client_get_count")"
+assert_eq 1 "$(wc -l <"$client_login_log" | tr -d ' ')"
+
+device_with_clients=$(zte_adapter_normalize "$raw" "$client_expected")
+assert_eq true "$(printf '%s' "$device_with_clients" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).clients.available)))')"
+assert_eq 'AA:BB:CC:DD:EE:FF' "$(printf '%s' "$device_with_clients" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).clients.items[0].mac))')"
+assert_eq '{"available":false,"reason":"credentials_missing","items":[]}' \
+    "$(zte_adapter_clients_unavailable_json credentials_missing)"
+assert_failure zte_adapter_clients_unavailable_json unknown
+
 # normalize maps every field
-expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","hardware_version":null,"webui_version":null,"software_version":null,"market_name":null,"upgrade":{"new_version_state":null,"current_state":null},"modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","lte_rsrp":null,"rscp":null,"rssi":null,"roaming":null,"dial_mode":null,"wan_mode":null,"mcc":null,"mnc":null,"ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"wifi":{"enabled":null,"guest_enabled":null,"bands":{"wifi_2_4":{"ssid":null,"auth_mode":null,"clients":null},"wifi_5":{"ssid":null,"auth_mode":null,"clients":null}}},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":"network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state"}'
+expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","hardware_version":null,"webui_version":null,"software_version":null,"market_name":null,"upgrade":{"new_version_state":null,"current_state":null},"modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","lte_rsrp":null,"rscp":null,"rssi":null,"roaming":null,"dial_mode":null,"wan_mode":null,"mcc":null,"mnc":null,"ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"wifi":{"enabled":null,"guest_enabled":null,"bands":{"wifi_2_4":{"ssid":null,"auth_mode":null,"clients":null},"wifi_5":{"ssid":null,"auth_mode":null,"clients":null}}},"clients":{"available":false,"reason":"not_loaded","items":[]},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":"network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state"}'
 assert_eq "$expected" "$(zte_adapter_normalize "$raw")"
 assert_success node -e 'JSON.parse(process.argv[1])' "$expected"
 

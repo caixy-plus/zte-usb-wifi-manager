@@ -423,3 +423,99 @@ zte_json_path_get() {
     esac
     _zte_json_flat_query pathget "$1" "$3" "$2"
 }
+
+zte_json_mac_valid() {
+    _zte_json_mac=${1-}
+    _zte_json_old_ifs=$IFS
+    IFS=:
+    # Word splitting is intentional: a MAC address must contain six octets.
+    # shellcheck disable=SC2086
+    set -- $_zte_json_mac
+    IFS=$_zte_json_old_ifs
+    [ "$#" -eq 6 ] || return 1
+    for _zte_json_octet in "$@"; do
+        [ "${#_zte_json_octet}" -eq 2 ] || return 1
+        case $_zte_json_octet in
+            *[!0-9A-Fa-f]*) return 1 ;;
+        esac
+    done
+}
+
+zte_json_optional_bounded_string() {
+    _zte_json_bounded_value=${1-}
+    _zte_json_bounded_max=${2-}
+    case $_zte_json_bounded_max in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    if [ -z "$_zte_json_bounded_value" ]; then
+        printf 'null'
+        return
+    fi
+    [ "${#_zte_json_bounded_value}" -le "$_zte_json_bounded_max" ] ||
+        return 1
+    printf '"%s"' "$(zte_json_escape "$_zte_json_bounded_value")"
+}
+
+# Project the target U25S station_list response into a bounded client object.
+# jsonfilter is the native OpenWrt parser; only explicitly listed fields leave
+# this function, so unknown device fields cannot leak into the cached snapshot.
+zte_json_normalize_station_list() {
+    _zte_station_raw=${1-}
+    [ "${#_zte_station_raw}" -le 262144 ] || return 1
+    command -v jsonfilter >/dev/null 2>&1 || return 1
+
+    _zte_station_list=$(jsonfilter -s "$_zte_station_raw" \
+        -e '@.station_list' 2>/dev/null) || return 1
+    case $_zte_station_list in
+        \[*\]) ;;
+        *) return 1 ;;
+    esac
+    _zte_station_items=$(jsonfilter -s "$_zte_station_raw" \
+        -e '@.station_list[*]' 2>/dev/null) || return 1
+
+    _zte_station_output='{"available":true,"items":['
+    _zte_station_separator=''
+    _zte_station_count=0
+    while IFS= read -r _zte_station_item; do
+        [ -n "$_zte_station_item" ] || continue
+        _zte_station_count=$((_zte_station_count + 1))
+        [ "$_zte_station_count" -le 64 ] || return 1
+
+        _zte_station_mac=$(jsonfilter -s "$_zte_station_item" \
+            -e '@.mac_addr' 2>/dev/null) || return 1
+        zte_json_mac_valid "$_zte_station_mac" || return 1
+        _zte_station_hostname=$(jsonfilter -s "$_zte_station_item" \
+            -e '@.hostname' 2>/dev/null) || _zte_station_hostname=''
+        _zte_station_ip=$(jsonfilter -s "$_zte_station_item" \
+            -e '@.ip_addr' 2>/dev/null) || _zte_station_ip=''
+        _zte_station_ssid=$(jsonfilter -s "$_zte_station_item" \
+            -e '@.ssid_index' 2>/dev/null) || _zte_station_ssid=''
+        _zte_station_interface=$(jsonfilter -s "$_zte_station_item" \
+            -e '@.interfacetype' 2>/dev/null) || _zte_station_interface=''
+        _zte_station_upload=$(jsonfilter -s "$_zte_station_item" \
+            -e '@.ULSpeed' 2>/dev/null) || _zte_station_upload=''
+        _zte_station_download=$(jsonfilter -s "$_zte_station_item" \
+            -e '@.DLSpeed' 2>/dev/null) || _zte_station_download=''
+
+        _zte_station_hostname_json=$(zte_json_optional_bounded_string \
+            "$_zte_station_hostname" 253) || return 1
+        _zte_station_ip_json=$(zte_json_optional_bounded_string \
+            "$_zte_station_ip" 64) || return 1
+        _zte_station_ssid_json=$(zte_json_optional_bounded_string \
+            "$_zte_station_ssid" 32) || return 1
+        _zte_station_interface_json=$(zte_json_optional_bounded_string \
+            "$_zte_station_interface" 32) || return 1
+        _zte_station_upload_json=$(zte_json_optional_bounded_string \
+            "$_zte_station_upload" 32) || return 1
+        _zte_station_download_json=$(zte_json_optional_bounded_string \
+            "$_zte_station_download" 32) || return 1
+
+        _zte_station_output=$_zte_station_output$_zte_station_separator'{"mac":"'$(
+            zte_json_escape "$_zte_station_mac"
+        )'","hostname":'$_zte_station_hostname_json',"ip":'$_zte_station_ip_json',"ssid_index":'$_zte_station_ssid_json',"interface":'$_zte_station_interface_json',"upload_rate_raw":'$_zte_station_upload_json',"download_rate_raw":'$_zte_station_download_json'}'
+        _zte_station_separator=,
+    done <<EOF
+$_zte_station_items
+EOF
+    printf '%s]}\n' "$_zte_station_output"
+}

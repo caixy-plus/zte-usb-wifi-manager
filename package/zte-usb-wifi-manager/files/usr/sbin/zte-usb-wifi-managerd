@@ -26,6 +26,7 @@ COOKIE_FILE=$STATE_DIR/cookies.txt
 PID_FILE=$STATE_DIR/manager.pid
 EVENT_LOG_MAX_BYTES=524288
 ACTION_RESULT_MAX_COUNT=50
+PRIVATE_AUTH_BACKOFF_SECONDS=900
 RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
 RECOVERY_INHIBIT_SECONDS=600
 RECOVERY_SERVICE=/etc/init.d/zte-usb-recover
@@ -931,6 +932,46 @@ handle_planned_power_off() {
 	return 0
 }
 
+# Populate the private, authenticated collections without turning a partial
+# failure into a full device outage. Rejected credentials enter a cooldown so
+# a bad saved password cannot trigger the U25S login lockout on every poll.
+collect_private_clients() {
+	_zte_private_now=$1
+	_zte_private_password=$2
+	clients_json=$(zte_adapter_clients_unavailable_json not_loaded) || return 1
+
+	if [ -z "$_zte_private_password" ]; then
+		clients_json=$(zte_adapter_clients_unavailable_json \
+			credentials_missing) || return 1
+		return 0
+	fi
+	if [ "$private_auth_retry_after" -gt "$_zte_private_now" ]; then
+		clients_json=$(zte_adapter_clients_unavailable_json \
+			authentication_backoff) || return 1
+		return 0
+	fi
+
+	_zte_private_status=0
+	if _zte_private_clients=$(zte_adapter_fetch_clients \
+		"$host" "$_zte_private_password" "$COOKIE_FILE"); then
+		clients_json=$_zte_private_clients
+		private_auth_retry_after=0
+		return 0
+	else
+		_zte_private_status=$?
+	fi
+	if [ "$_zte_private_status" = 3 ]; then
+		clients_json=$(zte_adapter_clients_unavailable_json \
+			authentication_failed) || return 1
+		private_auth_retry_after=$((
+			_zte_private_now + PRIVATE_AUTH_BACKOFF_SECONDS
+		))
+	else
+		clients_json=$(zte_adapter_clients_unavailable_json read_failed) ||
+			return 1
+	fi
+}
+
 poll_once() {
 	if handle_planned_power_off; then
 		return 0
@@ -947,7 +988,9 @@ poll_once() {
 	_zte_saved_password=''
 
 	if raw_json=$(zte_adapter_fetch "$host" "$password" "$COOKIE_FILE"); then
-		if candidate_device_json=$(zte_adapter_normalize "$raw_json"); then
+		collect_private_clients "$(date +%s)" "$password"
+		if candidate_device_json=$(zte_adapter_normalize \
+			"$raw_json" "$clients_json"); then
 			ok=1
 		fi
 	else
@@ -1026,6 +1069,7 @@ main() {
 	last_device_json=''
 	last_power_action=''
 	last_logged_state=''
+	private_auth_retry_after=0
 	planned_power_off=0
 	next_power_probe_at=0
 	shutdown_started=0

@@ -439,6 +439,44 @@ function renderWifi(status) {
 	]);
 }
 
+function clientCollectionLabel(clients, count) {
+	if (clients.available === true)
+		return _('已加载') + '（' + count + ' ' + _('台') + '）';
+	switch (clients.reason) {
+	case 'credentials_missing':
+		return _('未配置设备管理密码');
+	case 'authentication_failed':
+		return _('设备认证失败，已暂停重试');
+	case 'authentication_backoff':
+		return _('认证重试冷却中');
+	case 'read_failed':
+		return _('客户端明细读取失败');
+	case 'not_loaded':
+		return _('客户端明细尚未加载');
+	default:
+		return _('当前快照尚未提供客户端明细');
+	}
+}
+
+function clientDetailLabel(client) {
+	var fields = [];
+	if (client.hostname)
+		fields.push(client.hostname);
+	if (client.mac)
+		fields.push(client.mac);
+	if (client.ip)
+		fields.push(client.ip);
+	if (client.ssid_index)
+		fields.push('SSID ' + client.ssid_index);
+	if (client.interface)
+		fields.push(client.interface);
+	if (client.upload_rate_raw)
+		fields.push('↑ ' + client.upload_rate_raw);
+	if (client.download_rate_raw)
+		fields.push('↓ ' + client.download_rate_raw);
+	return fields.length ? fields.join(' · ') : null;
+}
+
 function renderClients(status) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var wifi = device.wifi && typeof device.wifi === 'object' ? device.wifi : {};
@@ -447,18 +485,27 @@ function renderClients(status) {
 		? bands.wifi_2_4 : {};
 	var wifi5 = bands.wifi_5 && typeof bands.wifi_5 === 'object'
 		? bands.wifi_5 : {};
+	var clients = device.clients && typeof device.clients === 'object'
+		? device.clients : {};
+	var items = clients.available === true && Array.isArray(clients.items)
+		? clients.items.slice(0, 64) : [];
 	var total = null;
 
 	if (typeof wifi24.clients === 'number' && wifi24.clients >= 0 &&
 		typeof wifi5.clients === 'number' && wifi5.clients >= 0)
 		total = wifi24.clients + wifi5.clients;
 
-	return panelRoot('clients', _('接入设备'), [
+	var rows = [
 		row(_('接入设备总数'), total),
 		row(_('2.4 GHz 客户端'), wifi24.clients),
 		row(_('5 GHz 客户端'), wifi5.clients),
-		row(_('明细状态'), _('等待有效认证 fixture 校准'))
-	]);
+		row(_('明细状态'), clientCollectionLabel(clients, items.length))
+	];
+	items.forEach(function(client, index) {
+		if (client && typeof client === 'object')
+			rows.push(row(_('客户端 ') + (index + 1), clientDetailLabel(client)));
+	});
+	return panelRoot('clients', _('接入设备'), rows);
 }
 
 function renderSms(status) {

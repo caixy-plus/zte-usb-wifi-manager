@@ -136,6 +136,66 @@ zte_adapter_fetch() {
 	printf '%s\n' "$_zte_resp"
 }
 
+zte_adapter_fetch_clients_once() {
+	_zte_clients_host=$1
+	_zte_clients_jar=$2
+	_zte_clients_url="http://$_zte_clients_host/goform/goform_get_cmd_process?cmd=station_list&isTest=false"
+	_zte_clients_response=$(zte_http_get \
+		"$_zte_clients_url" "$_zte_clients_jar") || return 1
+	zte_json_normalize_station_list "$_zte_clients_response"
+}
+
+# $1 host, $2 optional password, $3 cookie jar; prints the bounded normalized
+# station collection. Status 2 means credentials are absent, while status 3
+# means LOGIN was attempted and rejected.
+zte_adapter_fetch_clients() {
+	_zte_clients_fetch_host=$1
+	_zte_clients_fetch_password=$2
+	_zte_clients_fetch_jar=$3
+
+	if _zte_clients_normalized=$(zte_adapter_fetch_clients_once \
+		"$_zte_clients_fetch_host" "$_zte_clients_fetch_jar"); then
+		printf '%s\n' "$_zte_clients_normalized"
+		return 0
+	fi
+
+	zte_adapter_login_required || return 1
+	[ -n "$_zte_clients_fetch_password" ] || return 2
+	zte_session_login "$_zte_clients_fetch_host" \
+		"$_zte_clients_fetch_password" "$_zte_clients_fetch_jar" || return 3
+	_zte_clients_normalized=$(zte_adapter_fetch_clients_once \
+		"$_zte_clients_fetch_host" "$_zte_clients_fetch_jar") || return 1
+	printf '%s\n' "$_zte_clients_normalized"
+}
+
+zte_adapter_clients_unavailable_json() {
+	case ${1-} in
+		not_loaded|credentials_missing|authentication_failed|authentication_backoff|read_failed)
+			printf '{"available":false,"reason":"%s","items":[]}\n' "$1"
+			;;
+		*) return 1 ;;
+	esac
+}
+
+# Rebuild rather than pass through a supplied collection. This keeps the
+# normalized device snapshot valid even if an internal caller passes malformed
+# or unexpectedly extended JSON.
+zte_adapter_clients_json() {
+	_zte_clients_json=${1-}
+	[ "${#_zte_clients_json}" -le 262144 ] || return 1
+	command -v jsonfilter >/dev/null 2>&1 || return 1
+	_zte_clients_available=$(jsonfilter -s "$_zte_clients_json" \
+		-e '@.available') || return 1
+	[ "$_zte_clients_available" = true ] || return 1
+	_zte_clients_items=$(jsonfilter -s "$_zte_clients_json" -e '@.items') ||
+		return 1
+	case $_zte_clients_items in
+		\[*\]) ;;
+		*) return 1 ;;
+	esac
+	printf '{"available":true,"items":%s}\n' "$_zte_clients_items"
+}
+
 # Map the target firmware's visible SIM choices to the verified card_index
 # values used by SIM_SWITCH_SIMCARD. The physical slot is index 0.
 zte_adapter_sim_card_index() {
@@ -169,12 +229,19 @@ zte_adapter_switch_sim() {
 	[ "$(zte_json_flat_get "$_zte_switch_response" result)" = success ]
 }
 
-# $1 raw flat device JSON -> normalized device object on stdout.
+# $1 raw flat device JSON, $2 optional normalized client collection ->
+# normalized device object on stdout.
 # sim.active_slot_raw passes the firmware value through unmapped until the
 # slot numbering is calibrated on the real device (see design doc 5.6).
 zte_adapter_normalize() {
 	_zte_raw=$1
 	zte_json_is_flat_object "$_zte_raw" || return 1
+	if [ "$#" -ge 2 ]; then
+		_zte_clients=$(zte_adapter_clients_json "$2") || return 1
+	else
+		_zte_clients=$(zte_adapter_clients_unavailable_json not_loaded) ||
+			return 1
+	fi
 
 	_zte_modem_state=$(zte_json_flat_get "$_zte_raw" mc_modem_main_state)
 	_zte_net_type=$(zte_json_flat_get "$_zte_raw" network_type)
@@ -319,7 +386,7 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}}},"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}}},"clients":%s,"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_MODEL" "$_zte_firmware" \
 		"$_zte_hardware_version" "$_zte_webui_version" \
 		"$_zte_software_version" "$_zte_market_name" \
@@ -336,6 +403,7 @@ zte_adapter_normalize() {
 		"$_zte_wifi_enabled" "$_zte_wifi_guest" \
 		"$_zte_wifi_24_ssid" "$_zte_wifi_24_auth" "$_zte_wifi_24_clients" \
 		"$_zte_wifi_5_ssid" "$_zte_wifi_5_auth" "$_zte_wifi_5_clients" \
+		"$_zte_clients" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
 		"$_zte_battery_value" "$_zte_battery_pers" "$_zte_temperature_level" \
 		"$_zte_realtime_tx" "$_zte_realtime_rx" \

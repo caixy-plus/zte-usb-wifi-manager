@@ -24,6 +24,14 @@ case $poll_once_source in
         ;;
     *) pass ;;
 esac
+case $poll_once_source in
+    *'collect_private_clients '*) pass ;;
+    *) fail 'polling must collect the bounded private client collection' ;;
+esac
+case $poll_once_source in
+    *'"$raw_json" "$clients_json"'*) pass ;;
+    *) fail 'polling must normalize the private client collection' ;;
+esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
@@ -426,6 +434,7 @@ extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
 eval "$(extract_daemon_function poll_once)"
+eval "$(extract_daemon_function collect_private_clients)"
 eval "$(extract_daemon_function calculate_policy)"
 eval "$(extract_daemon_function read_current_power_state)"
 eval "$(extract_daemon_function main)"
@@ -538,7 +547,50 @@ zte_event_write() {
         "$1" "$2" "$3" "$4" "$5" "$6" >>"$event_call_log"
 }
 
+# Private collections must distinguish missing credentials, rejected
+# credentials, cooldown, transient read failures, and success. In particular,
+# an invalid saved password must not be retried on every poll because the U25S
+# firmware applies a login lockout.
+PRIVATE_AUTH_BACKOFF_SECONDS=900
+private_auth_retry_after=0
+client_fetch_count=$work/client-fetch-count
+printf 0 >"$client_fetch_count"
+zte_adapter_clients_unavailable_json() {
+    printf '{"available":false,"reason":"%s","items":[]}\n' "$1"
+}
+zte_adapter_fetch_clients() {
+    n=$(cat "$client_fetch_count")
+    printf '%s' "$((n + 1))" >"$client_fetch_count"
+    case $2 in
+        accepted) printf '%s\n' '{"available":true,"items":[]}' ;;
+        rejected) return 3 ;;
+        *) return 1 ;;
+    esac
+}
+collect_private_clients 1722345678 ''
+assert_eq '{"available":false,"reason":"credentials_missing","items":[]}' \
+    "$clients_json"
+assert_eq 0 "$(cat "$client_fetch_count")"
+collect_private_clients 1722345678 accepted
+assert_eq '{"available":true,"items":[]}' "$clients_json"
+assert_eq 1 "$(cat "$client_fetch_count")"
+collect_private_clients 1722345678 rejected
+assert_eq '{"available":false,"reason":"authentication_failed","items":[]}' \
+    "$clients_json"
+assert_eq 1722346578 "$private_auth_retry_after"
+assert_eq 2 "$(cat "$client_fetch_count")"
+collect_private_clients 1722345679 rejected
+assert_eq '{"available":false,"reason":"authentication_backoff","items":[]}' \
+    "$clients_json"
+assert_eq 2 "$(cat "$client_fetch_count")"
+private_auth_retry_after=0
+collect_private_clients 1722345678 transient
+assert_eq '{"available":false,"reason":"read_failed","items":[]}' \
+    "$clients_json"
+assert_eq 3 "$(cat "$client_fetch_count")"
+
 zte_read_password() { printf '%s\n' secret; }
+zte_adapter_fetch_clients() { return 1; }
 zte_adapter_fetch() {
     n=$(cat "$fetch_count")
     n=$((n + 1))

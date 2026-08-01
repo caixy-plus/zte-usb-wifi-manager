@@ -55,4 +55,25 @@ assert_failure zte_json_is_flat_object '{"nested":["a"]}'
 assert_eq 'a\"b\\c' "$(zte_json_escape 'a"b\c')"
 # keys with sed-special characters are rejected, not interpolated
 assert_failure zte_json_flat_get '{"a":"1"}' 'bad/key'
+
+jsonfilter() {
+    node ./tests/jsonfilter_stub.js "$@"
+}
+
+station_raw='{"station_list":[{"mac_addr":"AA:BB:CC:DD:EE:FF","hostname":"Lab client","ip_addr":"192.0.2.10","ssid_index":"1","interfacetype":"WIFI1","ULSpeed":"12","DLSpeed":"34","ignored_field":"SHOULD_NOT_APPEAR"},{"mac_addr":"11:22:33:44:55:66","hostname":"","ip_addr":"","ssid_index":"2","interfacetype":"WIFI2","ULSpeed":"","DLSpeed":""}]}'
+station_expected='{"available":true,"items":[{"mac":"AA:BB:CC:DD:EE:FF","hostname":"Lab client","ip":"192.0.2.10","ssid_index":"1","interface":"WIFI1","upload_rate_raw":"12","download_rate_raw":"34"},{"mac":"11:22:33:44:55:66","hostname":null,"ip":null,"ssid_index":"2","interface":"WIFI2","upload_rate_raw":null,"download_rate_raw":null}]}'
+assert_eq "$station_expected" "$(zte_json_normalize_station_list "$station_raw")"
+assert_eq '{"available":true,"items":[]}' \
+    "$(zte_json_normalize_station_list '{"station_list":[]}')"
+assert_failure zte_json_normalize_station_list '{}'
+assert_failure zte_json_normalize_station_list '{"station_list":"bad"}'
+assert_failure zte_json_normalize_station_list \
+    '{"station_list":[{"hostname":"missing mac"}]}'
+assert_failure zte_json_normalize_station_list \
+    '{"station_list":[{"mac_addr":"not-a-mac"}]}'
+assert_failure zte_json_normalize_station_list \
+    '{"station_list":["not-an-object"]}'
+# shellcheck disable=SC2016
+station_many=$(node -e 'process.stdout.write(JSON.stringify({station_list:Array.from({length:65},(_,i)=>({mac_addr:`02:00:00:00:00:${i.toString(16).padStart(2,"0")}`}))}))')
+assert_failure zte_json_normalize_station_list "$station_many"
 finish

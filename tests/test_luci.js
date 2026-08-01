@@ -773,6 +773,20 @@ const completeStatus = {
 				wifi_5: { ssid: 'Lab-5', auth_mode: 'WPA3PSK', clients: 1 }
 			}
 		},
+		clients: {
+			available: true,
+			items: [
+				{
+					mac: '02:00:00:00:00:01',
+					hostname: 'test-phone',
+					ip: '192.0.2.10',
+					ssid_index: '1',
+					interface: 'wlan0',
+					upload_rate_raw: '1024',
+					download_rate_raw: '2048'
+				}
+			]
+		},
 		battery: {
 			present: true,
 			percent: 82,
@@ -883,15 +897,35 @@ test('renders verified Wi-Fi summary without credentials', function() {
 	assert.strictEqual(text(nodesByClass(tree, 'zte-tab-panel')[0]).indexOf('密码'), -1);
 });
 
-test('renders aggregate client counts without exposing identifiers', function() {
+test('renders aggregate counts and authenticated client details', function() {
 	const tree = renderPanel(completeStatus, 'clients');
 	assert.strictEqual(rowValue(tree, '接入设备总数'), '3');
 	assert.strictEqual(rowValue(tree, '2.4 GHz 客户端'), '2');
 	assert.strictEqual(rowValue(tree, '5 GHz 客户端'), '1');
-	assert.strictEqual(rowValue(tree, '明细状态'), '等待有效认证 fixture 校准');
+	assert.strictEqual(rowValue(tree, '明细状态'), '已加载（1 台）');
 	const panelText = text(nodesByClass(tree, 'zte-tab-panel')[0]);
-	assert.strictEqual(panelText.indexOf('MAC'), -1);
-	assert.strictEqual(panelText.indexOf('192.168.'), -1);
+	assert.ok(panelText.indexOf('test-phone') !== -1);
+	assert.ok(panelText.indexOf('02:00:00:00:00:01') !== -1);
+	assert.ok(panelText.indexOf('192.0.2.10') !== -1);
+	assert.ok(panelText.indexOf('wlan0') !== -1);
+});
+
+test('explains why authenticated client details are unavailable', function() {
+	const reasons = {
+		credentials_missing: '未配置设备管理密码',
+		authentication_failed: '设备认证失败，已暂停重试',
+		authentication_backoff: '认证重试冷却中',
+		read_failed: '客户端明细读取失败',
+		not_loaded: '客户端明细尚未加载'
+	};
+	Object.keys(reasons).forEach(function(reason) {
+		const status = JSON.parse(JSON.stringify(completeStatus));
+		status.device.clients = { available: false, reason: reason, items: [] };
+		assert.strictEqual(
+			rowValue(renderPanel(status, 'clients'), '明细状态'),
+			reasons[reason]
+		);
+	});
 });
 
 test('keeps aggregate client total unknown when a band count is missing', function() {
