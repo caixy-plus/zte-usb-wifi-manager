@@ -2,9 +2,30 @@
 
 ZTE_HTTP_TIMEOUT=${ZTE_HTTP_TIMEOUT:-5}
 
-# Derive "http://host/" from a full URL for the Referer header.
+zte_http_origin_valid() {
+	case ${1-} in
+		http://*|https://*) ;;
+		*) return 1 ;;
+	esac
+	_zte_http_authority=${1#*://}
+	case $_zte_http_authority in
+		''|*/*|*\?*|*\#*|*@*|*[!A-Za-z0-9.:-]*) return 1 ;;
+		:*|*:|*::* ) return 1 ;;
+	esac
+}
+
+# Derive "scheme://host/" from a full URL for the Referer header.
 zte_http_referer() {
-    printf '%s/\n' "$(printf '%s' "$1" | sed 's|^\(http://[^/]*\).*$|\1|')"
+	case ${1-} in
+		http://*) _zte_http_scheme=http ;;
+		https://*) _zte_http_scheme=https ;;
+		*) return 1 ;;
+	esac
+	_zte_http_rest=${1#*://}
+	_zte_http_authority=${_zte_http_rest%%/*}
+	_zte_http_origin=$_zte_http_scheme://$_zte_http_authority
+	zte_http_origin_valid "$_zte_http_origin" || return 1
+	printf '%s/\n' "$_zte_http_origin"
 }
 
 zte_http_secure_cookie_jar() {
@@ -15,10 +36,14 @@ zte_http_secure_cookie_jar() {
 zte_http_get() {
 	_zte_http_url=$1
 	_zte_http_jar=$2
+	_zte_http_referer=$(zte_http_referer "$_zte_http_url") || return 1
 	set -- -fsS --max-time "$ZTE_HTTP_TIMEOUT" \
 		-b "$_zte_http_jar" -c "$_zte_http_jar" \
-		-H "Referer: $(zte_http_referer "$_zte_http_url")" \
+		-H "Referer: $_zte_http_referer" \
 		-H 'X-Requested-With: XMLHttpRequest'
+	if [ "${ZTE_DEVICE_TLS_INSECURE:-0}" = 1 ]; then
+		set -- "$@" --insecure
+	fi
 	if [ -n "${ZTE_HTTP_INTERFACE:-}" ]; then
 		set -- "$@" --interface "$ZTE_HTTP_INTERFACE"
 	fi
@@ -36,12 +61,16 @@ zte_http_post() {
 	_zte_http_url=$1
 	_zte_http_body=$2
 	_zte_http_jar=$3
+	_zte_http_referer=$(zte_http_referer "$_zte_http_url") || return 1
 	set -- -fsS --max-time "$ZTE_HTTP_TIMEOUT" \
 		-b "$_zte_http_jar" -c "$_zte_http_jar" \
-		-H "Referer: $(zte_http_referer "$_zte_http_url")" \
+		-H "Referer: $_zte_http_referer" \
 		-H 'X-Requested-With: XMLHttpRequest' \
 		-H 'Content-Type: application/x-www-form-urlencoded' \
 		--data-binary @-
+	if [ "${ZTE_DEVICE_TLS_INSECURE:-0}" = 1 ]; then
+		set -- "$@" --insecure
+	fi
 	if [ -n "${ZTE_HTTP_INTERFACE:-}" ]; then
 		set -- "$@" --interface "$ZTE_HTTP_INTERFACE"
 	fi

@@ -10,6 +10,13 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/http.sh
 if command -v zte_http_get >/dev/null 2>&1; then pass; else fail 'zte_http_get missing'; fi
 if command -v zte_http_post >/dev/null 2>&1; then pass; else fail 'zte_http_post missing'; fi
 assert_eq 'http://192.168.0.1/' "$(zte_http_referer 'http://192.168.0.1/goform/goform_get_cmd_process?cmd=LD')"
+assert_eq 'https://192.168.0.1/' "$(zte_http_referer 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=LD')"
+assert_success zte_http_origin_valid 'http://192.168.0.1'
+assert_success zte_http_origin_valid 'https://192.168.0.1'
+assert_failure zte_http_origin_valid 'ftp://192.168.0.1'
+assert_failure zte_http_origin_valid 'https://user@192.168.0.1'
+assert_failure zte_http_origin_valid 'https://192.168.0.1/path'
+assert_failure zte_http_origin_valid 'https://192.168.0.1?query=x'
 
 work=$(mktemp -d /tmp/zte-test-http.XXXXXX)
 trap 'rm -rf "$work"' EXIT
@@ -93,6 +100,15 @@ assert_eq 1 "$(grep -c '^--interface$' "$ZTE_TEST_CURL_ARGV")"
 assert_eq eth2 "$(awk 'previous == "--interface" { print; exit }
     { previous=$0 }' "$ZTE_TEST_CURL_ARGV")"
 unset ZTE_HTTP_INTERFACE
+
+ZTE_DEVICE_TLS_INSECURE=1
+export ZTE_DEVICE_TLS_INSECURE
+https_url='https://192.168.0.1/goform/goform_get_cmd_process?cmd=LD&isTest=false'
+assert_eq 'GET response body' "$(zte_http_get "$https_url" "$cookie_jar")"
+assert_eq 1 "$(grep -c '^--insecure$' "$ZTE_TEST_CURL_ARGV")"
+assert_eq 'Referer: https://192.168.0.1/' "$(awk 'previous == "-H" && /^Referer:/ { print; exit }
+    { previous=$0 }' "$ZTE_TEST_CURL_ARGV")"
+unset ZTE_DEVICE_TLS_INSECURE
 
 post_url='http://192.168.0.1/goform/goform_set_cmd_process'
 form_body='goformId=LOGIN&password=3955A6F57CD749A4311DECB23407C5962119BC835A528EE1BA82B2CF04EEE078 digest value&token=a=b

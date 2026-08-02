@@ -92,6 +92,15 @@ zte_session_digest() {
     printf '%s\n' "$_zte_step2" | tr '[:lower:]' '[:upper:]'
 }
 
+zte_session_origin() {
+	case ${1-} in
+		http://*|https://*) _zte_session_origin=$1 ;;
+		*) _zte_session_origin=http://${1-} ;;
+	esac
+	zte_http_origin_valid "$_zte_session_origin" || return 1
+	printf '%s\n' "$_zte_session_origin"
+}
+
 # $1 host, $2 password, $3 cookie jar. Never logs password, digest or cookie.
 zte_session_login() (
     _zte_session_lock_owned=0
@@ -102,16 +111,16 @@ zte_session_login() (
     trap 'exit 143' 15
     zte_session_lock_acquire || return 1
 
-    _zte_host=$1
+    _zte_origin=$(zte_session_origin "$1") || return 1
     _zte_ld_response=$(zte_http_get \
-        "http://$_zte_host/goform/goform_get_cmd_process?cmd=LD&isTest=false" "$3") || return 1
+        "$_zte_origin/goform/goform_get_cmd_process?cmd=LD&isTest=false" "$3") || return 1
     _zte_ld=$(zte_json_flat_get "$_zte_ld_response" LD)
     case $_zte_ld in
         ''|*[!A-Za-z0-9_-]*) return 1 ;;
     esac
     _zte_digest=$(zte_session_digest "$2" "$_zte_ld") || return 1
     _zte_login_response=$(zte_http_post \
-        "http://$_zte_host/goform/goform_set_cmd_process" \
+        "$_zte_origin/goform/goform_set_cmd_process" \
         "isTest=false&goformId=LOGIN&password=$_zte_digest" "$3") || return 1
     case $(zte_json_flat_get "$_zte_login_response" result) in
         0|4) return 0 ;;

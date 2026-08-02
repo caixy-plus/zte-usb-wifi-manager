@@ -33,16 +33,20 @@ assert_eq 'BB0BCCC1797AF4B9132536CAE0CD0E4E580DC4D043F386F848C79C4A559CD83A' \
 # successful login posts the expected digest (stub writes body to a file
 # because zte_http_post runs inside command substitution)
 post_log=$work/post-body
+get_url_log=$work/get-url
+post_url_log=$work/post-url
 # Injected into zte_session_login from the sourced production library.
 # shellcheck disable=SC2329
 zte_http_get() {
     [ -f "$ZTE_SESSION_LOCK_FILE" ] || return 1
+    printf '%s\n' "$1" >"$get_url_log"
     printf '%s\n' '{"LD":"LD-abc123"}'
 }
 # Injected into zte_session_login from the sourced production library.
 # shellcheck disable=SC2329
 zte_http_post() {
     [ -f "$ZTE_SESSION_LOCK_FILE" ] || return 1
+    printf '%s\n' "$1" >"$post_url_log"
     printf '%s' "$2" >"$post_log"
     printf '%s\n' '{"result":"0"}'
 }
@@ -53,6 +57,10 @@ _zte_hash=unchanged-hash
 assert_success zte_session_login 192.168.0.1 test123 "$work/cookies"
 assert_eq 'isTest=false&goformId=LOGIN&password=9677B188078A8ABD861E7FFD312B35BC7EA176616DF6BF0BA2AC7F22764710A7' \
     "$(cat "$post_log")"
+assert_eq 'http://192.168.0.1/goform/goform_get_cmd_process?cmd=LD&isTest=false' \
+    "$(cat "$get_url_log")"
+assert_eq 'http://192.168.0.1/goform/goform_set_cmd_process' \
+    "$(cat "$post_url_log")"
 assert_eq unchanged-digest "$_zte_digest"
 assert_eq unchanged-step1 "$_zte_step1"
 assert_eq unchanged-step2 "$_zte_step2"
@@ -62,6 +70,12 @@ if [ -e "$ZTE_SESSION_LOCK_FILE" ]; then
 else
     pass
 fi
+
+assert_success zte_session_login https://192.168.0.1 test123 "$work/cookies"
+assert_eq 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=LD&isTest=false' \
+    "$(cat "$get_url_log")"
+assert_eq 'https://192.168.0.1/goform/goform_set_cmd_process' \
+    "$(cat "$post_url_log")"
 
 # Neither a live nor dead owner can be displaced without an atomic
 # compare-and-swap primitive. Dead locks fail closed instead of risking two
@@ -107,6 +121,7 @@ esac
 export ZTE_SESSION_LOCK_FILE ZTE_SESSION_LOCK_ATTEMPTS
 export ZTE_SESSION_LOCK_INTERVAL
 . "$lib/json.sh"
+. "$lib/http.sh"
 . "$lib/session.sh"
 zte_http_get() {
     printf '%s:get\n' "$role" >>"$event_log"
