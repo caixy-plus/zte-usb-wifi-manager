@@ -45,6 +45,9 @@ esac
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
 assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=21$'
+assert_file_contains \
+    "$backend/files/usr/lib/zte-usb-wifi-manager/device-profile.sh" \
+    '^zte_device_profile_select\(\)'
 assert_file_contains "$backend/Makefile" '^  PKGARCH:=all$'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'

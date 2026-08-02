@@ -12,6 +12,7 @@ test:
 		tests/test_http.sh \
 		tests/test_credentials.sh \
 		tests/test_session.sh \
+		tests/test_device_profile.sh \
 		tests/test_adapter.sh \
 		tests/test_u25s_simulator.sh \
 		tests/test_actions.sh \
