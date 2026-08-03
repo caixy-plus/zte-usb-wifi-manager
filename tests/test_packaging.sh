@@ -428,7 +428,10 @@ case " $* " in
         defconfig_count=$((defconfig_count + 1))
         printf '%s\n' "$defconfig_count" >.fake-defconfig-count
         if [ "$defconfig_count" -eq 1 ]; then
+            sed '/^# CONFIG_ALL_KMODS is not set$/d' .config >.config.fake
+            mv .config.fake .config
             printf '%s\n' \
+                'CONFIG_ALL_KMODS=y' \
                 'CONFIG_PACKAGE_kmod-sdk-default=m' \
                 'CONFIG_PACKAGE_unrelated-sdk-default=m' >>.config
         else

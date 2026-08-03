@@ -184,6 +184,15 @@ IFS= read -r sdk_dir <"$sdk_list"
         { print }
     ' .config >.config.selected
     mv .config.selected .config
+    # Config-build.in may restore the SDK-wide defaults while materializing
+    # package symbols, so close those switches again before the final pass.
+    for _zte_all_symbol in ALL ALL_KMODS ALL_NONSHARED; do
+        sed -e "/^CONFIG_$_zte_all_symbol=/d" \
+            -e "/^# CONFIG_$_zte_all_symbol is not set$/d" \
+            .config >.config.minimal
+        mv .config.minimal .config
+        printf '# CONFIG_%s is not set\n' "$_zte_all_symbol" >>.config
+    done
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
         'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
