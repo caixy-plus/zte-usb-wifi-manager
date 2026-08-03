@@ -220,7 +220,14 @@ if (contract.profile !== "zte_u30" || contract.security.https_required !== true 
     action.semantic_values.charging !== "0" ||
     action.semantic_values.direct_supply !== "1" ||
     action.readback_command !== "power_supply_mode" ||
-    action.retry_policy !== "never_retry_after_ambiguous_acceptance")
+    action.retry_policy !== "never_retry_after_ambiguous_acceptance" ||
+    contract.actions.set_connection_mode.goform_id !== "SET_CONNECTION_MODE" ||
+    contract.actions.set_traffic_plan.goform_id !== "DATA_LIMIT_SETTING" ||
+    contract.actions.reset_traffic.goform_id !== "RESET_DATA_COUNTER" ||
+    contract.actions.delete_sms.goform_id !== "DELETE_SMS" ||
+    contract.actions.mark_sms_read.goform_id !== "SET_MSG_READ" ||
+    contract.actions.reboot_device.goform_id !== "REBOOT_DEVICE" ||
+    contract.actions.shutdown_device.goform_id !== "SHUTDOWN_DEVICE")
     process.exit(1);
 '
 
@@ -231,7 +238,6 @@ jsonfilter() {
 u30_url_log=$work/u30-url
 assert_success zte_device_profile_select_named zte_u30
 assert_success zte_adapter_apply_profile
-(
     post_log=$work/u30-power-post
     get_log=$work/u30-power-get
     zte_http_post() {
@@ -252,8 +258,54 @@ assert_success zte_adapter_apply_profile
     assert_eq direct_supply "$(zte_adapter_fetch_power_supply_mode 192.168.0.1 "$jar")"
     assert_eq 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=power_supply_mode&isTest=false' \
         "$(sed -n '1p' "$get_log")"
-    assert_failure zte_adapter_set_power_supply_mode 192.168.0.1 invalid "$jar"
-)
+assert_failure zte_adapter_set_power_supply_mode 192.168.0.1 invalid "$jar"
+
+# Additional U30 contracts are sourced from the device WebUI but remain
+# capability-gated until controlled real-device write/readback calibration.
+u30_action_log=$work/u30-actions
+: >"$u30_action_log"
+zte_http_post() {
+    printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$u30_action_log"
+    printf '%s\n' '{"result":"success"}'
+}
+assert_success zte_adapter_set_connection_mode \
+    192.168.0.1 automatic "$jar"
+assert_eq \
+    'https://192.168.0.1/goform/goform_set_cmd_process|isTest=false&goformId=SET_CONNECTION_MODE&ConnectionMode=auto_dial&dial_roam_setting_option=off' \
+    "$(cut -d'|' -f1,2 "$u30_action_log")"
+: >"$u30_action_log"
+assert_success zte_adapter_set_connection_mode 192.168.0.1 manual "$jar"
+assert_file_contains "$u30_action_log" 'ConnectionMode=manual_dial'
+assert_failure zte_adapter_set_connection_mode 192.168.0.1 invalid "$jar"
+
+: >"$u30_action_log"
+assert_success zte_adapter_set_traffic_plan \
+    192.168.0.1 1 10737418240 90 1 0 "$jar"
+assert_eq \
+    'isTest=false&goformId=DATA_LIMIT_SETTING&flux_data_volume_limit_unit=data&flux_data_volume_limit_size=10737418240&flux_data_volume_alert_percent=90&flux_auto_clear_flow_data_switch=1&flux_clear_date=1&flux_limited_disconnect=0&flux_data_volume_limit_switch=1&notify_deviceui_enable=0' \
+    "$(cut -d'|' -f2 "$u30_action_log")"
+: >"$u30_action_log"
+assert_success zte_adapter_set_traffic_plan 192.168.0.1 0 '' '' '' '' "$jar"
+assert_eq \
+    'isTest=false&goformId=DATA_LIMIT_SETTING&flux_data_volume_limit_switch=0&notify_deviceui_enable=0' \
+    "$(cut -d'|' -f2 "$u30_action_log")"
+assert_failure zte_adapter_set_traffic_plan \
+    192.168.0.1 1 '1&goformId=REBOOT_DEVICE' 90 1 0 "$jar"
+
+: >"$u30_action_log"
+assert_success zte_adapter_reset_traffic 192.168.0.1 "$jar"
+assert_success zte_adapter_mark_sms_read 192.168.0.1 '42' "$jar"
+assert_success zte_adapter_delete_sms 192.168.0.1 '42' "$jar"
+assert_success zte_adapter_device_command 192.168.0.1 reboot "$jar"
+assert_success zte_adapter_device_command 192.168.0.1 shutdown "$jar"
+assert_eq 'isTest=false&goformId=RESET_DATA_COUNTER
+isTest=false&goformId=SET_MSG_READ&msg_id=42%3B&tag=0
+isTest=false&goformId=DELETE_SMS&msg_id=42%3B&notCallback=true
+isTest=false&goformId=REBOOT_DEVICE
+isTest=false&goformId=SHUTDOWN_DEVICE' \
+    "$(cut -d'|' -f2 "$u30_action_log")"
+assert_failure zte_adapter_delete_sms 192.168.0.1 '../42' "$jar"
+assert_failure zte_adapter_device_command 192.168.0.1 factory_reset "$jar"
 u30_raw=$(
     zte_http_get() {
         printf '%s\n' "$1" >"$u30_url_log"
@@ -265,6 +317,11 @@ assert_eq "$(cat tests/fixtures/u30/status.json)" "$u30_raw"
 u30_normalized=$(zte_adapter_normalize "$u30_raw")
 assert_eq 0 "$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).power_supply.mode_raw)' "$u30_normalized")"
 assert_eq false "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).power_supply.direct_supply))' "$u30_normalized")"
+u30_capability_matrix=$(zte_adapter_capabilities_json)
+assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.traffic_write.implementation))')"
+assert_eq false "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).traffic_write)))')"
+assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.device_restart.implementation))')"
+assert_eq false "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).device_reboot)))')"
 u30_direct=$(zte_adapter_normalize '{"power_supply_mode":"1"}')
 assert_eq true "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).power_supply.direct_supply))' "$u30_direct")"
 assert_failure zte_adapter_normalize '{"power_supply_mode":"2"}'

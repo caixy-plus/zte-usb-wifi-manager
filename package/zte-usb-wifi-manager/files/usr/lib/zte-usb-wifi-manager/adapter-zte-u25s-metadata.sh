@@ -164,9 +164,17 @@ zte_adapter_feature_status_json() {
 	if [ "$ZTE_ADAPTER_ID" = zte_u30 ]; then
 		_zte_feature_power_supply_implementation=implemented
 		_zte_feature_power_supply_verification=spare_device_required
+		_zte_feature_traffic_implementation=implemented
+		_zte_feature_traffic_verification=spare_device_required
+		_zte_feature_reboot_implementation=implemented
+		_zte_feature_shutdown_implementation=implemented
 	else
 		_zte_feature_power_supply_implementation=unsupported
 		_zte_feature_power_supply_verification=not_applicable
+		_zte_feature_traffic_implementation=not_implemented
+		_zte_feature_traffic_verification=spare_device_required
+		_zte_feature_reboot_implementation=not_implemented
+		_zte_feature_shutdown_implementation=not_implemented
 	fi
 
 	printf '%s' '{'
@@ -179,10 +187,15 @@ zte_adapter_feature_status_json() {
 	printf '"sim_switch":{"implementation":"implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_sim_effective"
 	printf '"cellular_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_cellular_effective"
 	printf '"wifi_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_wifi_effective"
-	printf '"traffic_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_traffic_effective"
+	printf '"traffic_write":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' \
+		"$_zte_feature_traffic_implementation" \
+		"$_zte_feature_traffic_verification" \
+		"$_zte_feature_traffic_effective"
 	printf '"sms_write":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_sms_effective"
-	printf '"device_restart":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_reboot_effective"
-	printf '"device_shutdown":{"implementation":"not_implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_shutdown_effective"
+	printf '"device_restart":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' \
+		"$_zte_feature_reboot_implementation" "$_zte_feature_reboot_effective"
+	printf '"device_shutdown":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' \
+		"$_zte_feature_shutdown_implementation" "$_zte_feature_shutdown_effective"
 	printf '"power_supply_mode":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' \
 		"$_zte_feature_power_supply_implementation" \
 		"$_zte_feature_power_supply_verification" \

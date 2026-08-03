@@ -16,7 +16,7 @@ CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/creden
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}'
+		'{"status":{},"sms_messages":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}'
 }
 
 get_status() {
@@ -97,6 +97,72 @@ get_capabilities() {
 		"$_zte_cap_wifi" "$_zte_cap_traffic" "$_zte_cap_sms" \
 		"$_zte_cap_reboot" "$_zte_cap_shutdown" \
 		"$_zte_cap_power_supply"
+}
+
+get_charging_settings() {
+	_zte_charging_enabled=$(uci -q get \
+		zte-usb-wifi-manager.charging.enabled 2>/dev/null) || _zte_charging_enabled=0
+	_zte_charging_low=$(uci -q get \
+		zte-usb-wifi-manager.charging.low_percent 2>/dev/null) || _zte_charging_low=30
+	_zte_charging_high=$(uci -q get \
+		zte-usb-wifi-manager.charging.high_percent 2>/dev/null) || _zte_charging_high=80
+	case $_zte_charging_enabled in 0|1) ;; *) _zte_charging_enabled=0 ;; esac
+	zte_validate_thresholds "$_zte_charging_low" "$_zte_charging_high" || {
+		_zte_charging_low=30
+		_zte_charging_high=80
+	}
+	case $_zte_charging_enabled in 1) _zte_charging_enabled_json=true ;; *) _zte_charging_enabled_json=false ;; esac
+	printf '{"enabled":%s,"low_percent":%s,"high_percent":%s}\n' \
+		"$_zte_charging_enabled_json" "$_zte_charging_low" \
+		"$_zte_charging_high"
+}
+
+set_charging_settings() {
+	_zte_charging_request='{}'
+	IFS= read -r _zte_charging_request || :
+	if ! zte_json_is_flat_object "$_zte_charging_request" ||
+		! zte_adapter_payload_schema "$_zte_charging_request" \
+			'enabled low_percent high_percent' \
+			'enabled low_percent high_percent'; then
+		printf '%s\n' '{"ok":false,"error":"invalid_settings"}'
+		return
+	fi
+	_zte_charging_enabled=$(zte_json_flat_get \
+		"$_zte_charging_request" enabled)
+	_zte_charging_low=$(zte_json_flat_get \
+		"$_zte_charging_request" low_percent)
+	_zte_charging_high=$(zte_json_flat_get \
+		"$_zte_charging_request" high_percent)
+	case $_zte_charging_enabled in
+		true) _zte_charging_enabled_raw=1 ;;
+		false) _zte_charging_enabled_raw=0 ;;
+		*) printf '%s\n' '{"ok":false,"error":"invalid_settings"}'; return ;;
+	esac
+	if ! zte_validate_thresholds \
+		"$_zte_charging_low" "$_zte_charging_high"; then
+		printf '%s\n' '{"ok":false,"error":"invalid_settings"}'
+		return
+	fi
+	if ! uci -q set \
+		"zte-usb-wifi-manager.charging.enabled=$_zte_charging_enabled_raw" ||
+		! uci -q set \
+		"zte-usb-wifi-manager.charging.low_percent=$_zte_charging_low" ||
+		! uci -q set \
+		"zte-usb-wifi-manager.charging.high_percent=$_zte_charging_high" ||
+		! uci -q commit zte-usb-wifi-manager; then
+		uci -q revert zte-usb-wifi-manager >/dev/null 2>&1 || :
+		printf '%s\n' '{"ok":false,"error":"settings_write_failed"}'
+		return
+	fi
+	if [ -x /etc/init.d/zte-usb-wifi-manager ]; then
+		/etc/init.d/zte-usb-wifi-manager reload >/dev/null 2>&1 || {
+			printf '%s\n' '{"ok":false,"error":"service_reload_failed"}'
+			return
+		}
+	fi
+	printf '{"ok":true,"enabled":%s,"low_percent":%s,"high_percent":%s}\n' \
+		"$_zte_charging_enabled" "$_zte_charging_low" \
+		"$_zte_charging_high"
 }
 
 set_credentials() {
@@ -269,6 +335,8 @@ case ${1-} in
 			status) get_status ;;
 			sms_messages) get_sms_messages ;;
 			capabilities) get_capabilities ;;
+			charging_settings) get_charging_settings ;;
+			set_charging_settings) set_charging_settings ;;
 			credential_status) get_credential_status ;;
 			set_credentials) set_credentials ;;
 			clear_credentials) clear_credentials ;;

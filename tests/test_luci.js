@@ -27,6 +27,8 @@ const rpcBehavior = {
 	capabilities: function() { return Promise.resolve({}); },
 	logs: function() { return Promise.resolve({ events: [] }); },
 	credential_status: function() { return Promise.resolve({ configured: false }); },
+	charging_settings: function() { return Promise.resolve({ enabled: false, low_percent: 30, high_percent: 80 }); },
+	set_charging_settings: function() { return Promise.resolve({ ok: true, enabled: false, low_percent: 30, high_percent: 80 }); },
 	set_credentials: function() { return Promise.resolve({ ok: true, configured: true }); },
 	clear_credentials: function() { return Promise.resolve({ ok: true, configured: false }); },
 	cellular_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
@@ -92,7 +94,8 @@ function render(status, smsMessages, capabilities) {
 		{ ok: true, value: capabilities || {} },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: false } },
-		{ ok: true, value: smsMessages || { available: false, reason: 'not_loaded', items: [] } }
+		{ ok: true, value: smsMessages || { available: false, reason: 'not_loaded', items: [] } },
+		{ ok: true, value: { enabled: false, low_percent: 30, high_percent: 80 } }
 	]);
 }
 
@@ -273,6 +276,10 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	assert.strictEqual(rpcSpecs.capabilities.reject, true);
 	assert.strictEqual(rpcSpecs.logs.reject, true);
 	assert.strictEqual(rpcSpecs.credential_status.reject, true);
+	assert.strictEqual(rpcSpecs.charging_settings.reject, true);
+	assert.strictEqual(rpcSpecs.set_charging_settings.reject, true);
+	assert.deepStrictEqual(rpcSpecs.set_charging_settings.params,
+		[ 'enabled', 'low_percent', 'high_percent' ]);
 	assert.strictEqual(rpcSpecs.set_credentials.reject, true);
 	assert.deepStrictEqual(rpcSpecs.set_credentials.params, [ 'password' ]);
 	assert.strictEqual(rpcSpecs.clear_credentials.reject, true);
@@ -364,6 +371,71 @@ test('submits U30 power-supply mode through the dedicated RPC method', async fun
 		return text(node) === '切换电源直供';
 	});
 	assert.ok(directAgain);
+});
+
+test('renders, validates, and saves U30 smart charging settings', async function() {
+	pollEntries.length = 0;
+	const calls = [];
+	rpcBehavior.set_charging_settings = function() {
+		calls.push(Array.from(arguments));
+		return Promise.resolve({
+			ok: true, enabled: true, low_percent: 35, high_percent: 75
+		});
+	};
+	let current = app.render([
+		{ ok: true, value: { state: 'ok', model: 'U30 Pro', device: { model: 'U30 Pro' } } },
+		{ ok: true, value: { model: 'U30 Pro', power_supply_write: false } },
+		{ ok: true, value: { events: [] } },
+		{ ok: true, value: { configured: false } },
+		{ ok: true, value: { available: false, items: [] } },
+		{ ok: true, value: { enabled: false, low_percent: 30, high_percent: 80 } }
+	]);
+	const parent = {
+		replaceChild: function(next) {
+			current = next;
+			next.parentNode = parent;
+		}
+	};
+	current.parentNode = parent;
+	tabById(current, 'device').attrs.click();
+	assert.ok(text(current).indexOf('智能充电设置') !== -1);
+	assert.ok(text(current).indexOf('不会关闭 USB 数据连接') !== -1);
+	let enabled = nodesByTag(current, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'smart-charge-enabled';
+	});
+	let low = nodesByTag(current, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'smart-charge-low';
+	});
+	let high = nodesByTag(current, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'smart-charge-high';
+	});
+	assert.ok(enabled);
+	assert.strictEqual(enabled.checked, false);
+	assert.strictEqual(low.value, '30');
+	assert.strictEqual(high.value, '80');
+	enabled.checked = true;
+	low.value = '35';
+	high.value = '75';
+	await nodesByTag(current, 'button').find(function(node) {
+		return text(node) === '保存智能充电设置';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[0], [ true, 35, 75 ]);
+	assert.ok(text(current).indexOf('智能充电设置已保存') !== -1);
+
+	tabById(current, 'device').attrs.click();
+	low = nodesByTag(current, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'smart-charge-low';
+	});
+	high = nodesByTag(current, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'smart-charge-high';
+	});
+	low.value = '80';
+	high.value = '75';
+	await nodesByTag(current, 'button').find(function(node) {
+		return text(node) === '保存智能充电设置';
+	}).attrs.click();
+	assert.strictEqual(calls.length, 1);
+	assert.ok(text(current).indexOf('低电量阈值必须') !== -1);
 });
 
 test('requires independent confirmation and submits device controls', async function() {

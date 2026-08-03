@@ -59,7 +59,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}' \
+assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -208,12 +208,36 @@ printf '%s\n' \
     '  "-q get zte-usb-wifi-manager.writes.device_reboot_enabled") value=${ZTE_TEST_DEVICE_REBOOT_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.device_shutdown_enabled") value=${ZTE_TEST_DEVICE_SHUTDOWN_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.power_supply_write_enabled") value=${ZTE_TEST_POWER_SUPPLY_WRITE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.charging.enabled") value=${ZTE_TEST_CHARGING_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.charging.low_percent") value=${ZTE_TEST_CHARGING_LOW:-30} ;;' \
+    '  "-q get zte-usb-wifi-manager.charging.high_percent") value=${ZTE_TEST_CHARGING_HIGH:-80} ;;' \
+    '  -q\ set\ zte-usb-wifi-manager.charging.*|-q\ commit\ zte-usb-wifi-manager)' \
+    '    printf "%s\n" "$*" >>"${ZTE_TEST_UCI_LOG:?}"; exit 0 ;;' \
     '  *) exit 1 ;;' \
     'esac' \
     'printf "%s\n" "$value"' >"$test_bin/uci"
 chmod +x "$test_bin/uci"
 RPCD_TEST_LIB_DIR=$write_lib
 export RPCD_TEST_LIB_DIR
+
+charging_settings=$(ZTE_TEST_CHARGING_ENABLED=1 ZTE_TEST_CHARGING_LOW=35 \
+    ZTE_TEST_CHARGING_HIGH=75 rpcd_call call charging_settings)
+assert_eq '{"enabled":true,"low_percent":35,"high_percent":75}' \
+    "$charging_settings"
+uci_write_log=$work/uci-writes
+: >"$uci_write_log"
+charging_saved=$(printf '%s\n' \
+    '{"enabled":true,"low_percent":30,"high_percent":80}' |
+    ZTE_TEST_UCI_LOG=$uci_write_log rpcd_call call set_charging_settings)
+assert_eq '{"ok":true,"enabled":true,"low_percent":30,"high_percent":80}' \
+    "$charging_saved"
+assert_eq '-q set zte-usb-wifi-manager.charging.enabled=1
+-q set zte-usb-wifi-manager.charging.low_percent=30
+-q set zte-usb-wifi-manager.charging.high_percent=80
+-q commit zte-usb-wifi-manager' "$(cat "$uci_write_log")"
+assert_eq '{"ok":false,"error":"invalid_settings"}' "$(printf '%s\n' \
+    '{"enabled":true,"low_percent":80,"high_percent":30}' |
+    ZTE_TEST_UCI_LOG=$uci_write_log rpcd_call call set_charging_settings)"
 
 effective_capabilities=$(
     ZTE_TEST_WRITE_ENABLED=1 \

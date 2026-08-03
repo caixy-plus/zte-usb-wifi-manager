@@ -3,22 +3,25 @@
 [![CI](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/caixy-plus/zte-usb-wifi-manager/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-面向 OpenWrt 的中兴 U25S 设备控制台整合工具。项目目标是在一个 LuCI
-入口内管理通过 USB 接入的 U25S 专属能力，包括蜂窝网络、SIM、U25S Wi-Fi、
+面向 OpenWrt 的中兴 U25S / U30 Pro 设备控制台整合工具。项目目标是在一个 LuCI
+入口内管理通过 USB 接入的中兴随身 WiFi，包括蜂窝网络、SIM、设备 Wi-Fi、
 客户端、流量、短信、设备状态和诊断；OpenWrt 已有的 DHCP、防火墙、端口转发
 等功能不重复实现。
 
-> 本项目不再承诺智能充放电。TR3000 关闭 USB VBUS 时，U25S 的 USB 数据连接
-> 也会中断，无法实现“停止充电但保持 USB 上联”。电池信息仅作为设备状态展示；
-> USB 断电只可能作为明确会掉线的人工故障恢复动作。
+> U30 Pro 的智能充电使用设备原生 `power_supply_mode`：低电量切换为电池充电，
+> 高电量切换为电源直供，从而停止给电池充电但保持 USB 数据连接。项目不会用
+> 关闭 USB VBUS 的方式控制充电；USB 断电只保留为明确会掉线的故障恢复能力。
 
 ## 当前状态
 
-仓库目前处于**设备控制台整合开发预览阶段**。源码 backend r21 / LuCI r10
+仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r22 / LuCI r11
 已完成本地自动化、双 SDK 和双版本 QEMU 生命周期验证；
 最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
+- 已接入 U30 Pro 的 CDC-NCM 自动识别、HTTPS 匿名只读状态、设备原生
+  `power_supply_mode` 状态，以及默认关闭的手动/自动智能充电执行链。自动策略具有
+  低/高阈值滞回、严格写门控、单次 POST、强制安全读回和失败冷却。
 - daemon 聚合设备状态和 netifd 网络状态，并通过
   rpcd/ubus 提供给 LuCI。
 - LuCI 已采用设备控制台导航；总览、移动网络、流量、短信、设备、诊断和日志页使用缓存快照。
@@ -47,7 +50,8 @@
   官方 OpenWrt `ubootmod` 固件使用 xHCI bind/unbind 和 `usb-vbus` regulator
   双重读回；导出 `modem_power` 的兼容固件继续使用固定 GPIO 节点。
   两种 profile 都必须与板型精确匹配，默认仍以 `calibrated=0` 锁定。
-- daemon 正常轮询不会计算或执行任何电池驱动的 USB 供电动作。启动和退出时
+- daemon 不会计算或执行任何电池驱动的 USB VBUS 动作。U30 Pro 智能充电只修改
+  设备内部供电模式；启动和退出时
   仍会尝试恢复旧版本可能遗留的 OFF 状态，避免升级后设备被困在断电状态。
 - 连续读取失败会触发轮询退避，快照会保留最后可信的设备状态。
 - 已加入加速稳定性测试和脱敏 72 小时采样/验证工具，覆盖日志轮转、动作结果限额、
@@ -89,7 +93,7 @@
 - 路由器：Cudy TR3000 v1
 - SoC：MediaTek MT7981
 - OpenWrt：25.12.5
-- 中兴设备：U25S / MU5650
+- 中兴设备：U25S / MU5650、U30 Pro / MU3351 系列固件
 - 当前 USB 网络：`usbwan` / `eth2`
 
 ## 安装

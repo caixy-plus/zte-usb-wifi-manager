@@ -2,6 +2,36 @@
 
 ZTE_HTTP_TIMEOUT=${ZTE_HTTP_TIMEOUT:-5}
 
+# Percent-encode one UTF-8 form value without exposing it in process argv.
+# Byte-wise C locale handling keeps multibyte text deterministic.
+zte_form_encode() (
+	LC_ALL=C
+	export LC_ALL
+	_zte_form_input=${1-}
+	while [ -n "$_zte_form_input" ]; do
+		_zte_form_rest=${_zte_form_input#?}
+		_zte_form_char=${_zte_form_input%"$_zte_form_rest"}
+		_zte_form_input=$_zte_form_rest
+		case $_zte_form_char in
+			[A-Za-z0-9.~_-]) printf '%s' "$_zte_form_char" ;;
+			*)
+				_zte_form_byte=$(printf '%d' "'$_zte_form_char") || return 1
+				_zte_form_byte=$(((_zte_form_byte + 256) % 256))
+				printf '%%%02X' "$_zte_form_byte"
+				;;
+		esac
+	done
+)
+
+zte_form_pair() {
+	_zte_form_key=${1-}
+	case $_zte_form_key in
+		''|*[!A-Za-z0-9_~-]*) return 1 ;;
+	esac
+	printf '%s=' "$_zte_form_key"
+	zte_form_encode "${2-}"
+}
+
 zte_http_origin_valid() {
 	case ${1-} in
 		http://*|https://*) ;;

@@ -254,4 +254,77 @@ assert_eq readback_mismatch "$(zte_execute_power_supply_mode \
 assert_eq invalid_target "$(zte_execute_power_supply_mode \
     192.168.0.1 '' "$work/cookies" invalid)"
 
+# Non-destructive U30 settings use one non-retriable POST followed by bounded,
+# safe GET readback. The queued record remains the only payload source.
+setting_write_log=$work/setting-writes
+: >"$setting_write_log"
+zte_adapter_set_connection_mode() {
+    printf 'connection|%s\n' "$2" >>"$setting_write_log"
+}
+zte_adapter_fetch_connection_mode() { printf '%s\n' automatic; }
+export ZTE_SETTING_READBACK_ATTEMPTS=2
+export ZTE_SETTING_READBACK_INTERVAL=0
+connection_record='{"payload":{"action":"set_connection_mode","mode":"automatic"}}'
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
+    set_connection_mode "$connection_record")"
+assert_eq 'connection|automatic' "$(cat "$setting_write_log")"
+
+zte_adapter_fetch_connection_mode() { printf '%s\n' manual; }
+assert_eq readback_mismatch "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_connection_mode "$connection_record")"
+zte_adapter_set_connection_mode() { return 1; }
+assert_eq write_ambiguous "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_connection_mode "$connection_record")"
+
+zte_adapter_set_traffic_plan() {
+    printf 'traffic|%s|%s|%s|%s|%s\n' "$2" "$3" "$4" "$5" "$6" \
+        >>"$setting_write_log"
+}
+zte_adapter_fetch_traffic_plan() { printf '%s\n' '1|10737418240|90|1|0'; }
+traffic_record='{"payload":{"action":"set_traffic_plan","enabled":true,"limit_bytes":10737418240,"alert_percent":90,"cycle_day":1,"disconnect":false}}'
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
+    set_traffic_plan "$traffic_record")"
+
+zte_adapter_reset_traffic() { printf '%s\n' reset >>"$setting_write_log"; }
+zte_adapter_fetch_traffic_counters() { printf '%s\n' '0|0|0'; }
+reset_record='{"payload":{"action":"reset_traffic","confirm":true}}'
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
+    reset_traffic "$reset_record")"
+assert_eq invalid_action "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" reboot_device '{"payload":{}}')"
+
+# SMS delete/read actions must be confirmed from a fresh inbox read. Device
+# reboot requires an observed outage followed by recovery; shutdown requires
+# a bounded sequence of failed probes and remains capability-gated.
+zte_adapter_delete_sms() { return 0; }
+zte_adapter_mark_sms_read() { return 0; }
+zte_adapter_fetch_sms_message_state() { printf '%s\n' absent; }
+delete_record='{"payload":{"action":"delete_sms","message_id":"42","confirm":true}}'
+assert_eq ok "$(zte_execute_u30_sms_action 192.168.0.1 '' "$work/cookies" \
+    delete_sms "$delete_record")"
+zte_adapter_fetch_sms_message_state() { printf '%s\n' 0; }
+read_record='{"payload":{"action":"mark_sms_read","message_id":"42"}}'
+assert_eq ok "$(zte_execute_u30_sms_action 192.168.0.1 '' "$work/cookies" \
+    mark_sms_read "$read_record")"
+zte_adapter_fetch_sms_message_state() { printf '%s\n' 1; }
+assert_eq readback_mismatch "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" mark_sms_read "$read_record")"
+
+device_probe_count=0
+zte_adapter_device_command() { return 0; }
+zte_adapter_probe_status() {
+    device_probe_count=$((device_probe_count + 1))
+    [ "$device_probe_count" -ge 2 ]
+}
+export ZTE_DEVICE_ACTION_ATTEMPTS=3
+export ZTE_DEVICE_ACTION_INTERVAL=0
+assert_eq ok "$(zte_execute_u30_device_action 192.168.0.1 '' \
+    "$work/cookies" reboot_device)"
+zte_adapter_probe_status() { return 1; }
+assert_eq ok "$(zte_execute_u30_device_action 192.168.0.1 '' \
+    "$work/cookies" shutdown_device)"
+zte_adapter_device_command() { return 1; }
+assert_eq write_ambiguous "$(zte_execute_u30_device_action 192.168.0.1 '' \
+    "$work/cookies" reboot_device)"
+
 finish

@@ -38,6 +38,19 @@ var callCredentialStatus = rpc.declare({
 	reject: true
 });
 
+var callChargingSettings = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'charging_settings',
+	reject: true
+});
+
+var callSetChargingSettings = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'set_charging_settings',
+	params: [ 'enabled', 'low_percent', 'high_percent' ],
+	reject: true
+});
+
 var callSetCredentials = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'set_credentials',
@@ -434,7 +447,8 @@ function loadData() {
 		rpcResult(callCapabilities),
 		rpcResult(function() { return callLogs(50); }),
 		rpcResult(callCredentialStatus),
-		rpcResult(callSmsMessages)
+		rpcResult(callSmsMessages),
+		rpcResult(callChargingSettings)
 	]);
 }
 
@@ -967,7 +981,45 @@ function renderSimSwitch(sim, onAction, actionBusy) {
 		[ E('h4', {}, _('SIM 切换')) ].concat(children));
 }
 
-function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) {
+function renderChargingSettings(settingsResult, onSave, notice, busy) {
+	var settings = settingsResult && settingsResult.ok && settingsResult.value &&
+		typeof settingsResult.value === 'object' ? settingsResult.value : {};
+	var enabled = actionInput('smart-charge-enabled', 'checkbox', settings.enabled === true);
+	var low = actionInput('smart-charge-low', 'number',
+		settings.low_percent === undefined ? 30 : settings.low_percent);
+	var high = actionInput('smart-charge-high', 'number',
+		settings.high_percent === undefined ? 80 : settings.high_percent);
+	low.attrs.min = '30';
+	low.attrs.max = '99';
+	low.attrs.step = '1';
+	high.attrs.min = '31';
+	high.attrs.max = '100';
+	high.attrs.step = '1';
+
+	return E('div', { 'class': 'cbi-section zte-charging-settings' }, [
+		E('h4', {}, _('智能充电设置')),
+		settingsResult && settingsResult.ok === false
+			? E('div', { 'class': 'alert-message error' },
+				_('无法读取智能充电设置，请检查 rpcd 服务。')) : null,
+		notice ? E('div', { 'class': 'alert-message ' + notice.level }, notice.message) : null,
+		actionRow(_('启用自动充放电'), enabled),
+		actionRow(_('低电量开始充电（%）'), low),
+		actionRow(_('高电量切换直供（%）'), high),
+		E('div', { 'class': 'cbi-value-description' },
+			_('该策略只切换 U30 Pro 内部的充电/电源直供模式，不会关闭 USB 数据连接。实际写入仍受管理员写操作开关和设备能力校准限制。')),
+		E('button', {
+			'class': 'cbi-button cbi-button-apply',
+			'type': 'button',
+			'disabled': busy ? 'disabled' : null,
+			'click': function() {
+				return onSave(enabled.checked === true, Number(low.value), Number(high.value));
+			}
+		}, _('保存智能充电设置'))
+	]);
+}
+
+function renderDevice(status, capabilities, onAction, actionNotice, actionBusy,
+	chargingSettingsResult, onChargingSave, chargingNotice, chargingBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var sim = device.sim && typeof device.sim === 'object' ? device.sim : {};
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
@@ -994,6 +1046,10 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 		row(_('供电模式'), powerSupplyModeLabel(powerSupply)),
 		row(_('温度级别'), battery.temperature_level)
 	];
+
+	if (String(model).toLowerCase().indexOf('u30') !== -1)
+		children.push(renderChargingSettings(chargingSettingsResult,
+			onChargingSave, chargingNotice, chargingBusy));
 
 	if (capabilities.power_supply_write === true) {
 		children.push(actionSection(_('智能充电与电源直供'), [
@@ -1166,7 +1222,8 @@ function renderLogs(logsResult) {
 }
 
 function renderPanel(tabId, status, capabilities, logsResult, smsResult, onAction,
-	actionNotice, actionBusy) {
+	actionNotice, actionBusy, chargingSettingsResult, onChargingSave,
+	chargingNotice, chargingBusy) {
 	switch (tabId) {
 	case 'network':
 		return renderNetwork(status, capabilities, onAction, actionBusy);
@@ -1179,7 +1236,8 @@ function renderPanel(tabId, status, capabilities, logsResult, smsResult, onActio
 	case 'sms':
 		return renderSms(status, smsResult, capabilities, onAction, actionBusy);
 	case 'device':
-		return renderDevice(status, capabilities, onAction, actionNotice, actionBusy);
+		return renderDevice(status, capabilities, onAction, actionNotice, actionBusy,
+			chargingSettingsResult, onChargingSave, chargingNotice, chargingBusy);
 	case 'diagnostics':
 		return renderDiagnostics(status, capabilities);
 	case 'logs':
@@ -1190,7 +1248,8 @@ function renderPanel(tabId, status, capabilities, logsResult, smsResult, onActio
 }
 
 function renderStatus(data, selectedTab, onSelect, onCredentialSave,
-	onCredentialClear, credentialNotice, onAction, actionNotice, actionBusy) {
+	onCredentialClear, credentialNotice, onAction, actionNotice, actionBusy,
+	onChargingSave, chargingNotice, chargingBusy) {
 		var statusResult = data && data[0] && typeof data[0] === 'object'
 			? data[0] : { ok: false, value: {} };
 		var capabilitiesResult = data && data[1] && typeof data[1] === 'object'
@@ -1205,6 +1264,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 			? data[3] : { ok: false, value: {} };
 		var smsResult = data && data[4] && typeof data[4] === 'object'
 			? data[4] : { ok: false, value: {} };
+		var chargingSettingsResult = data && data[5] && typeof data[5] === 'object'
+			? data[5] : { ok: false, value: {} };
 		var alerts = [];
 		var consoleUrl = nativeConsoleUrl(status, capabilities);
 		var currentModel = deviceModel(status, capabilities);
@@ -1244,7 +1305,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 				return renderTab(tab, tab.id === selectedTab, onSelect);
 			})),
 			renderPanel(selectedTab, status, capabilities, logsResult, smsResult,
-				onAction, actionNotice, actionBusy),
+				onAction, actionNotice, actionBusy, chargingSettingsResult,
+				onChargingSave, chargingNotice, chargingBusy),
 			E('div', { 'class': 'alert-message warning' },
 				writesAvailable
 					? _('仅显示已通过实机校准并由管理员启用的写操作；详细能力状态见“系统与诊断”。')
@@ -1259,6 +1321,8 @@ return view.extend({
 		var currentData = data;
 		var credentialNotice = null;
 		var actionNotice = null;
+		var chargingNotice = null;
+		var chargingSaving = false;
 		var currentOperationId = null;
 		var actionSubmitting = false;
 		var operationGeneration = 0;
@@ -1275,7 +1339,10 @@ return view.extend({
 				credentialNotice,
 				submitAction,
 				actionNotice,
-				actionSubmitting || currentOperationId !== null
+				actionSubmitting || currentOperationId !== null,
+				saveChargingSettings,
+				chargingNotice,
+				chargingSaving
 			);
 		}
 
@@ -1362,6 +1429,56 @@ return view.extend({
 				credentialNotice = {
 					level: 'error',
 					message: _('本地管理凭据清除失败，请检查 rpcd 服务和权限。')
+				};
+				replace(renderCurrent());
+			});
+		}
+
+		function saveChargingSettings(enabled, lowPercent, highPercent) {
+			if (!Number.isInteger(lowPercent) || !Number.isInteger(highPercent) ||
+				lowPercent < 30 || highPercent > 100 || lowPercent >= highPercent) {
+				chargingNotice = {
+					level: 'error',
+					message: _('低电量阈值必须为 30–99 的整数，且小于不超过 100 的高电量阈值。')
+				};
+				replace(renderCurrent());
+				return Promise.resolve();
+			}
+			if (chargingSaving)
+				return Promise.resolve();
+			chargingSaving = true;
+			chargingNotice = { level: 'info', message: _('正在保存智能充电设置。') };
+			replace(renderCurrent());
+			return Promise.resolve(callSetChargingSettings(
+				enabled === true, lowPercent, highPercent
+			)).then(function(reply) {
+				chargingSaving = false;
+				if (!reply || reply.ok !== true) {
+					chargingNotice = {
+						level: 'error',
+						message: _('智能充电设置保存失败，请检查输入和后端日志。')
+					};
+					replace(renderCurrent());
+					return;
+				}
+				currentData[5] = {
+					ok: true,
+					value: {
+						enabled: reply.enabled === true,
+						low_percent: Number(reply.low_percent),
+						high_percent: Number(reply.high_percent)
+					}
+				};
+				chargingNotice = {
+					level: 'success',
+					message: _('智能充电设置已保存。')
+				};
+				replace(renderCurrent());
+			}, function() {
+				chargingSaving = false;
+				chargingNotice = {
+					level: 'error',
+					message: _('无法保存智能充电设置，请检查 rpcd 服务和权限。')
 				};
 				replace(renderCurrent());
 			});

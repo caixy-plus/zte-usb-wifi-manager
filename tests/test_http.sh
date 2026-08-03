@@ -9,6 +9,11 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/http.sh
 . "$lib"
 if command -v zte_http_get >/dev/null 2>&1; then pass; else fail 'zte_http_get missing'; fi
 if command -v zte_http_post >/dev/null 2>&1; then pass; else fail 'zte_http_post missing'; fi
+assert_eq 'plain-._~AZaz09' "$(zte_form_encode 'plain-._~AZaz09')"
+assert_eq 'a%20b%26c%3Dd%2Be%25' "$(zte_form_encode 'a b&c=d+e%')"
+assert_eq '%E4%B8%AD%E6%96%87' "$(zte_form_encode '中文')"
+assert_eq 'key=a%20b%26c' "$(zte_form_pair key 'a b&c')"
+assert_failure zte_form_pair 'bad&key' value
 assert_eq 'http://192.168.0.1/' "$(zte_http_referer 'http://192.168.0.1/goform/goform_get_cmd_process?cmd=LD')"
 assert_eq 'https://192.168.0.1/' "$(zte_http_referer 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=LD')"
 assert_success zte_http_origin_valid 'http://192.168.0.1'

@@ -33,6 +33,49 @@
       "success_result": "success",
       "retry_policy": "never_retry_after_ambiguous_acceptance",
       "real_device_verification": "required_before_enable"
+    },
+    "set_connection_mode": {
+      "goform_id": "SET_CONNECTION_MODE",
+      "fixed_values": { "isTest": "false", "dial_roam_setting_option": "off" },
+      "semantic_values": { "automatic": "auto_dial", "manual": "manual_dial", "on_demand": "on_demand" },
+      "readback_command": "ConnectionMode,autoConnectWhenRoaming",
+      "real_device_verification": "required_before_enable"
+    },
+    "set_traffic_plan": {
+      "goform_id": "DATA_LIMIT_SETTING",
+      "unit": "data",
+      "readback_command": "flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect",
+      "real_device_verification": "required_before_enable"
+    },
+    "reset_traffic": {
+      "goform_id": "RESET_DATA_COUNTER",
+      "readback_command": "flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time",
+      "real_device_verification": "required_before_enable"
+    },
+    "delete_sms": {
+      "goform_id": "DELETE_SMS",
+      "id_key": "msg_id",
+      "id_suffix": ";",
+      "status_command": "sms_cmd_status_info",
+      "status_selector": "6",
+      "real_device_verification": "required_before_enable"
+    },
+    "mark_sms_read": {
+      "goform_id": "SET_MSG_READ",
+      "id_key": "msg_id",
+      "id_suffix": ";",
+      "tag": "0",
+      "real_device_verification": "required_before_enable"
+    },
+    "reboot_device": {
+      "goform_id": "REBOOT_DEVICE",
+      "readback": "device_reconnect_and_status",
+      "real_device_verification": "required_before_enable"
+    },
+    "shutdown_device": {
+      "goform_id": "SHUTDOWN_DEVICE",
+      "readback": "device_unreachable_with_explicit_recovery_path",
+      "real_device_verification": "required_before_enable"
     }
   }
 }

@@ -816,6 +816,75 @@ process_actions() {
 		_zte_action_event_code=action_failed
 	elif zte_adapter_action_supported "$_zte_action_type"; then
 		case $_zte_action_type in
+			set_connection_mode|set_traffic_plan|reset_traffic)
+				_zte_action_result=''
+				if _zte_action_result=$(zte_execute_u30_setting \
+					"$host" '' "$COOKIE_FILE" "$_zte_action_type" \
+					"$_zte_action_record"); then
+					_zte_action_state=succeeded
+					_zte_action_code=ok
+					_zte_action_event_level=info
+					_zte_action_event_code=action_succeeded
+				else
+					if zte_action_code_valid "$_zte_action_result"; then
+						_zte_action_code=$_zte_action_result
+					else
+						_zte_action_code=executor_failed
+					fi
+					_zte_action_event_level=error
+					_zte_action_event_code=action_failed
+				fi
+				;;
+			delete_sms|mark_sms_read)
+				_zte_action_password=''
+				if zte_adapter_login_required; then
+					_zte_action_password=$(zte_read_password \
+						"$credential_file" 2>/dev/null) || _zte_action_password=''
+				fi
+				_zte_action_result=''
+				if _zte_action_result=$(zte_execute_u30_sms_action \
+					"$host" "$_zte_action_password" "$COOKIE_FILE" \
+					"$_zte_action_type" "$_zte_action_record"); then
+					_zte_action_state=succeeded
+					_zte_action_code=ok
+					_zte_action_event_level=info
+					_zte_action_event_code=action_succeeded
+				else
+					if zte_action_code_valid "$_zte_action_result"; then
+						_zte_action_code=$_zte_action_result
+					else
+						_zte_action_code=executor_failed
+					fi
+					_zte_action_event_level=error
+					_zte_action_event_code=action_failed
+				fi
+				_zte_action_password=''
+				;;
+			reboot_device|shutdown_device)
+				_zte_action_password=''
+				if zte_adapter_login_required; then
+					_zte_action_password=$(zte_read_password \
+						"$credential_file" 2>/dev/null) || _zte_action_password=''
+				fi
+				_zte_action_result=''
+				if _zte_action_result=$(zte_execute_u30_device_action \
+					"$host" "$_zte_action_password" "$COOKIE_FILE" \
+					"$_zte_action_type"); then
+					_zte_action_state=succeeded
+					_zte_action_code=ok
+					_zte_action_event_level=info
+					_zte_action_event_code=action_succeeded
+				else
+					if zte_action_code_valid "$_zte_action_result"; then
+						_zte_action_code=$_zte_action_result
+					else
+						_zte_action_code=executor_failed
+					fi
+					_zte_action_event_level=error
+					_zte_action_event_code=action_failed
+				fi
+				_zte_action_password=''
+				;;
 			set_power_supply_mode)
 				_zte_action_mode=$(zte_json_path_get \
 					"$_zte_action_record" payload mode)

@@ -116,8 +116,9 @@ jobs:
           esac
           printf '%s\n' \
             "$release_summary" \
-            'U25S management-console preview with cached cellular, Wi-Fi, client, traffic, SMS, device, diagnostic, and log views.' \
-            'Eleven semantic write requests are capability-gated; all uncalibrated production writes, including independent reboot and shutdown controls, remain locked by default.' \
+            'U25S and U30 Pro management-console preview with cached cellular, Wi-Fi, client, traffic, SMS, device, diagnostic, and log views.' \
+            'U30 Pro device-side smart charging uses power_supply_mode and never disables USB data.' \
+            'Every semantic write is independently capability-gated; uncalibrated production writes remain locked by default.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md

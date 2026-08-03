@@ -7,6 +7,7 @@
           "status",
           "sms_messages",
           "capabilities",
+          "charging_settings",
           "credential_status",
           "operation_status",
           "logs"
@@ -18,6 +19,7 @@
         "zte_usb_wifi": [
           "set_credentials",
           "clear_credentials",
+          "set_charging_settings",
           "cellular_action",
           "wifi_action",
           "traffic_action",

@@ -223,10 +223,10 @@ if (JSON.stringify(Object.keys(read)) !== JSON.stringify(["ubus"]))
 if (JSON.stringify(Object.keys(read.ubus)) !== JSON.stringify(["zte_usb_wifi"]))
     process.exit(1);
 if (JSON.stringify(read.ubus.zte_usb_wifi) !==
-    JSON.stringify(["status", "sms_messages", "capabilities", "credential_status", "operation_status", "logs"]))
+    JSON.stringify(["status", "sms_messages", "capabilities", "charging_settings", "credential_status", "operation_status", "logs"]))
     process.exit(1);
 if (JSON.stringify(write.ubus.zte_usb_wifi) !==
-    JSON.stringify(["set_credentials", "clear_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action", "device_action", "power_action"]))
+    JSON.stringify(["set_credentials", "clear_credentials", "set_charging_settings", "cellular_action", "wifi_action", "traffic_action", "sms_action", "device_action", "power_action"]))
     process.exit(1);
 ' "$acl"
 
@@ -263,7 +263,7 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '源码 backend r21 / LuCI r10'
+assert_file_contains README.md '源码 backend r22 / LuCI r11'
 assert_file_contains README.md '九类语义写请求契约'
 assert_file_contains README.md '生产写 capability 仍全部保持 0'
 assert_file_contains README.md 'docs/superpowers/plans/2026-08-01-write-request-contracts\.md'

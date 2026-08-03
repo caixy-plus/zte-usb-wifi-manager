@@ -616,9 +616,9 @@ if grep -Fiq 'read-only developer preview' "$workflow"; then
 else
     pass
 fi
-assert_file_contains "$workflow" 'U25S management-console preview'
-assert_file_contains "$workflow" 'Eleven semantic write requests are capability-gated'
-assert_file_contains "$workflow" 'independent reboot and shutdown controls'
+assert_file_contains "$workflow" 'U25S and U30 Pro management-console preview'
+assert_file_contains "$workflow" 'U30 Pro device-side smart charging uses power_supply_mode'
+assert_file_contains "$workflow" 'Every semantic write is independently capability-gated'
 if grep -Eq 'Backend r[89]([^0-9]|$)' "$workflow"; then
     fail 'r22 workflow must not retain stale r8 or r10 release notes'
 else

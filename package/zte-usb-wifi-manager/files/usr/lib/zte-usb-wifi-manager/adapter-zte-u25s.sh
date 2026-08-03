@@ -339,6 +339,207 @@ zte_adapter_fetch_power_supply_mode() {
 	esac
 }
 
+zte_adapter_u30_post_body() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_u30_post_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_u30_post_response=$(zte_http_post \
+		"$_zte_u30_post_origin/goform/goform_set_cmd_process" \
+		"$2" "$3") || return 1
+	zte_json_is_flat_object "$_zte_u30_post_response" || return 1
+	[ "$(zte_json_flat_get "$_zte_u30_post_response" result)" = success ]
+}
+
+zte_adapter_set_connection_mode() {
+	_zte_connection_host=$1
+	_zte_connection_mode=$2
+	_zte_connection_jar=$3
+	case $_zte_connection_mode in
+		automatic) _zte_connection_raw=auto_dial ;;
+		manual) _zte_connection_raw=manual_dial ;;
+		on_demand) _zte_connection_raw=on_demand ;;
+		*) return 1 ;;
+	esac
+	zte_adapter_u30_post_body "$_zte_connection_host" \
+		"isTest=false&goformId=SET_CONNECTION_MODE&ConnectionMode=$_zte_connection_raw&dial_roam_setting_option=off" \
+		"$_zte_connection_jar"
+}
+
+zte_adapter_u30_fetch_flat() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_u30_fetch_fields=$2
+	case $_zte_u30_fetch_fields in
+		'ConnectionMode,autoConnectWhenRoaming'|\
+'flux_data_volume_limit_switch,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_clear_date,flux_limited_disconnect'|\
+'flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time') ;;
+		*) return 1 ;;
+	esac
+	_zte_u30_fetch_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_u30_fetch_response=$(zte_http_get \
+		"$_zte_u30_fetch_origin/goform/goform_get_cmd_process?cmd=$_zte_u30_fetch_fields&multi_data=1&isTest=false" \
+		"$3") || return 1
+	zte_json_is_flat_object "$_zte_u30_fetch_response" || return 1
+	printf '%s\n' "$_zte_u30_fetch_response"
+}
+
+zte_adapter_fetch_connection_mode() {
+	_zte_connection_response=$(zte_adapter_u30_fetch_flat "$1" \
+		'ConnectionMode,autoConnectWhenRoaming' "$2") || return 1
+	zte_json_flat_has "$_zte_connection_response" ConnectionMode || return 1
+	case $(zte_json_flat_get "$_zte_connection_response" ConnectionMode) in
+		auto_dial) printf '%s\n' automatic ;;
+		manual_dial) printf '%s\n' manual ;;
+		on_demand) printf '%s\n' on_demand ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_adapter_set_traffic_plan() {
+	_zte_traffic_host=$1
+	_zte_traffic_enabled=$2
+	_zte_traffic_limit=$3
+	_zte_traffic_alert=$4
+	_zte_traffic_day=$5
+	_zte_traffic_disconnect=$6
+	_zte_traffic_jar=$7
+	case $_zte_traffic_enabled in
+		0)
+			_zte_traffic_body='isTest=false&goformId=DATA_LIMIT_SETTING&flux_data_volume_limit_switch=0&notify_deviceui_enable=0'
+			;;
+		1)
+			zte_adapter_payload_uint_range \
+				"$_zte_traffic_limit" 1 1000000000000000 &&
+				zte_adapter_payload_uint_range \
+					"$_zte_traffic_alert" 1 100 &&
+				zte_adapter_payload_uint_range \
+					"$_zte_traffic_day" 1 31 || return 1
+			case $_zte_traffic_disconnect in
+				0|1) ;;
+				*) return 1 ;;
+			esac
+			_zte_traffic_body="isTest=false&goformId=DATA_LIMIT_SETTING&flux_data_volume_limit_unit=data&flux_data_volume_limit_size=$_zte_traffic_limit&flux_data_volume_alert_percent=$_zte_traffic_alert&flux_auto_clear_flow_data_switch=1&flux_clear_date=$_zte_traffic_day&flux_limited_disconnect=$_zte_traffic_disconnect&flux_data_volume_limit_switch=1&notify_deviceui_enable=0"
+			;;
+		*) return 1 ;;
+	esac
+	zte_adapter_u30_post_body "$_zte_traffic_host" \
+		"$_zte_traffic_body" "$_zte_traffic_jar"
+}
+
+zte_adapter_fetch_traffic_plan() {
+	_zte_traffic_response=$(zte_adapter_u30_fetch_flat "$1" \
+		'flux_data_volume_limit_switch,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_clear_date,flux_limited_disconnect' \
+		"$2") || return 1
+	for _zte_traffic_field in \
+		flux_data_volume_limit_switch flux_data_volume_limit_size \
+		flux_data_volume_alert_percent flux_clear_date \
+		flux_limited_disconnect; do
+		zte_json_flat_has "$_zte_traffic_response" \
+			"$_zte_traffic_field" || return 1
+	done
+	_zte_traffic_read_enabled=$(zte_json_flat_get \
+		"$_zte_traffic_response" flux_data_volume_limit_switch)
+	case $_zte_traffic_read_enabled in 0|1) ;; *) return 1 ;; esac
+	if [ "$_zte_traffic_read_enabled" = 0 ]; then
+		printf '%s\n' '0||||'
+		return
+	fi
+	_zte_traffic_read_limit=$(zte_json_flat_get \
+		"$_zte_traffic_response" flux_data_volume_limit_size)
+	_zte_traffic_read_alert=$(zte_json_flat_get \
+		"$_zte_traffic_response" flux_data_volume_alert_percent)
+	_zte_traffic_read_day=$(zte_json_flat_get \
+		"$_zte_traffic_response" flux_clear_date)
+	_zte_traffic_read_disconnect=$(zte_json_flat_get \
+		"$_zte_traffic_response" flux_limited_disconnect)
+	zte_adapter_payload_uint_range "$_zte_traffic_read_limit" \
+		1 1000000000000000 &&
+		zte_adapter_payload_uint_range "$_zte_traffic_read_alert" 1 100 &&
+		zte_adapter_payload_uint_range "$_zte_traffic_read_day" 1 31 || return 1
+	case $_zte_traffic_read_disconnect in 0|1) ;; *) return 1 ;; esac
+	printf '1|%s|%s|%s|%s\n' "$_zte_traffic_read_limit" \
+		"$_zte_traffic_read_alert" "$_zte_traffic_read_day" \
+		"$_zte_traffic_read_disconnect"
+}
+
+zte_adapter_reset_traffic() {
+	zte_adapter_u30_post_body "$1" \
+		'isTest=false&goformId=RESET_DATA_COUNTER' "$2"
+}
+
+zte_adapter_fetch_traffic_counters() {
+	_zte_counter_response=$(zte_adapter_u30_fetch_flat "$1" \
+		'flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time' \
+		"$2") || return 1
+	_zte_counter_values=''
+	for _zte_counter_field in flux_monthly_tx_bytes flux_monthly_rx_bytes \
+		flux_monthly_time; do
+		zte_json_flat_has "$_zte_counter_response" \
+			"$_zte_counter_field" || return 1
+		_zte_counter_value=$(zte_json_flat_get \
+			"$_zte_counter_response" "$_zte_counter_field")
+		[ -n "$_zte_counter_value" ] || _zte_counter_value=0
+		zte_is_uint "$_zte_counter_value" || return 1
+		_zte_counter_values=${_zte_counter_values:+$_zte_counter_values|}$_zte_counter_value
+	done
+	printf '%s\n' "$_zte_counter_values"
+}
+
+zte_adapter_mark_sms_read() {
+	zte_adapter_payload_message_id "$2" || return 1
+	_zte_sms_read_id=$(zte_form_encode "$2;") || return 1
+	zte_adapter_u30_post_body "$1" \
+		"isTest=false&goformId=SET_MSG_READ&msg_id=$_zte_sms_read_id&tag=0" \
+		"$3"
+}
+
+zte_adapter_delete_sms() {
+	zte_adapter_payload_message_id "$2" || return 1
+	_zte_sms_delete_id=$(zte_form_encode "$2;") || return 1
+	zte_adapter_u30_post_body "$1" \
+		"isTest=false&goformId=DELETE_SMS&msg_id=$_zte_sms_delete_id&notCallback=true" \
+		"$3"
+}
+
+# Return "absent" or the current numeric message tag for one exact ID.
+zte_adapter_fetch_sms_message_state() {
+	zte_adapter_payload_message_id "$2" || return 1
+	_zte_sms_state_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_sms_state_response=$(zte_http_get \
+		"$_zte_sms_state_origin/goform/goform_get_cmd_process?cmd=sms_data_total&page=0&data_per_page=50&mem_store=1&tags=10&order_by=order%20by%20id%20desc&isTest=false" \
+		"$3") || return 1
+	_zte_sms_state_items=$(jsonfilter -s "$_zte_sms_state_response" \
+		-e '@.messages[*]') || return 1
+	while IFS= read -r _zte_sms_state_item; do
+		[ -n "$_zte_sms_state_item" ] || continue
+		zte_json_is_flat_object "$_zte_sms_state_item" || return 1
+		[ "$(zte_json_flat_get "$_zte_sms_state_item" id)" = "$2" ] || continue
+		_zte_sms_state_tag=$(zte_json_flat_get "$_zte_sms_state_item" tag)
+		case $_zte_sms_state_tag in 0|1) printf '%s\n' "$_zte_sms_state_tag" ;; *) return 1 ;; esac
+		return 0
+	done <<EOF
+$_zte_sms_state_items
+EOF
+	printf '%s\n' absent
+}
+
+zte_adapter_device_command() {
+	case $2 in
+		reboot) _zte_device_goform=REBOOT_DEVICE ;;
+		shutdown) _zte_device_goform=SHUTDOWN_DEVICE ;;
+		*) return 1 ;;
+	esac
+	zte_adapter_u30_post_body "$1" \
+		"isTest=false&goformId=$_zte_device_goform" "$3"
+}
+
+zte_adapter_probe_status() {
+	_zte_probe_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_probe_response=$(zte_http_get \
+		"$_zte_probe_origin/goform/goform_get_cmd_process?cmd=mc_modem_main_state&isTest=false" \
+		"$2") || return 1
+	zte_json_is_flat_object "$_zte_probe_response" &&
+		zte_json_flat_has "$_zte_probe_response" mc_modem_main_state
+}
+
 # $1 raw flat device JSON, $2 optional normalized client collection ->
 # normalized device object on stdout.
 # sim.active_slot_raw passes the firmware value through unmapped until the

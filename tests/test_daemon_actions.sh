@@ -197,6 +197,53 @@ assert_eq \
     '{"operation_id":"op-1722345683-1237","type":"switch_sim","state":"failed","code":"invalid_target","updated":1722345680}' \
     "$(zte_action_get "$STATE_DIR" op-1722345683-1237)"
 
+# Source-reviewed U30 non-destructive settings share the same queue, feature
+# gate and result-record discipline as the calibrated power action.
+zte_adapter_action_supported() {
+    case $1 in
+        set_connection_mode|set_traffic_plan|reset_traffic|delete_sms|reboot_device)
+            return 0
+            ;;
+    esac
+    return 1
+}
+zte_adapter_action_effectively_enabled() {
+    zte_adapter_action_supported "$1" && [ "$2" = 1 ] && [ "$3" = 1 ]
+}
+cellular_write_enabled=1
+traffic_write_enabled=1
+sms_write_enabled=1
+device_reboot_enabled=1
+zte_execute_u30_setting() {
+    printf '%s|%s|%s|%s\n' "$1" "$3" "$4" "$5" >>"$execute_log"
+    printf '%s\n' ok
+}
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1241 set_connection_mode \
+    '{"action":"set_connection_mode","mode":"automatic"}' 1722345684
+assert_success process_actions
+assert_eq \
+    '{"operation_id":"op-1722345684-1241","type":"set_connection_mode","state":"succeeded","code":"ok","updated":1722345680}' \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1241)"
+case $(tail -n 1 "$execute_log") in
+    192.168.0.1\|*\|set_connection_mode\|*'"mode":"automatic"'*) pass ;;
+    *) fail 'daemon did not pass the validated queued setting to the executor' ;;
+esac
+zte_execute_u30_sms_action() { printf '%s\n' ok; }
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1242 delete_sms \
+    '{"action":"delete_sms","message_id":"42","confirm":true}' 1722345684
+assert_success process_actions
+assert_eq succeeded "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1242)" state)"
+zte_execute_u30_device_action() { printf '%s\n' ok; }
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1243 reboot_device \
+    '{"action":"reboot_device","confirm":true}' 1722345684
+assert_success process_actions
+assert_eq succeeded "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1243)" state)"
+
 # Anything outside the calibrated production capability remains unsupported.
 zte_adapter_action_supported() { return 1; }
 assert_success zte_action_enqueue \

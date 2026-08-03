@@ -4,6 +4,12 @@ ZTE_SIM_READBACK_ATTEMPTS=${ZTE_SIM_READBACK_ATTEMPTS:-4}
 ZTE_SIM_READBACK_INTERVAL=${ZTE_SIM_READBACK_INTERVAL:-2}
 ZTE_POWER_SUPPLY_READBACK_ATTEMPTS=${ZTE_POWER_SUPPLY_READBACK_ATTEMPTS:-3}
 ZTE_POWER_SUPPLY_READBACK_INTERVAL=${ZTE_POWER_SUPPLY_READBACK_INTERVAL:-1}
+ZTE_SETTING_READBACK_ATTEMPTS=${ZTE_SETTING_READBACK_ATTEMPTS:-3}
+ZTE_SETTING_READBACK_INTERVAL=${ZTE_SETTING_READBACK_INTERVAL:-1}
+ZTE_SMS_READBACK_ATTEMPTS=${ZTE_SMS_READBACK_ATTEMPTS:-3}
+ZTE_SMS_READBACK_INTERVAL=${ZTE_SMS_READBACK_INTERVAL:-1}
+ZTE_DEVICE_ACTION_ATTEMPTS=${ZTE_DEVICE_ACTION_ATTEMPTS:-30}
+ZTE_DEVICE_ACTION_INTERVAL=${ZTE_DEVICE_ACTION_INTERVAL:-2}
 
 # Execute one non-retriable U30 power mode write and verify it with safe reads.
 # A failed POST is deliberately reported as ambiguous and is never repeated.
@@ -61,6 +67,264 @@ zte_execute_power_supply_mode() {
 		_zte_power_execute_attempt=$((_zte_power_execute_attempt + 1))
 	done
 	printf '%s\n' "$_zte_power_execute_failure"
+	return 1
+}
+
+# Execute a source-reviewed, non-destructive U30 setting and confirm it using
+# safe GETs. POST transport failures are ambiguous and are never retried.
+zte_execute_u30_setting() {
+	_zte_setting_host=$1
+	_zte_setting_password=$2
+	_zte_setting_jar=$3
+	_zte_setting_action=$4
+	_zte_setting_record=$5
+	if zte_adapter_login_required; then
+		[ -n "$_zte_setting_password" ] || {
+			printf '%s\n' credentials_missing
+			return 1
+		}
+		zte_session_login "$_zte_setting_host" "$_zte_setting_password" \
+			"$_zte_setting_jar" || {
+			printf '%s\n' authentication_failed
+			return 1
+		}
+	fi
+	case $_zte_setting_action in
+		set_connection_mode)
+			_zte_setting_mode=$(zte_json_path_get \
+				"$_zte_setting_record" payload mode 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			case $_zte_setting_mode in automatic|manual|on_demand) ;; *)
+				printf '%s\n' invalid_action; return 1 ;; esac
+			zte_adapter_set_connection_mode "$_zte_setting_host" \
+				"$_zte_setting_mode" "$_zte_setting_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			_zte_setting_expected=$_zte_setting_mode
+			;;
+		set_traffic_plan)
+			_zte_setting_enabled=$(zte_json_path_get \
+				"$_zte_setting_record" payload enabled 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			case $_zte_setting_enabled in
+				true)
+					_zte_setting_enabled_raw=1
+					_zte_setting_limit=$(zte_json_path_get \
+						"$_zte_setting_record" payload limit_bytes 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					_zte_setting_alert=$(zte_json_path_get \
+						"$_zte_setting_record" payload alert_percent 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					_zte_setting_day=$(zte_json_path_get \
+						"$_zte_setting_record" payload cycle_day 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					_zte_setting_disconnect=$(zte_json_path_get \
+						"$_zte_setting_record" payload disconnect 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					case $_zte_setting_disconnect in
+						true) _zte_setting_disconnect_raw=1 ;;
+						false) _zte_setting_disconnect_raw=0 ;;
+						*) printf '%s\n' invalid_action; return 1 ;;
+					esac
+					_zte_setting_expected="1|$_zte_setting_limit|$_zte_setting_alert|$_zte_setting_day|$_zte_setting_disconnect_raw"
+					;;
+				false)
+					_zte_setting_enabled_raw=0
+					_zte_setting_limit=''
+					_zte_setting_alert=''
+					_zte_setting_day=''
+					_zte_setting_disconnect_raw=''
+					_zte_setting_expected='0||||'
+					;;
+				*) printf '%s\n' invalid_action; return 1 ;;
+			esac
+			zte_adapter_set_traffic_plan "$_zte_setting_host" \
+				"$_zte_setting_enabled_raw" "$_zte_setting_limit" \
+				"$_zte_setting_alert" "$_zte_setting_day" \
+				"$_zte_setting_disconnect_raw" "$_zte_setting_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			;;
+		reset_traffic)
+			zte_adapter_reset_traffic "$_zte_setting_host" \
+				"$_zte_setting_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			_zte_setting_expected='0|0|0'
+			;;
+		*) printf '%s\n' invalid_action; return 1 ;;
+	esac
+	_zte_setting_attempts=$ZTE_SETTING_READBACK_ATTEMPTS
+	_zte_setting_interval=$ZTE_SETTING_READBACK_INTERVAL
+	zte_is_uint "$_zte_setting_attempts" &&
+		[ "$_zte_setting_attempts" -ge 1 ] || _zte_setting_attempts=3
+	zte_is_uint "$_zte_setting_interval" || _zte_setting_interval=1
+	_zte_setting_failure=readback_failed
+	_zte_setting_attempt=1
+	while [ "$_zte_setting_attempt" -le "$_zte_setting_attempts" ]; do
+		_zte_setting_observed=''
+		case $_zte_setting_action in
+			set_connection_mode)
+				_zte_setting_observed=$(zte_adapter_fetch_connection_mode \
+					"$_zte_setting_host" "$_zte_setting_jar" 2>/dev/null) || :
+				;;
+			set_traffic_plan)
+				_zte_setting_observed=$(zte_adapter_fetch_traffic_plan \
+					"$_zte_setting_host" "$_zte_setting_jar" 2>/dev/null) || :
+				;;
+			reset_traffic)
+				_zte_setting_observed=$(zte_adapter_fetch_traffic_counters \
+					"$_zte_setting_host" "$_zte_setting_jar" 2>/dev/null) || :
+				;;
+		esac
+		if [ -n "$_zte_setting_observed" ]; then
+			if [ "$_zte_setting_observed" = "$_zte_setting_expected" ]; then
+				printf '%s\n' ok
+				return 0
+			fi
+			_zte_setting_failure=readback_mismatch
+		fi
+		if [ "$_zte_setting_attempt" -lt "$_zte_setting_attempts" ]; then
+			sleep "$_zte_setting_interval"
+		fi
+		_zte_setting_attempt=$((_zte_setting_attempt + 1))
+	done
+	printf '%s\n' "$_zte_setting_failure"
+	return 1
+}
+
+zte_execute_u30_sms_action() {
+	_zte_sms_execute_host=$1
+	_zte_sms_execute_password=$2
+	_zte_sms_execute_jar=$3
+	_zte_sms_execute_action=$4
+	_zte_sms_execute_record=$5
+	if zte_adapter_login_required; then
+		[ -n "$_zte_sms_execute_password" ] || {
+			printf '%s\n' credentials_missing; return 1;
+		}
+		zte_session_login "$_zte_sms_execute_host" \
+			"$_zte_sms_execute_password" "$_zte_sms_execute_jar" || {
+			printf '%s\n' authentication_failed; return 1;
+		}
+	fi
+	_zte_sms_execute_id=$(zte_json_path_get \
+		"$_zte_sms_execute_record" payload message_id 2>/dev/null) || {
+		printf '%s\n' invalid_action; return 1;
+	}
+	zte_adapter_payload_message_id "$_zte_sms_execute_id" || {
+		printf '%s\n' invalid_action; return 1;
+	}
+	case $_zte_sms_execute_action in
+		delete_sms)
+			zte_adapter_delete_sms "$_zte_sms_execute_host" \
+				"$_zte_sms_execute_id" "$_zte_sms_execute_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			_zte_sms_execute_expected=absent
+			;;
+		mark_sms_read)
+			zte_adapter_mark_sms_read "$_zte_sms_execute_host" \
+				"$_zte_sms_execute_id" "$_zte_sms_execute_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			_zte_sms_execute_expected=0
+			;;
+		*) printf '%s\n' invalid_action; return 1 ;;
+	esac
+	_zte_sms_execute_attempts=$ZTE_SMS_READBACK_ATTEMPTS
+	_zte_sms_execute_interval=$ZTE_SMS_READBACK_INTERVAL
+	zte_is_uint "$_zte_sms_execute_attempts" &&
+		[ "$_zte_sms_execute_attempts" -ge 1 ] || _zte_sms_execute_attempts=3
+	zte_is_uint "$_zte_sms_execute_interval" || _zte_sms_execute_interval=1
+	_zte_sms_execute_failure=readback_failed
+	_zte_sms_execute_attempt=1
+	while [ "$_zte_sms_execute_attempt" -le "$_zte_sms_execute_attempts" ]; do
+		_zte_sms_execute_observed=$(zte_adapter_fetch_sms_message_state \
+			"$_zte_sms_execute_host" "$_zte_sms_execute_id" \
+			"$_zte_sms_execute_jar" 2>/dev/null) || _zte_sms_execute_observed=''
+		if [ -n "$_zte_sms_execute_observed" ]; then
+			if [ "$_zte_sms_execute_observed" = "$_zte_sms_execute_expected" ]; then
+				printf '%s\n' ok
+				return 0
+			fi
+			_zte_sms_execute_failure=readback_mismatch
+		fi
+		if [ "$_zte_sms_execute_attempt" -lt "$_zte_sms_execute_attempts" ]; then
+			sleep "$_zte_sms_execute_interval"
+		fi
+		_zte_sms_execute_attempt=$((_zte_sms_execute_attempt + 1))
+	done
+	printf '%s\n' "$_zte_sms_execute_failure"
+	return 1
+}
+
+zte_execute_u30_device_action() {
+	_zte_device_execute_host=$1
+	_zte_device_execute_password=$2
+	_zte_device_execute_jar=$3
+	_zte_device_execute_action=$4
+	case $_zte_device_execute_action in
+		reboot_device) _zte_device_execute_command=reboot ;;
+		shutdown_device) _zte_device_execute_command=shutdown ;;
+		*) printf '%s\n' invalid_action; return 1 ;;
+	esac
+	if zte_adapter_login_required; then
+		[ -n "$_zte_device_execute_password" ] || {
+			printf '%s\n' credentials_missing; return 1;
+		}
+		zte_session_login "$_zte_device_execute_host" \
+			"$_zte_device_execute_password" "$_zte_device_execute_jar" || {
+			printf '%s\n' authentication_failed; return 1;
+		}
+	fi
+	zte_adapter_device_command "$_zte_device_execute_host" \
+		"$_zte_device_execute_command" "$_zte_device_execute_jar" || {
+		printf '%s\n' write_ambiguous
+		return 1
+	}
+	_zte_device_execute_attempts=$ZTE_DEVICE_ACTION_ATTEMPTS
+	_zte_device_execute_interval=$ZTE_DEVICE_ACTION_INTERVAL
+	zte_is_uint "$_zte_device_execute_attempts" &&
+		[ "$_zte_device_execute_attempts" -ge 2 ] || _zte_device_execute_attempts=30
+	zte_is_uint "$_zte_device_execute_interval" || _zte_device_execute_interval=2
+	_zte_device_execute_outage=0
+	_zte_device_execute_failures=0
+	_zte_device_execute_attempt=1
+	while [ "$_zte_device_execute_attempt" -le "$_zte_device_execute_attempts" ]; do
+		if zte_adapter_probe_status "$_zte_device_execute_host" \
+			"$_zte_device_execute_jar"; then
+			if [ "$_zte_device_execute_action" = reboot_device ] &&
+				[ "$_zte_device_execute_outage" = 1 ]; then
+				printf '%s\n' ok
+				return 0
+			fi
+			_zte_device_execute_failures=0
+		else
+			_zte_device_execute_outage=1
+			_zte_device_execute_failures=$((_zte_device_execute_failures + 1))
+			if [ "$_zte_device_execute_action" = shutdown_device ] &&
+				[ "$_zte_device_execute_failures" -ge 2 ]; then
+				printf '%s\n' ok
+				return 0
+			fi
+		fi
+		if [ "$_zte_device_execute_attempt" -lt "$_zte_device_execute_attempts" ]; then
+			sleep "$_zte_device_execute_interval"
+		fi
+		_zte_device_execute_attempt=$((_zte_device_execute_attempt + 1))
+	done
+	if [ "$_zte_device_execute_outage" = 1 ]; then
+		printf '%s\n' recovery_timeout
+	else
+		printf '%s\n' readback_mismatch
+	fi
 	return 1
 }
 
