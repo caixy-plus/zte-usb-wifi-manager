@@ -30,6 +30,14 @@ simulator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(simulator)
 
 assert simulator.validate_bind_host("127.0.0.1") == "127.0.0.1"
+assert simulator.validate_profile("u25s") == "u25s"
+assert simulator.validate_profile("u30") == "u30"
+try:
+    simulator.validate_profile("generic-zte")
+except ValueError:
+    pass
+else:
+    raise AssertionError("accepted an unknown device profile")
 for unsafe_host in ("localhost", "0.0.0.0", "::1"):
     try:
         simulator.validate_bind_host(unsafe_host)
@@ -128,6 +136,37 @@ start_simulator() {
     simulator_host=127.0.0.1:$(cat "$ready_file")
 }
 
+start_u30_simulator() {
+    stop_simulator
+    rm -f "$ready_file" "$request_log"
+    python3 tests/u25s_simulator.py \
+        --host 127.0.0.1 \
+        --port 0 \
+        --profile u30 \
+        --scenario "$1" \
+        --ready-file "$ready_file" \
+        --request-log "$request_log" \
+        --login-secret "$login_secret" \
+        >"$work/server.out" 2>"$work/server.err" &
+    simulator_pid=$!
+
+    attempts=0
+    while [ ! -s "$ready_file" ]; do
+        if ! kill -0 "$simulator_pid" 2>/dev/null; then
+            fail "U30 simulator exited before becoming ready: $(cat "$work/server.err")"
+            return 1
+        fi
+        attempts=$((attempts + 1))
+        if [ "$attempts" -ge 100 ]; then
+            fail 'U30 simulator did not become ready'
+            return 1
+        fi
+        sleep 0.05
+    done
+
+    simulator_host=127.0.0.1:$(cat "$ready_file")
+}
+
 assert_log_safe() {
     if grep -F "$login_secret" "$request_log" >/dev/null 2>&1 ||
         grep -E 'Cookie|password|digest' "$request_log" >/dev/null 2>&1; then
@@ -136,6 +175,40 @@ assert_log_safe() {
         pass
     fi
 }
+
+start_u30_simulator normal
+u30_query='cmd=mc_modem_main_state,network_type,network_signalbar,battery_vol_percent&multi_data=1&isTest=false'
+u30_raw=$(curl -sS --max-time 2 \
+    -H 'Referer: https://192.168.0.1/' \
+    "http://$simulator_host/goform/goform_get_cmd_process?$u30_query")
+assert_eq "$(cat tests/fixtures/u30/status.json)" "$u30_raw" \
+    'U30 profile must serve its sanitized status fixture without a login session'
+for observed_field in \
+    '"device_market_name":"U30 Pro"' \
+    '"network_type":"5G"' \
+    '"battery_vol_percent":"100"'
+do
+    case $u30_raw in
+        *"$observed_field"*) pass ;;
+        *) fail "U30 fixture is missing observed field: $observed_field" ;;
+    esac
+done
+u30_rejected=$(curl -sS --max-time 2 \
+    -H 'Referer: http://192.168.0.1/' \
+    "http://$simulator_host/goform/goform_get_cmd_process?$u30_query")
+assert_eq '{"Error":"none secure connection"}' "$u30_rejected" \
+    'U30 profile must reject a non-HTTPS request contract'
+assert_eq 1 "$(grep -c '^GET U30_STATUS 200$' "$request_log")"
+assert_eq 1 "$(grep -c '^GET U30_STATUS SECURE_REQUIRED$' "$request_log")"
+assert_log_safe
+assert_success node -e '
+const fs = require("fs");
+const contract = JSON.parse(fs.readFileSync("tests/fixtures/u30/config-contract.json", "utf8"));
+if (contract.profile !== "u30" || contract.device_model !== "U30Air" ||
+    contract.device_family !== "ufi/mu3351" || contract.scheme !== "https" ||
+    contract.referer !== "https://192.168.0.1/" || contract.login_required !== false)
+    process.exit(1);
+'
 
 ZTE_HTTP_TIMEOUT=2
 export ZTE_HTTP_TIMEOUT

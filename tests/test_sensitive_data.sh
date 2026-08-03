@@ -47,6 +47,7 @@ init_repo "$work/bad"
     printf 'imsi=%s\n' '460001234567890' >imsi.txt
     printf 'iccid=%s\n' '8986001234567890123' >iccid.txt
     printf 'device_imei: %s\n' 'not-a-number-but-still-sensitive' >sensitive-field.txt
+    printf 'mac_address=%s:%s:%s:%s:%s:%s\n' 02 11 22 33 44 55 >mac.txt
     printf '{"password":"%s"}\n' 'literal-json-secret-value' >json-secret.json
     printf 'international_phone=%s\n' '+8613812345678' >international-phone.txt
     printf 'password=%s\n' 'unicode-secret-value' >'敏感.txt'
@@ -87,6 +88,7 @@ for finding in \
     "$(file_id imsi.txt):1 15_DIGIT_IDENTIFIER" \
     "$(file_id iccid.txt):1 ICCID" \
     "$(file_id sensitive-field.txt):1 SENSITIVE_FIELD" \
+    "$(file_id mac.txt):1 MAC_ADDRESS" \
     "$(file_id json-secret.json):1 SECRET_ASSIGNMENT" \
     "$(file_id international-phone.txt):1 PHONE_NUMBER" \
     "$(file_id '敏感.txt'):1 SECRET_ASSIGNMENT" \

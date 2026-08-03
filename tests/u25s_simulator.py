@@ -25,6 +25,7 @@ SCENARIOS = (
     "write-timeout",
     "write-expire-once",
 )
+PROFILES = ("u25s", "u30")
 FIXTURE_STATE_PATH = "/fixture/action_state"
 FIXTURE_ACTIONS = {
     "FIXTURE_SWITCH_SIM",
@@ -137,6 +138,12 @@ def validate_bind_host(host):
     return host
 
 
+def validate_profile(profile):
+    if profile not in PROFILES:
+        raise ValueError(f"unsupported simulator profile: {profile}")
+    return profile
+
+
 class SimulatorState:
     def __init__(
         self,
@@ -145,6 +152,7 @@ class SimulatorState:
         fixture_path,
         request_log,
         allow_fixture_writes=False,
+        profile="u25s",
     ):
         self.scenario = scenario
         self.login_secret = login_secret
@@ -156,6 +164,7 @@ class SimulatorState:
         self.session_counter = 0
         self.expired_once = False
         self.allow_fixture_writes = allow_fixture_writes
+        self.profile = validate_profile(profile)
         self.last_action = None
         self.active_sim_slot = str(
             json.loads(self.fixture).get("simcard_active_slot_temp", "")
@@ -207,7 +216,8 @@ class SimulatorState:
     def status_payload(self):
         with self.lock:
             payload = json.loads(self.fixture)
-            payload["simcard_active_slot_temp"] = self.active_sim_slot
+            if "simcard_active_slot_temp" in payload:
+                payload["simcard_active_slot_temp"] = self.active_sim_slot
             return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     def record(self, entry):
@@ -283,6 +293,21 @@ class U25SHandler(BaseHTTPRequestHandler):
         if not requested_fields or any(field not in READ_FIELDS for field in requested_fields):
             self.state.record("GET UNKNOWN 404")
             self.send_payload(404, '{"error":"not_found"}')
+            return
+
+
+        if self.state.profile == "u30":
+            query = parse_qs(request.query)
+            if (
+                self.headers.get("Referer") != "https://192.168.0.1/"
+                or query.get("isTest", [""])[0] != "false"
+                or query.get("multi_data", [""])[0] != "1"
+            ):
+                self.state.record("GET U30_STATUS SECURE_REQUIRED")
+                self.send_payload(200, '{"Error":"none secure connection"}')
+                return
+            self.state.record("GET U30_STATUS 200")
+            self.send_payload(200, self.state.status_payload())
             return
 
         session_id = self.session_id()
@@ -386,6 +411,7 @@ def parse_args():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--scenario", choices=SCENARIOS, required=True)
+    parser.add_argument("--profile", choices=PROFILES, default="u25s")
     parser.add_argument("--ready-file", type=Path, required=True)
     parser.add_argument("--request-log", type=Path, required=True)
     parser.add_argument("--login-secret", required=True)
@@ -400,13 +426,18 @@ def main():
     except ValueError as error:
         raise SystemExit(str(error)) from error
 
-    fixture_path = Path(__file__).parent / "fixtures" / "u25s" / "read_ok.json"
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / args.profile / "status.json"
+        if args.profile == "u30"
+        else Path(__file__).parent / "fixtures" / "u25s" / "read_ok.json"
+    )
     state = SimulatorState(
         args.scenario,
         args.login_secret,
         fixture_path,
         args.request_log,
         args.allow_fixture_writes,
+        args.profile,
     )
     server = SimulatorServer((host, args.port), U25SHandler)
     server.simulator_state = state

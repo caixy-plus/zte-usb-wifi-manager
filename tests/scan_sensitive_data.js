@@ -104,6 +104,9 @@ function findingTypes(line) {
         types.push('15_DIGIT_IDENTIFIER');
     if (/(^|[^0-9])[0-9]{19,20}([^0-9]|$)/.test(line))
         types.push('ICCID');
+    if (/(^|[^0-9a-f])(?:[0-9a-f]{2}:){5}[0-9a-f]{2}([^0-9a-f]|$)/i.test(line) &&
+        !placeholder)
+        types.push('MAC_ADDRESS');
 
     const sensitiveKey = /(^|[^a-z0-9])["']?(imei|imsi|iccid|msisdn|phone_number|device_id)["']?\s*[:=]\s*("[^"]+"|'[^']+'|[a-z0-9][a-z0-9._-]*(?=[\s#;,}]|$))/i;
     if (sensitiveKey.test(line) && !placeholder)
