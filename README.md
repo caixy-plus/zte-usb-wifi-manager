@@ -474,18 +474,29 @@ ZTE_SOAK_OUTPUT=/var/run/zte-usb-wifi-manager/soak/72h.jsonl \
 
 ```sh
 node scripts/verify-router-soak.js 72h.jsonl \
+	--adapter zte_u30 \
     --duration 259200 \
     --max-rss-growth-kb 2048 \
     --max-fd-growth 4 \
     --max-status-age 180 \
     --max-event-log-bytes 524288 \
     --max-sample-gap 180 \
-    --max-pid-changes 0
+    --max-pid-changes 0 \
+    --max-failures 3 \
+    --max-action-results 50
 ```
 
-采样只包含两个守护进程的存活/PID/RSS/文件句柄、恢复服务状态、状态、供电、恢复互锁、网卡存在性和日志大小；
-不读取凭据、Cookie 或设备标识。验证器会拒绝时长不足、资源持续增长、状态陈旧、
-无 inhibit 的断电记录及任何未声明字段。
+工具默认每 60 秒写一条证据、每 5 秒执行一次内部连续性监测，并把监测到的 USB
+断链次数、最大连续失败数和最大动作结果数锁存到后续每条证据中；默认 4 MiB 上限
+可容纳标准 72 小时运行。可通过 `ZTE_SOAK_MONITOR_INTERVAL` 缩短内部监测间隔，
+实际内部监测间隔会自动限制为不大于输出间隔。
+
+采样只包含适配器类型、设备原生供电模式、连续失败计数、动作结果文件数、两个守护
+进程的存活/PID/RSS/文件句柄、恢复服务状态、板级供电、恢复互锁、网卡存在性和日志
+大小；不读取凭据、Cookie 或设备标识。验证器会拒绝时长不足、适配器切换、资源持续
+增长、状态陈旧、失败/动作结果超限、无 inhibit 的板级断电及任何未声明字段。指定
+`--adapter zte_u30` 后，只要内部监测发现 USB VBUS 关闭或 `eth2` 消失，锁存证据会
+使验收失败；设备可在 `charging` 与 `direct_supply` 间切换，但 USB 数据链路必须连续。
 
 ### 从源码构建
 

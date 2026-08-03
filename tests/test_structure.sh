@@ -374,6 +374,9 @@ assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
 assert_file_contains docs/validation/2026-07-31-r8-r3-qemu.md \
     '失败码'
 assert_file_contains README.md 'zte-usb-soak'
+assert_file_contains README.md '\-\-adapter zte_u30'
+assert_file_contains README.md '\-\-max-failures 3'
+assert_file_contains README.md '\-\-max-action-results 50'
 assert_file_contains README.md '原子动作队列'
 assert_file_contains README.md '加速稳定性测试'
 if grep -Fq 'USB Power Adapter 尚未实现' README.md; then

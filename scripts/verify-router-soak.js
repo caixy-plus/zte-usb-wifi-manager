@@ -22,6 +22,13 @@ const allowedFields = new Set([
 	'recovery_service_running',
 	'state',
 	'status_age',
+	'adapter',
+	'power_supply_mode',
+	'failure_count',
+	'action_result_count',
+	'usb_discontinuity_count',
+	'max_failure_count',
+	'max_action_result_count',
 	'power',
 	'recovery_inhibit',
 	'netdev_present',
@@ -78,6 +85,11 @@ function validateSample(sample, index, options) {
 	requireInteger(sample, 'coordinator_rss_kb', index);
 	requireInteger(sample, 'coordinator_fd_count', index);
 	requireInteger(sample, 'status_age', index);
+	requireInteger(sample, 'failure_count', index);
+	requireInteger(sample, 'action_result_count', index);
+	requireInteger(sample, 'usb_discontinuity_count', index);
+	requireInteger(sample, 'max_failure_count', index);
+	requireInteger(sample, 'max_action_result_count', index);
 	requireInteger(sample, 'event_log_bytes', index);
 	if (sample.service_running !== true)
 		throw new Error(`sample ${index + 1}: service was not running`);
@@ -92,6 +104,31 @@ function validateSample(sample, index, options) {
 		throw new Error(`sample ${index + 1}: coordinator was not running`);
 	if (!allowedStates.has(sample.state))
 		throw new Error(`sample ${index + 1} has invalid state`);
+	if (sample.adapter !== 'zte_u25s' && sample.adapter !== 'zte_u30')
+		throw new Error(`sample ${index + 1} has invalid adapter`);
+	if (sample.adapter === 'zte_u30' &&
+		!['charging', 'direct_supply'].includes(sample.power_supply_mode))
+		throw new Error(`sample ${index + 1} has invalid power_supply_mode`);
+	if (sample.adapter === 'zte_u25s' &&
+		sample.power_supply_mode !== 'unsupported')
+		throw new Error(`sample ${index + 1} has invalid power_supply_mode`);
+	if (options.expectedAdapter && sample.adapter !== options.expectedAdapter)
+		throw new Error(`sample ${index + 1}: unexpected adapter`);
+	if (sample.failure_count > options.maxFailureCount)
+		throw new Error(`sample ${index + 1}: failure count exceeded limit`);
+	if (sample.action_result_count > options.maxActionResultCount)
+		throw new Error(`sample ${index + 1}: action result count exceeded limit`);
+	if (sample.max_failure_count < sample.failure_count)
+		throw new Error(`sample ${index + 1}: invalid failure count latch`);
+	if (sample.max_action_result_count < sample.action_result_count)
+		throw new Error(`sample ${index + 1}: invalid action result count latch`);
+	if (sample.usb_discontinuity_count > 0)
+		throw new Error(`sample ${index + 1}: USB discontinuity detected`);
+	if (sample.max_failure_count > options.maxFailureCount)
+		throw new Error(`sample ${index + 1}: maximum failure count exceeded`);
+	if (sample.max_action_result_count > options.maxActionResultCount)
+		throw new Error(
+			`sample ${index + 1}: maximum action result count exceeded`);
 	if (sample.power !== 0 && sample.power !== 1)
 		throw new Error(`sample ${index + 1} has invalid power`);
 	if (typeof sample.recovery_service_running !== 'boolean' ||
@@ -108,6 +145,9 @@ function validateSample(sample, index, options) {
 			sample.recovery_service_running !== true))
 		throw new Error(
 			`sample ${index + 1}: power-on recovery coordination incomplete`);
+	if (sample.adapter === 'zte_u30' &&
+		(sample.power !== 1 || sample.netdev_present !== true))
+		throw new Error(`sample ${index + 1}: U30 USB continuity lost`);
 	if (sample.event_log_bytes > options.maxEventLogBytes)
 		throw new Error(`sample ${index + 1}: event log exceeded limit`);
 	if (sample.status_age > options.maxStatusAgeSeconds)
@@ -125,10 +165,17 @@ function validateSamples(samples, options) {
 		maxEventLogBytes: 524288,
 		maxSampleGapSeconds: 180,
 		maxPidChanges: 0,
+		maxFailureCount: 3,
+		maxActionResultCount: 50,
+		expectedAdapter: null,
 		testMode: false
 	}, options || {});
 	if (typeof settings.testMode !== 'boolean')
 		throw new Error('invalid testMode');
+	if (settings.expectedAdapter !== null &&
+		settings.expectedAdapter !== 'zte_u25s' &&
+		settings.expectedAdapter !== 'zte_u30')
+		throw new Error('invalid expectedAdapter');
 	if (!settings.testMode && settings.minDurationSeconds < 259200)
 		throw new Error('minimum 72-hour duration is required');
 	for (const field of [
@@ -138,7 +185,9 @@ function validateSamples(samples, options) {
 		'maxStatusAgeSeconds',
 		'maxEventLogBytes',
 		'maxSampleGapSeconds',
-		'maxPidChanges'
+		'maxPidChanges',
+		'maxFailureCount',
+		'maxActionResultCount'
 	]) {
 		if (!Number.isSafeInteger(settings[field]) || settings[field] < 0)
 			throw new Error(`invalid ${field}`);
@@ -164,6 +213,17 @@ function validateSamples(samples, options) {
 			sample.coordinator_pid, sample.coordinator_start_ticks);
 	}
 	for (let index = 1; index < samples.length; index += 1) {
+		if (samples[index].usb_discontinuity_count <
+			samples[index - 1].usb_discontinuity_count)
+			throw new Error('USB discontinuity latch decreased');
+		if (samples[index].max_failure_count <
+			samples[index - 1].max_failure_count)
+			throw new Error('failure count latch decreased');
+		if (samples[index].max_action_result_count <
+			samples[index - 1].max_action_result_count)
+			throw new Error('action result latch decreased');
+		if (samples[index].adapter !== samples[0].adapter)
+			throw new Error('adapter changed during soak');
 		if (samples[index].boot_id !== samples[0].boot_id)
 			throw new Error('boot ID changed during soak');
 		if (samples[index].timestamp <= samples[index - 1].timestamp)
@@ -222,7 +282,10 @@ function validateSamples(samples, options) {
 		maxStatusAgeSeconds: settings.maxStatusAgeSeconds,
 		maxEventLogBytes: settings.maxEventLogBytes,
 		maxSampleGapSeconds: settings.maxSampleGapSeconds,
-		maxPidChanges: settings.maxPidChanges
+		maxPidChanges: settings.maxPidChanges,
+		maxFailureCount: settings.maxFailureCount,
+		maxActionResultCount: settings.maxActionResultCount,
+		expectedAdapter: settings.expectedAdapter
 	};
 	return {
 		ok: true,
@@ -237,6 +300,11 @@ function validateSamples(samples, options) {
 		max_sample_gap_seconds: maxSampleGap,
 		pid_changes: pidChanges,
 		coordinator_pid_changes: coordinatorPidChanges,
+		usb_discontinuity_count:
+			samples[samples.length - 1].usb_discontinuity_count,
+		max_failure_count: samples[samples.length - 1].max_failure_count,
+		max_action_result_count:
+			samples[samples.length - 1].max_action_result_count,
 		final_state: samples[samples.length - 1].state
 	};
 }
@@ -255,13 +323,23 @@ function parseCli(argv) {
 		'--max-status-age': 'maxStatusAgeSeconds',
 		'--max-event-log-bytes': 'maxEventLogBytes',
 		'--max-sample-gap': 'maxSampleGapSeconds',
-		'--max-pid-changes': 'maxPidChanges'
+		'--max-pid-changes': 'maxPidChanges',
+		'--max-failures': 'maxFailureCount',
+		'--max-action-results': 'maxActionResultCount'
 	};
 	for (let index = 1; index < argv.length;) {
 		const name = argv[index];
 		if (name === '--test-mode') {
 			result.options.testMode = true;
 			index += 1;
+			continue;
+		}
+		if (name === '--adapter') {
+			const adapter = argv[index + 1];
+			if (adapter !== 'zte_u25s' && adapter !== 'zte_u30')
+				throw new Error('invalid option --adapter');
+			result.options.expectedAdapter = adapter;
+			index += 2;
 			continue;
 		}
 		const value = argv[index + 1];

@@ -9,6 +9,10 @@ const { parseJsonLines, validateSamples, parseCli } = require(validatorPath);
 
 const identity = {
 	boot_id: '11111111-2222-3333-4444-555555555555',
+	adapter: 'zte_u30', power_supply_mode: 'charging',
+	failure_count: 0, action_result_count: 2,
+	usb_discontinuity_count: 0,
+	max_failure_count: 0, max_action_result_count: 2,
 	manager_comm: 'zte-usb-wifi-ma', manager_start_ticks: 100,
 	coordinator_comm: 'zte-usb-recover',
 	coordinator_start_ticks: 200
@@ -24,9 +28,9 @@ const good = [
 	{ ...identity, timestamp: 87400, monotonic_seconds: 86900, service_running: true, pid: 123, rss_kb: 2240, fd_count: 12,
 		coordinator_running: true, coordinator_pid: 456,
 		coordinator_rss_kb: 510, coordinator_fd_count: 6,
-		recovery_service_running: false,
-		state: 'planned_off', status_age: 2, power: 0, recovery_inhibit: true,
-		netdev_present: false, event_log_bytes: 1600 },
+		recovery_service_running: true,
+		state: 'ok', status_age: 2, power: 1, recovery_inhibit: false,
+		netdev_present: true, event_log_bytes: 1600 },
 	{ ...identity, timestamp: 173800, monotonic_seconds: 173300, service_running: true, pid: 123, rss_kb: 2260, fd_count: 13,
 		coordinator_running: true, coordinator_pid: 456,
 		coordinator_rss_kb: 505, coordinator_fd_count: 7,
@@ -48,7 +52,10 @@ const options = {
 	maxStatusAgeSeconds: 180,
 	maxEventLogBytes: 524288,
 	maxSampleGapSeconds: 90000,
-	maxPidChanges: 0
+	maxPidChanges: 0,
+	maxFailureCount: 3,
+	maxActionResultCount: 50,
+	expectedAdapter: 'zte_u30'
 };
 
 const summary = validateSamples(good, options);
@@ -60,6 +67,9 @@ assert.strictEqual(summary.max_fd_count, 13);
 assert.strictEqual(summary.max_sample_gap_seconds, 86400);
 assert.strictEqual(summary.pid_changes, 0);
 assert.strictEqual(summary.coordinator_pid_changes, 0);
+assert.strictEqual(summary.usb_discontinuity_count, 0);
+assert.strictEqual(summary.max_failure_count, 0);
+assert.strictEqual(summary.max_action_result_count, 2);
 assert.strictEqual(summary.test_mode, false);
 assert.deepStrictEqual(summary.thresholds, options);
 
@@ -87,6 +97,7 @@ assert.throws(() => validateSamples(changed(1, {
 }), options), /power-off without recovery inhibit/);
 assert.throws(() => validateSamples(changed(1, {
 	power: 0,
+	recovery_inhibit: true,
 	recovery_service_running: true
 }), options), /recovery service active during power-off/);
 assert.throws(() => validateSamples(changed(1, {
@@ -139,6 +150,38 @@ assert.throws(() => validateSamples(changed(2, {
 	/sample gap/);
 assert.throws(() => validateSamples(changed(2, { state: 'mystery' }), options),
 	/invalid state/);
+assert.throws(() => validateSamples(changed(2, { adapter: 'zte_u25s' }), options),
+	/unexpected adapter|invalid power_supply_mode/);
+assert.throws(() => validateSamples(changed(2, {
+	power_supply_mode: 'unknown'
+}), options), /invalid power_supply_mode/);
+assert.throws(() => validateSamples(changed(2, { failure_count: 4 }), options),
+	/failure count exceeded/);
+assert.throws(() => validateSamples(changed(2, {
+	action_result_count: 51
+}), options), /action result count exceeded/);
+assert.throws(() => validateSamples(changed(2, {
+	usb_discontinuity_count: 1
+}), options), /USB discontinuity detected/);
+assert.throws(() => validateSamples(changed(2, {
+	max_failure_count: 4
+}), options), /maximum failure count exceeded/);
+assert.throws(() => validateSamples(changed(2, {
+	max_action_result_count: 51
+}), options), /maximum action result count exceeded/);
+const resetLatch = changed(1, { max_action_result_count: 3 });
+assert.throws(() => validateSamples(resetLatch, options),
+	/action result latch decreased/);
+assert.throws(() => validateSamples(changed(2, {
+	power: 0, recovery_inhibit: true, recovery_service_running: false,
+	netdev_present: false
+}), options), /U30 USB continuity lost/);
+assert.throws(() => validateSamples(changed(2, {
+	power: 0, recovery_inhibit: true, recovery_service_running: false,
+	netdev_present: false
+}), Object.assign({}, options, {
+	expectedAdapter: null
+})), /U30 USB continuity lost/);
 assert.throws(() => validateSamples(good, Object.assign({}, options, {
 	minDurationSeconds: 0
 })), /minimum 72-hour duration/);
@@ -150,5 +193,8 @@ assert.throws(() => parseCli(['samples.jsonl', '--duration', '0']),
 assert.strictEqual(parseCli([
 	'samples.jsonl', '--test-mode', '--duration', '0'
 ]).options.testMode, true);
+assert.strictEqual(parseCli([
+	'samples.jsonl', '--adapter', 'zte_u30'
+]).options.expectedAdapter, 'zte_u30');
 
-console.log('PASS test_soak_validation (41 assertions)');
+console.log('PASS test_soak_validation (55 assertions)');

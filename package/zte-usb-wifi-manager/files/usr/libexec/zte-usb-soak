@@ -7,6 +7,7 @@ ZTE_SOAK_POWER_PATH=${ZTE_SOAK_POWER_PATH:-}
 ZTE_SOAK_BOARD_FILE=${ZTE_SOAK_BOARD_FILE:-/tmp/sysinfo/board_name}
 ZTE_SOAK_INHIBIT_FILE=${ZTE_SOAK_INHIBIT_FILE:-/var/run/zte-usb-wifi-manager/inhibit-recovery}
 ZTE_SOAK_EVENT_LOG=${ZTE_SOAK_EVENT_LOG:-/var/run/zte-usb-wifi-manager/logs/events.jsonl}
+ZTE_SOAK_ACTION_RESULTS_DIR=${ZTE_SOAK_ACTION_RESULTS_DIR:-/var/run/zte-usb-wifi-manager/actions/results}
 ZTE_SOAK_NETDEV_PATH=${ZTE_SOAK_NETDEV_PATH:-/sys/class/net/eth2}
 ZTE_SOAK_PROC_ROOT=${ZTE_SOAK_PROC_ROOT:-/proc}
 ZTE_SOAK_MANAGER_PID_FILE=${ZTE_SOAK_MANAGER_PID_FILE:-/var/run/zte-usb-wifi-manager/manager.pid}
@@ -14,7 +15,8 @@ ZTE_SOAK_COORDINATOR_PID_FILE=${ZTE_SOAK_COORDINATOR_PID_FILE:-/var/run/zte-usb-
 ZTE_SOAK_RECOVERY_SERVICE=${ZTE_SOAK_RECOVERY_SERVICE:-/etc/init.d/zte-usb-recover}
 ZTE_SOAK_STATE_DIR=${ZTE_SOAK_STATE_DIR:-/var/run/zte-usb-wifi-manager/soak}
 ZTE_SOAK_LOCK_DIR=${ZTE_SOAK_LOCK_DIR:-/var/lock/zte-usb-soak.lock}
-ZTE_SOAK_MAX_BYTES=${ZTE_SOAK_MAX_BYTES:-2097152}
+ZTE_SOAK_MAX_BYTES=${ZTE_SOAK_MAX_BYTES:-4194304}
+ZTE_SOAK_MONITOR_INTERVAL=${ZTE_SOAK_MONITOR_INTERVAL:-5}
 
 . "$ZTE_SOAK_LIB_DIR/validation.sh"
 . "$ZTE_SOAK_LIB_DIR/json.sh"
@@ -29,6 +31,33 @@ if [ -z "$ZTE_SOAK_POWER_PATH" ]; then
 		zte_power_default_control_path "$_zte_soak_board"
 	) || exit 1
 fi
+
+_zte_soak_usb_discontinuity_count=0
+_zte_soak_max_failure_count=0
+_zte_soak_max_action_result_count=0
+
+zte_soak_update_latches() {
+	_zte_soak_latch_adapter=$1
+	_zte_soak_latch_failures=$2
+	_zte_soak_latch_action_results=$3
+	_zte_soak_latch_power=$4
+	_zte_soak_latch_netdev=$5
+	if [ "$_zte_soak_latch_adapter" = zte_u30 ] &&
+		{ [ "$_zte_soak_latch_power" != 1 ] ||
+			[ "$_zte_soak_latch_netdev" != true ]; }; then
+		_zte_soak_usb_discontinuity_count=$((
+			_zte_soak_usb_discontinuity_count + 1
+		))
+	fi
+	if [ "$_zte_soak_latch_failures" -gt \
+		"$_zte_soak_max_failure_count" ]; then
+		_zte_soak_max_failure_count=$_zte_soak_latch_failures
+	fi
+	if [ "$_zte_soak_latch_action_results" -gt \
+		"$_zte_soak_max_action_result_count" ]; then
+		_zte_soak_max_action_result_count=$_zte_soak_latch_action_results
+	fi
+}
 
 zte_soak_collect() {
 	_zte_soak_now=$(date +%s)
@@ -146,6 +175,35 @@ zte_soak_collect() {
 	zte_is_uint "$_zte_soak_updated" || return 1
 	[ "$_zte_soak_now" -ge "$_zte_soak_updated" ] || return 1
 	_zte_soak_status_age=$((_zte_soak_now - _zte_soak_updated))
+	_zte_soak_device=$(zte_json_top_object_get \
+		"$_zte_soak_status" device) || return 1
+	_zte_soak_adapter=$(zte_json_flat_get \
+		"$_zte_soak_device" adapter) || return 1
+	case $_zte_soak_adapter in zte_u25s|zte_u30) ;; *) return 1 ;; esac
+	case $_zte_soak_adapter in
+		zte_u30)
+			_zte_soak_power_supply=$(zte_json_top_object_get \
+				"$_zte_soak_device" power_supply) || return 1
+			_zte_soak_mode_raw=$(zte_json_flat_get \
+				"$_zte_soak_power_supply" mode_raw) || return 1
+			case $_zte_soak_mode_raw in
+				0) _zte_soak_power_supply_mode=charging ;;
+				1) _zte_soak_power_supply_mode=direct_supply ;;
+				*) return 1 ;;
+			esac
+			;;
+		zte_u25s)
+			_zte_soak_power_supply_mode=unsupported
+			;;
+	esac
+	_zte_soak_failure_count=$(zte_json_top_get \
+		"$_zte_soak_status" failures) || return 1
+	zte_is_uint "$_zte_soak_failure_count" || return 1
+	[ -d "$ZTE_SOAK_ACTION_RESULTS_DIR" ] || return 1
+	_zte_soak_action_result_count=$(find "$ZTE_SOAK_ACTION_RESULTS_DIR" \
+		-mindepth 1 -maxdepth 1 -type f -name '*.json' 2>/dev/null |
+		wc -l | tr -d ' ')
+	zte_is_uint "$_zte_soak_action_result_count" || return 1
 
 	_zte_soak_power=$(
 		zte_power_hardware_read "$ZTE_SOAK_POWER_PATH"
@@ -176,9 +234,13 @@ zte_soak_collect() {
 		)
 	fi
 	zte_is_uint "$_zte_soak_event_bytes" || return 1
+	zte_soak_update_latches \
+		"$_zte_soak_adapter" "$_zte_soak_failure_count" \
+		"$_zte_soak_action_result_count" "$_zte_soak_power" \
+		"$_zte_soak_netdev" || return 1
 
 	printf \
-		'{"timestamp":%s,"monotonic_seconds":%s,"boot_id":"%s","service_running":%s,"pid":%s,"manager_comm":"%s","manager_start_ticks":%s,"rss_kb":%s,"fd_count":%s,"coordinator_running":%s,"coordinator_pid":%s,"coordinator_comm":"%s","coordinator_start_ticks":%s,"coordinator_rss_kb":%s,"coordinator_fd_count":%s,"recovery_service_running":%s,"state":"%s","status_age":%s,"power":%s,"recovery_inhibit":%s,"netdev_present":%s,"event_log_bytes":%s}\n' \
+		'{"timestamp":%s,"monotonic_seconds":%s,"boot_id":"%s","service_running":%s,"pid":%s,"manager_comm":"%s","manager_start_ticks":%s,"rss_kb":%s,"fd_count":%s,"coordinator_running":%s,"coordinator_pid":%s,"coordinator_comm":"%s","coordinator_start_ticks":%s,"coordinator_rss_kb":%s,"coordinator_fd_count":%s,"recovery_service_running":%s,"state":"%s","status_age":%s,"adapter":"%s","power_supply_mode":"%s","failure_count":%s,"action_result_count":%s,"usb_discontinuity_count":%s,"max_failure_count":%s,"max_action_result_count":%s,"power":%s,"recovery_inhibit":%s,"netdev_present":%s,"event_log_bytes":%s}\n' \
 		"$_zte_soak_now" "$_zte_soak_monotonic" "$_zte_soak_boot_id" \
 		"$_zte_soak_service_running" "$_zte_soak_sample_pid" \
 		"$_zte_soak_manager_comm" "$_zte_soak_manager_start" \
@@ -188,6 +250,11 @@ zte_soak_collect() {
 		"$_zte_soak_coordinator_rss" "$_zte_soak_coordinator_fds" \
 		"$_zte_soak_recovery_running" \
 		"$_zte_soak_state" "$_zte_soak_status_age" \
+		"$_zte_soak_adapter" "$_zte_soak_power_supply_mode" \
+		"$_zte_soak_failure_count" "$_zte_soak_action_result_count" \
+		"$_zte_soak_usb_discontinuity_count" \
+		"$_zte_soak_max_failure_count" \
+		"$_zte_soak_max_action_result_count" \
 		"$_zte_soak_power" "$_zte_soak_inhibit" "$_zte_soak_netdev" \
 		"$_zte_soak_event_bytes"
 }
@@ -209,6 +276,12 @@ zte_soak_run() {
 		[ "$_zte_soak_interval" -ge 1 ] || return 1
 	zte_is_uint "$ZTE_SOAK_MAX_BYTES" &&
 		[ "$ZTE_SOAK_MAX_BYTES" -ge 65536 ] || return 1
+	zte_is_uint "$ZTE_SOAK_MONITOR_INTERVAL" &&
+		[ "$ZTE_SOAK_MONITOR_INTERVAL" -ge 1 ] || return 1
+	_zte_soak_monitor_interval=$ZTE_SOAK_MONITOR_INTERVAL
+	if [ "$_zte_soak_monitor_interval" -gt "$_zte_soak_interval" ]; then
+		_zte_soak_monitor_interval=$_zte_soak_interval
+	fi
 
 	umask 077
 	mkdir -p "$ZTE_SOAK_STATE_DIR" || return 1
@@ -222,17 +295,28 @@ zte_soak_run() {
 	zte_is_uint "$_zte_soak_started" || return 1
 	_zte_soak_output=${ZTE_SOAK_OUTPUT:-$ZTE_SOAK_STATE_DIR/soak-$_zte_soak_started.jsonl}
 	[ ! -e "$_zte_soak_output" ] || return 1
+	_zte_soak_next_output=$_zte_soak_started
 
 	while :; do
-		zte_soak_collect >>"$_zte_soak_output" || return 1
-		chmod 600 "$_zte_soak_output" || return 1
-		_zte_soak_size=$(wc -c <"$_zte_soak_output" | tr -d ' ')
-		[ "$_zte_soak_size" -le "$ZTE_SOAK_MAX_BYTES" ] || return 1
 		_zte_soak_now=$(date +%s)
 		[ "$_zte_soak_now" -ge "$_zte_soak_started" ] || return 1
 		_zte_soak_elapsed=$((_zte_soak_now - _zte_soak_started))
+		_zte_soak_write_sample=0
+		if [ "$_zte_soak_now" -ge "$_zte_soak_next_output" ] ||
+			[ "$_zte_soak_elapsed" -ge "$_zte_soak_duration" ]; then
+			_zte_soak_write_sample=1
+		fi
+		if [ "$_zte_soak_write_sample" = 1 ]; then
+			zte_soak_collect >>"$_zte_soak_output" || return 1
+			chmod 600 "$_zte_soak_output" || return 1
+			_zte_soak_size=$(wc -c <"$_zte_soak_output" | tr -d ' ')
+			[ "$_zte_soak_size" -le "$ZTE_SOAK_MAX_BYTES" ] || return 1
+			_zte_soak_next_output=$((_zte_soak_now + _zte_soak_interval))
+		else
+			zte_soak_collect >/dev/null || return 1
+		fi
 		[ "$_zte_soak_elapsed" -lt "$_zte_soak_duration" ] || break
-		sleep "$_zte_soak_interval"
+		sleep "$_zte_soak_monitor_interval"
 	done
 
 	printf '%s\n' "$_zte_soak_output"
