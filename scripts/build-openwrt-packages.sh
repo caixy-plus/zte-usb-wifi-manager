@@ -163,19 +163,19 @@ IFS= read -r sdk_dir <"$sdk_list"
     sed '/^CONFIG_PACKAGE_.*=[my]$/d' .config >.config.selected
     mv .config.selected .config
     for _zte_all_symbol in ALL ALL_KMODS ALL_NONSHARED; do
-        if grep -q "^CONFIG_$_zte_all_symbol=" .config; then
-            sed "s/^CONFIG_$_zte_all_symbol=.*/CONFIG_$_zte_all_symbol=n/" \
-                .config >.config.minimal
-            mv .config.minimal .config
-        else
-            printf 'CONFIG_%s=n\n' "$_zte_all_symbol" >>.config
-        fi
+        sed -e "/^CONFIG_$_zte_all_symbol=/d" \
+            -e "/^# CONFIG_$_zte_all_symbol is not set$/d" \
+            .config >.config.minimal
+        mv .config.minimal .config
+        # Kconfig persists a disabled bool/tristate as this exact comment.
+        # CONFIG_FOO=n is ignored by defconfig and may restore SDK defaults.
+        printf '# CONFIG_%s is not set\n' "$_zte_all_symbol" >>.config
     done
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
         'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
     make defconfig
-    ! grep -Eq '^CONFIG_ALL(_KMODS|_NONSHARED)?=y$' .config ||
+    ! grep -Eq '^CONFIG_ALL(_KMODS|_NONSHARED)?=[my]$' .config ||
         die 'SDK retained a full package selection'
     _zte_selected_kmods=$(grep -c '^CONFIG_PACKAGE_kmod-.*=m$' .config || :)
     [ "$_zte_selected_kmods" -le 32 ] ||

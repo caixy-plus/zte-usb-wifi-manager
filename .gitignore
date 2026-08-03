@@ -4,5 +4,6 @@
 *.log
 build/
 dist/
+artifacts/
 .idea/
 .vscode/

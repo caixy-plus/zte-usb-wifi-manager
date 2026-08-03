@@ -419,6 +419,9 @@ cat >"$fake_bin/make" <<'EOF'
 set -eu
 case " $* " in
     ' defconfig ')
+        grep -Fqx '# CONFIG_ALL is not set' .config
+        grep -Fqx '# CONFIG_ALL_KMODS is not set' .config
+        grep -Fqx '# CONFIG_ALL_NONSHARED is not set' .config
         ;;
     *' package/zte-usb-wifi-manager/compile '*)
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
