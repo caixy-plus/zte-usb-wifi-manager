@@ -198,6 +198,24 @@ mkdir -p "$work"
 jar=$work/cookies.txt
 printf x >"$jar"
 
+assert_success node -e '
+const fs = require("fs");
+const contract = JSON.parse(fs.readFileSync("tests/fixtures/u30/write-contracts.json"));
+const action = contract.actions.set_power_supply_mode;
+if (contract.profile !== "zte_u30" || contract.security.https_required !== true ||
+    contract.security.login_required !== false ||
+    contract.security.accessible_id_support !== false ||
+    contract.security.session_material_persisted !== false ||
+    action.goform_id !== "POWER_SUPPLY_SETTING" ||
+    JSON.stringify(action.allowed_keys) !==
+        JSON.stringify(["isTest", "goformId", "power_supply_mode"]) ||
+    action.semantic_values.charging !== "0" ||
+    action.semantic_values.direct_supply !== "1" ||
+    action.readback_command !== "power_supply_mode" ||
+    action.retry_policy !== "never_retry_after_ambiguous_acceptance")
+    process.exit(1);
+'
+
 jsonfilter() {
     node ./tests/jsonfilter_stub.js "$@"
 }

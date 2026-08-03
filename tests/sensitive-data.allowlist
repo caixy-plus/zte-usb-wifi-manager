@@ -18,9 +18,9 @@ tests/test_sensitive_data.sh:124:15_DIGIT_IDENTIFIER
 tests/test_sensitive_data.sh:124:ICCID
 tests/test_sensitive_data.sh:144:PHONE_NUMBER
 tests/test_sensitive_data.sh:145:PHONE_NUMBER
-tests/test_adapter.sh:303:MAC_ADDRESS
-tests/test_adapter.sh:304:MAC_ADDRESS
-tests/test_adapter.sh:362:MAC_ADDRESS
+tests/test_adapter.sh:321:MAC_ADDRESS
+tests/test_adapter.sh:322:MAC_ADDRESS
+tests/test_adapter.sh:380:MAC_ADDRESS
 tests/test_json.sh:67:MAC_ADDRESS
 tests/test_json.sh:68:MAC_ADDRESS
 tests/test_luci.js:1041:MAC_ADDRESS

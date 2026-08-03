@@ -1,0 +1,38 @@
+{
+  "profile": "zte_u30",
+  "source": {
+    "service_module": "js/service.js",
+    "page_module": "js/adm/power_supply.js",
+    "device_config": "js/config/ufi/mu3351/config.js"
+  },
+  "security": {
+    "https_required": true,
+    "referer": "https://192.168.0.1/",
+    "login_required": false,
+    "accessible_id_support": false,
+    "ad_policy": "omit_when_accessible_id_support_is_false",
+    "session_material_persisted": false
+  },
+  "actions": {
+    "set_power_supply_mode": {
+      "risk": "charging_control",
+      "goform_id": "POWER_SUPPLY_SETTING",
+      "allowed_keys": [
+        "isTest",
+        "goformId",
+        "power_supply_mode"
+      ],
+      "fixed_values": {
+        "isTest": "false"
+      },
+      "semantic_values": {
+        "charging": "0",
+        "direct_supply": "1"
+      },
+      "readback_command": "power_supply_mode",
+      "success_result": "success",
+      "retry_policy": "never_retry_after_ambiguous_acceptance",
+      "real_device_verification": "required_before_enable"
+    }
+  }
+}
