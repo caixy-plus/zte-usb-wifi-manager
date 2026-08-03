@@ -346,6 +346,15 @@ case " $* " in
         mkdir -p "$root/scripts" "$root/package" "$root/feeds/luci" \
             "$root/bin/packages/fixture" "$root/staging_dir/host/bin"
         : >"$root/feeds/luci/luci.mk"
+        cat >"$root/Config-build.in" <<'CONFIG'
+config PACKAGE_kmod-sdk-default
+    tristate
+    default m
+
+config PACKAGE_unrelated-sdk-default
+    tristate
+    default m
+CONFIG
         cat >"$root/scripts/feeds" <<'SCRIPT'
 #!/bin/sh
 case " $* " in
@@ -419,6 +428,8 @@ cat >"$fake_bin/make" <<'EOF'
 set -eu
 case " $* " in
     ' defconfig ')
+        ! grep -Eq '^[[:space:]]*default m[[:space:]]*$' Config-build.in
+        grep -Eq '^[[:space:]]*default n[[:space:]]*$' Config-build.in
         grep -Fqx '# CONFIG_ALL is not set' .config
         grep -Fqx '# CONFIG_ALL_KMODS is not set' .config
         grep -Fqx '# CONFIG_ALL_NONSHARED is not set' .config
@@ -439,14 +450,6 @@ case " $* " in
             grep -Fqx '# CONFIG_PACKAGE_unrelated-sdk-default is not set' .config
             grep -Fqx 'CONFIG_PACKAGE_zte-usb-wifi-manager=m' .config
             grep -Fqx 'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' .config
-            # Official SDK Config-build.in contains hidden, immutable =m
-            # entries for its precompiled packages. They are not build targets.
-            immutable_kmod=1
-            while [ "$immutable_kmod" -le 33 ]; do
-                printf 'CONFIG_PACKAGE_kmod-sdk-default-%s=m\n' \
-                    "$immutable_kmod" >>.config
-                immutable_kmod=$((immutable_kmod + 1))
-            done
         fi
         ;;
     *' package/zte-usb-wifi-manager/compile '*)

@@ -144,6 +144,24 @@ IFS= read -r sdk_dir <"$sdk_list"
 
 (
     cd "$sdk_dir"
+    # Official SDKs describe every bundled, precompiled package as a hidden
+    # unconditional =m default in Config-build.in. Leaving those defaults in
+    # place makes even a targeted package build restage 1,000+ unrelated
+    # packages. Dependencies selected by this project remain enabled normally.
+    LC_ALL=C awk '
+        /^config[[:space:]]+/ {
+            package_symbol = ($2 ~ /^PACKAGE_/)
+        }
+        package_symbol &&
+            /^[[:space:]]*default[[:space:]]+m[[:space:]]*$/ {
+            sub(/default[[:space:]]+m/, "default n")
+            changed++
+        }
+        { print }
+        END { if (changed == 0) exit 1 }
+    ' Config-build.in >Config-build.in.minimal ||
+        die 'SDK package defaults could not be normalized'
+    mv Config-build.in.minimal Config-build.in
     cp "$work_dir/feeds.buildinfo" feeds.conf
     ./scripts/feeds update packages
     ./scripts/feeds update luci
@@ -199,9 +217,9 @@ IFS= read -r sdk_dir <"$sdk_list"
     make defconfig
     ! grep -Eq '^CONFIG_ALL(_KMODS|_NONSHARED)?=[my]$' .config ||
         die 'SDK retained a full package selection'
-    # SDK Config-build.in also exposes its precompiled packages as hidden,
-    # immutable =m symbols. Their count is not a build-target count; the two
-    # explicit package/.../compile invocations below remain the build boundary.
+    _zte_selected_kmods=$(grep -c '^CONFIG_PACKAGE_kmod-.*=m$' .config || :)
+    [ "$_zte_selected_kmods" -le 32 ] ||
+        die "SDK selected too many kernel packages: $_zte_selected_kmods"
     grep -Fqx 'CONFIG_PACKAGE_zte-usb-wifi-manager=m' .config ||
         die 'SDK configuration did not select the backend package'
     grep -Fqx 'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' .config ||
