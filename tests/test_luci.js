@@ -595,6 +595,96 @@ test('shows U30 Wi-Fi constraints while writes remain disabled', function() {
 	assert.strictEqual(text(tree).indexOf('保存 Wi-Fi 设置'), -1);
 });
 
+test('uses trusted U30 status when capabilities are empty or inconsistent', async function() {
+	const status = {
+		device: {
+			adapter: 'zte_u30', model: 'U30 Pro',
+			wifi: {
+				enabled: true,
+				bands: { wifi_2_4: { clients: 2 }, wifi_5: { clients: 9 } }
+			}
+		}
+	};
+	[ {}, { adapter: 'zte_u25s', model: 'U25S' } ].forEach(function(capabilities) {
+		const wifi = renderPanel(status, 'wifi', null, capabilities);
+		assert.ok(text(wifi).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
+		assert.strictEqual(text(wifi).indexOf('5 GHz SSID'), -1);
+		const clients = renderPanel(status, 'clients', null, capabilities);
+		assert.strictEqual(rowValue(clients, '接入设备总数'), '2');
+		assert.strictEqual(text(clients).indexOf('5 GHz 客户端'), -1);
+	});
+
+	const calls = [];
+	rpcBehavior.wifi_action = function() {
+		calls.push(Array.from(arguments));
+		return Promise.resolve({ ok: true, operation_id: 'op-u30-mismatch' });
+	};
+	const writable = renderPanel(status, 'wifi', null, {
+		adapter: 'zte_u25s', model: 'U25S', wifi_write: true
+	});
+	assert.strictEqual(nodesByTag(writable, 'select').some(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-band';
+	}), false);
+	assert.strictEqual(nodesByTag(writable, 'input').some(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-channel';
+	}), false);
+	nodesByTag(writable, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-ssid';
+	}).value = 'Status U30';
+	nodesByTag(writable, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-password';
+	}).value = 'fixture-pass';
+	await nodesByTag(writable, 'button').find(function(node) {
+		return text(node) === '保存 Wi-Fi 设置';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[0],
+		[ 'set_wifi', true, '2g', 'Status U30', 'wpa2_psk', 'fixture-pass', 'auto' ]);
+});
+
+test('uses trusted U30 capabilities when status reports U25S', function() {
+	const wifi = renderPanel(completeStatus, 'wifi', null, {
+		adapter: 'zte_u30', model: 'U30 Pro', wifi_write: false
+	});
+	assert.ok(text(wifi).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
+	assert.strictEqual(text(wifi).indexOf('5 GHz SSID'), -1);
+	const clients = renderPanel(completeStatus, 'clients', null, {
+		adapter: 'zte_u30', model: 'U30 Pro'
+	});
+	assert.strictEqual(rowValue(clients, '接入设备总数'), '2');
+	assert.strictEqual(text(clients).indexOf('5 GHz 客户端'), -1);
+});
+
+test('uses U30 status when the capabilities RPC fails', function() {
+	const status = {
+		device: {
+			adapter: 'zte_u30', model: 'U30 Pro',
+			wifi: { bands: { wifi_2_4: { clients: 2 }, wifi_5: { clients: 7 } } }
+		}
+	};
+	function failedCapabilitiesPanel(tabId) {
+		let current = app.render([
+			{ ok: true, value: status },
+			{ ok: false, value: {} },
+			{ ok: true, value: { events: [] } },
+			{ ok: true, value: { configured: false } },
+			{ ok: true, value: { available: false, reason: 'not_loaded', items: [] } },
+			{ ok: true, value: { enabled: false, low_percent: 30, high_percent: 80 } }
+		]);
+		const parent = {
+			replaceChild: function(next) { current = next; next.parentNode = parent; }
+		};
+		current.parentNode = parent;
+		tabById(current, tabId).attrs.click();
+		return current;
+	}
+	const wifi = failedCapabilitiesPanel('wifi');
+	assert.ok(text(wifi).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
+	assert.strictEqual(text(wifi).indexOf('5 GHz SSID'), -1);
+	const clients = failedCapabilitiesPanel('clients');
+	assert.strictEqual(rowValue(clients, '接入设备总数'), '2');
+	assert.strictEqual(text(clients).indexOf('5 GHz 客户端'), -1);
+});
+
 test('renders a write-only U25S password entry and credential state', function() {
 	const tree = render({ state: 'ok' });
 	const passwordInput = nodesByTag(tree, 'input').find(function(input) {

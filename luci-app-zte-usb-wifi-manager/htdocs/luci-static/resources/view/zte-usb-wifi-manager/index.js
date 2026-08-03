@@ -635,6 +635,13 @@ function renderUnavailableModule(tabId, title, message) {
 	]);
 }
 
+function profileIsU30(status, capabilities) {
+	var device = status.device && typeof status.device === 'object'
+		? status.device : {};
+	return (device.adapter === 'zte_u30' && device.model === 'U30 Pro') ||
+		(capabilities.adapter === 'zte_u30' && capabilities.model === 'U30 Pro');
+}
+
 function renderWifi(status, capabilities, onAction, actionBusy) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var wifi = device.wifi && typeof device.wifi === 'object' ? device.wifi : {};
@@ -648,7 +655,7 @@ function renderWifi(status, capabilities, onAction, actionBusy) {
 	var guest = wifi.guest && typeof wifi.guest === 'object' ? wifi.guest : {};
 	var advanced = wifi.advanced && typeof wifi.advanced === 'object'
 		? wifi.advanced : {};
-	var isU30 = capabilities.adapter === 'zte_u30';
+	var isU30 = profileIsU30(status, capabilities);
 
 	var children = [
 		row(_('Wi-Fi 开关'), enabledLabel(wifi.enabled)),
@@ -770,7 +777,7 @@ function renderClients(status, capabilities) {
 		? bands.wifi_5 : {};
 	var clients = device.clients && typeof device.clients === 'object'
 		? device.clients : {};
-	var isU30 = capabilities.adapter === 'zte_u30';
+	var isU30 = profileIsU30(status, capabilities);
 	var items = clients.available === true && Array.isArray(clients.items)
 		? clients.items.slice(0, 64) : [];
 	var total = null;

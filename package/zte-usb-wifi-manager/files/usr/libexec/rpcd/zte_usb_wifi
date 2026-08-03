@@ -298,7 +298,10 @@ handle_action() {
 		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
 		return
 	fi
-	apply_cached_profile_from_status || :
+	if ! apply_cached_profile_from_status; then
+		printf '%s\n' '{"ok":false,"error":"unsupported"}'
+		return
+	fi
 	if ! zte_adapter_action_supported "$_zte_action"; then
 		printf '%s\n' '{"ok":false,"error":"unsupported"}'
 		return

@@ -222,6 +222,42 @@ chmod +x "$test_bin/uci"
 RPCD_TEST_LIB_DIR=$write_lib
 export RPCD_TEST_LIB_DIR
 
+base_state_dir=$state_dir
+for profile_case in missing malformed device_null unknown mismatch; do
+    state_dir=$work/profile-$profile_case
+    case $profile_case in
+        missing) rm -f "$status_file" ;;
+        malformed) printf '%s\n' 'not-json' >"$status_file" ;;
+        device_null) printf '%s\n' '{"device":null}' >"$status_file" ;;
+        unknown)
+            printf '%s\n' \
+                '{"device":{"adapter":"zte_unknown","model":"Unknown"}}' \
+                >"$status_file"
+            ;;
+        mismatch)
+            printf '%s\n' \
+                '{"device":{"adapter":"zte_u25s","model":"U30 Pro"}}' \
+                >"$status_file"
+            ;;
+    esac
+    profile_reply=$(printf '%s\n' \
+        '{"action":"set_wifi","enabled":false}' |
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+            rpcd_call call wifi_action)
+    assert_eq '{"ok":false,"error":"unsupported"}' "$profile_reply" \
+        "untrusted profile must reject write: $profile_case"
+    if find "$state_dir/actions/pending" -type f -name '*.json' 2>/dev/null |
+        grep -q .; then
+        fail "untrusted profile created queue file: $profile_case"
+    else
+        pass
+    fi
+done
+state_dir=$base_state_dir
+printf '%s\n' \
+    '{"online":true,"device":{"adapter":"zte_u25s","model":"U25S"}}' \
+    >"$status_file"
+
 charging_settings=$(ZTE_TEST_CHARGING_ENABLED=1 ZTE_TEST_CHARGING_LOW=35 \
     ZTE_TEST_CHARGING_HIGH=75 rpcd_call call charging_settings)
 assert_eq '{"enabled":true,"low_percent":35,"high_percent":75}' \
@@ -354,7 +390,7 @@ mode_queued=$(printf '%s\n' \
 assert_queued_action "$mode_queued" mode automatic
 
 wifi_queued=$(printf '%s\n' \
-    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"Fixture WiFi","security":"wpa2_psk","password":"DUMMY_WIFI_VALUE","channel":"auto"}' |
+    '{"action":"set_wifi","enabled":true,"band":"5g","ssid":"Fixture WiFi","security":"wpa2_psk","password":"DUMMY_WIFI_VALUE","channel":"36"}' |
     ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
         rpcd_call call wifi_action)
 case $wifi_queued in *DUMMY_WIFI_VALUE*) fail 'Wi-Fi password leaked in RPC reply' ;; *) pass ;; esac
@@ -442,7 +478,9 @@ u30_wifi_queued=$(printf '%s\n' \
     ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
         rpcd_call call wifi_action)
 assert_queued_action "$u30_wifi_queued" band 2g
-rm -f "$status_file"
+printf '%s\n' \
+    '{"online":true,"device":{"adapter":"zte_u25s","model":"U25S"}}' \
+    >"$status_file"
 
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
     printf '%s\n' '{"action":"set_wifi"}' |
