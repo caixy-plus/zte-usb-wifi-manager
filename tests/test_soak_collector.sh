@@ -31,7 +31,7 @@ printf '%s\n' '11111111-2222-3333-4444-555555555555' \
 printf '%s\n' '500.25 100.00' >"$proc/uptime"
 printf '%s\n' 123 >"$runtime/manager.pid"
 printf '%s\n' 456 >"$runtime/coordinator.pid"
-printf '%s\n' '{"state":"ok","updated":1722345590,"failures":0,"device":{"adapter":"zte_u30","power_supply":{"mode_raw":0}}}' >"$runtime/status.json"
+printf '%s\n' '{"state":"ok","updated":1722345590,"failures":0,"device":{"battery":{"percent":51},"adapter":"zte_u30","power_supply":{"mode_raw":0}}}' >"$runtime/status.json"
 : >"$runtime/actions/results/one.json"
 : >"$runtime/actions/results/two.json"
 printf '1\n' >"$runtime/power"
@@ -74,6 +74,7 @@ zte_json_top_get() {
             printf '%s' "$1" |
                 sed -n 's/.*"failures":\([0-9][0-9]*\).*/\1/p'
             ;;
+        adapter) printf '%s\n' "${ZTE_TEST_ADAPTER:-zte_u30}" ;;
         *) return 1 ;;
     esac
 }
@@ -81,9 +82,9 @@ zte_json_top_object_get() {
     case $2 in
         device)
             if [ "${ZTE_TEST_ADAPTER:-zte_u30}" = zte_u25s ]; then
-                printf '%s\n' '{"adapter":"zte_u25s"}'
+                printf '%s\n' '{"battery":{"percent":51},"adapter":"zte_u25s"}'
             else
-                printf '%s\n' '{"adapter":"zte_u30","power_supply":{"mode_raw":0}}'
+                printf '%s\n' '{"battery":{"percent":51},"adapter":"zte_u30","power_supply":{"mode_raw":0}}'
             fi
             ;;
         power_supply) printf '%s\n' '{"mode_raw":0}' ;;
@@ -92,7 +93,10 @@ zte_json_top_object_get() {
 }
 zte_json_flat_get() {
     case $2 in
-        adapter) printf '%s\n' "${ZTE_TEST_ADAPTER:-zte_u30}" ;;
+        adapter)
+            case $1 in *'"battery":{'*) return 1 ;; esac
+            printf '%s\n' "${ZTE_TEST_ADAPTER:-zte_u30}"
+            ;;
         mode_raw) printf '%s\n' 0 ;;
         *) return 1 ;;
     esac

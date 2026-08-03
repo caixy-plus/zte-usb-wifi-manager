@@ -177,7 +177,7 @@ zte_soak_collect() {
 	_zte_soak_status_age=$((_zte_soak_now - _zte_soak_updated))
 	_zte_soak_device=$(zte_json_top_object_get \
 		"$_zte_soak_status" device) || return 1
-	_zte_soak_adapter=$(zte_json_flat_get \
+	_zte_soak_adapter=$(zte_json_top_get \
 		"$_zte_soak_device" adapter) || return 1
 	case $_zte_soak_adapter in zte_u25s|zte_u30) ;; *) return 1 ;; esac
 	case $_zte_soak_adapter in
