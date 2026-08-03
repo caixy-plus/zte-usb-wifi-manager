@@ -286,7 +286,7 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	assert.strictEqual(rpcSpecs.clear_credentials.params, undefined);
 	assert.strictEqual(rpcSpecs.cellular_action.reject, true);
 	assert.deepStrictEqual(rpcSpecs.cellular_action.params,
-		[ 'action', 'target', 'apn', 'auth', 'username', 'password', 'mode' ]);
+		[ 'action', 'target', 'confirm', 'apn', 'auth', 'username', 'password', 'mode' ]);
 	assert.deepStrictEqual(rpcSpecs.wifi_action.params,
 		[ 'action', 'enabled', 'band', 'ssid', 'security', 'password', 'channel' ]);
 	assert.deepStrictEqual(rpcSpecs.traffic_action.params,
@@ -522,8 +522,8 @@ test('submits normalized requests for each write family', async function() {
 	await nodesByTag(tree, 'button').find(function(node) {
 		return text(node) === '保存 APN';
 	}).attrs.click();
-	assert.deepStrictEqual(calls[0].slice(0, 6),
-		[ 'cellular', 'set_apn', undefined, 'internet', 'none', undefined ]);
+	assert.deepStrictEqual(calls[0].slice(0, 7),
+		[ 'cellular', 'set_apn', undefined, undefined, 'internet', 'none', undefined ]);
 
 	tree = renderPanel({}, 'wifi', null, { wifi_write: true });
 	nodesByTag(tree, 'input').find(function(node) {
@@ -555,6 +555,36 @@ test('submits normalized requests for each write family', async function() {
 	}).attrs.click();
 	assert.deepStrictEqual(calls[3].slice(0, 5),
 		[ 'sms', 'send_sms', undefined, '+12025550123', 'fixture message' ]);
+});
+
+test('keeps U30 Wi-Fi writes fixed to 2.4 GHz and automatic channel', async function() {
+	const calls = [];
+	rpcBehavior.wifi_action = function() {
+		calls.push(Array.from(arguments));
+		return Promise.resolve({ ok: true, operation_id: 'op-u30-wifi' });
+	};
+	const tree = renderPanel({
+		device: { adapter: 'zte_u30', model: 'U30 Pro', wifi: { enabled: true } }
+	}, 'wifi', null, { adapter: 'zte_u30', wifi_write: true });
+	assert.strictEqual(text(tree).indexOf('5 GHz SSID'), -1);
+	assert.ok(text(tree).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
+	assert.strictEqual(nodesByTag(tree, 'select').some(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-band';
+	}), false);
+	assert.strictEqual(nodesByTag(tree, 'input').some(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-channel';
+	}), false);
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-ssid';
+	}).value = 'U30 Fixture';
+	nodesByTag(tree, 'input').find(function(node) {
+		return node.attrs['data-purpose'] === 'wifi-password';
+	}).value = 'fixture-pass';
+	await nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '保存 Wi-Fi 设置';
+	}).attrs.click();
+	assert.deepStrictEqual(calls[0],
+		[ 'set_wifi', true, '2g', 'U30 Fixture', 'wpa2_psk', 'fixture-pass', 'auto' ]);
 });
 
 test('renders a write-only U25S password entry and credential state', function() {
@@ -652,8 +682,8 @@ test('requires confirmation before clearing the saved local credential', async f
 test('gates SIM switching by capability and reports asynchronous completion', async function() {
 	pollEntries.length = 0;
 	let submitted = null;
-	rpcBehavior.cellular_action = function(action, target) {
-		submitted = { action: action, target: target };
+	rpcBehavior.cellular_action = function(action, target, confirm) {
+		submitted = { action: action, target: target, confirm: confirm };
 		return Promise.resolve({ ok: true, operation_id: 'op-1722345678-1234', state: 'queued' });
 	};
 	rpcBehavior.operation_status = function(operationId) {
@@ -706,7 +736,7 @@ test('gates SIM switching by capability and reports asynchronous completion', as
 	select.value = 'sim2';
 	confirmation.checked = true;
 	await actionButton.attrs.click();
-	assert.deepStrictEqual(submitted, { action: 'switch_sim', target: 'sim2' });
+	assert.deepStrictEqual(submitted, { action: 'switch_sim', target: 'sim2', confirm: true });
 	assert.ok(text(current).indexOf('操作已进入队列') !== -1);
 
 	await pollEntries[0].callback();

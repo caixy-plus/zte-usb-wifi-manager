@@ -390,6 +390,11 @@ _zte_json_flat_query() {
                     printf "%s", found_value
                 exit 0
             }
+            if (mode == "type") {
+                if (found)
+                    printf "%s", found_kind
+                exit 0
+            }
             if (mode == "topget" || mode == "pathget" || mode == "objectget") {
                 if (found && found_kind != "null")
                     printf "%s", found_value
@@ -427,6 +432,14 @@ zte_json_flat_get() {
         ''|*[!A-Za-z0-9_]*) return 1 ;;
     esac
     _zte_json_flat_query get "$1" "$2"
+}
+
+# Print the JSON scalar type of key "$2" from flat JSON object "$1".
+zte_json_flat_type() {
+    case ${2-} in
+        ''|*[!A-Za-z0-9_]*) return 1 ;;
+    esac
+    _zte_json_flat_query type "$1" "$2"
 }
 
 # Print an exact top-level scalar from a general JSON object. Nested values are

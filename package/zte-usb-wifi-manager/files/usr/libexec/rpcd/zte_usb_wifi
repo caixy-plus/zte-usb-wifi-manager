@@ -16,7 +16,7 @@ CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/creden
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"sms_messages":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}'
+		'{"status":{},"sms_messages":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","confirm":"Boolean","apn":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}'
 }
 
 get_status() {
@@ -45,20 +45,26 @@ get_credential_status() {
 	fi
 }
 
-get_capabilities() {
+apply_cached_profile_from_status() {
 	if [ -s "$STATUS_FILE" ]; then
-		_zte_cap_status=$(cat "$STATUS_FILE" 2>/dev/null) || _zte_cap_status=''
-		if [ -n "$_zte_cap_status" ]; then
-			_zte_cap_cached_adapter=$(zte_json_path_get \
-				"$_zte_cap_status" device adapter 2>/dev/null) ||
-				_zte_cap_cached_adapter=''
-			_zte_cap_cached_model=$(zte_json_path_get \
-				"$_zte_cap_status" device model 2>/dev/null) ||
-				_zte_cap_cached_model=''
+		_zte_profile_status=$(cat "$STATUS_FILE" 2>/dev/null) || return 1
+		if [ -n "$_zte_profile_status" ]; then
+			_zte_profile_cached_adapter=$(zte_json_path_get \
+				"$_zte_profile_status" device adapter 2>/dev/null) ||
+				_zte_profile_cached_adapter=''
+			_zte_profile_cached_model=$(zte_json_path_get \
+				"$_zte_profile_status" device model 2>/dev/null) ||
+				_zte_profile_cached_model=''
 			zte_adapter_apply_cached_profile \
-				"$_zte_cap_cached_adapter" "$_zte_cap_cached_model" || :
+				"$_zte_profile_cached_adapter" "$_zte_profile_cached_model"
+			return
 		fi
 	fi
+	return 1
+}
+
+get_capabilities() {
+	apply_cached_profile_from_status || :
 	_zte_cap_write=$(
 		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
 	) || _zte_cap_write=0
@@ -292,6 +298,7 @@ handle_action() {
 		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
 		return
 	fi
+	apply_cached_profile_from_status || :
 	if ! zte_adapter_action_supported "$_zte_action"; then
 		printf '%s\n' '{"ok":false,"error":"unsupported"}'
 		return

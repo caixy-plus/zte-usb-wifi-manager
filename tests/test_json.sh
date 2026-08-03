@@ -11,7 +11,10 @@ assert_eq '82' "$(zte_json_flat_get '{"percent":82}' percent)"
 assert_eq '-3' "$(zte_json_flat_get '{"v":-3}' v)"
 assert_eq 'true' "$(zte_json_flat_get '{"online":true}' online)"
 assert_eq 'false' "$(zte_json_flat_get '{"online":false}' online)"
+assert_eq boolean "$(zte_json_flat_type '{"online":true}' online)"
+assert_eq string "$(zte_json_flat_type '{"online":"true"}' online)"
 assert_eq '' "$(zte_json_flat_get '{"a":"1"}' missing_key)"
+assert_eq '' "$(zte_json_flat_type '{"a":"1"}' missing_key)"
 # a longer key containing the requested name must not match
 assert_eq '' "$(zte_json_flat_get '{"xnetwork_type":"X"}' network_type)"
 assert_failure zte_json_flat_has '{"xnetwork_type":"X"}' network_type

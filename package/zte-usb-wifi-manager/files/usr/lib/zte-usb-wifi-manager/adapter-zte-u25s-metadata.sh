@@ -177,6 +177,14 @@ zte_adapter_effective_capability_bool() {
 	fi
 }
 
+zte_adapter_sim_switch_effective_bool() {
+	if [ "$ZTE_ADAPTER_ID" = zte_u25s ]; then
+		zte_adapter_effective_capability_bool "${1-}" "${2-}" "${3-}"
+	else
+		printf '%s' false
+	fi
+}
+
 zte_adapter_feature_status_json() {
 	_zte_feature_write_enabled=${1-0}
 	_zte_feature_sim_enabled=${2-0}
@@ -187,7 +195,7 @@ zte_adapter_feature_status_json() {
 	_zte_feature_reboot_enabled=${7-0}
 	_zte_feature_shutdown_enabled=${8-0}
 	_zte_feature_power_supply_enabled=${9-0}
-	_zte_feature_sim_effective=$(zte_adapter_effective_capability_bool \
+	_zte_feature_sim_effective=$(zte_adapter_sim_switch_effective_bool \
 		"$ZTE_CAP_SIM_SWITCH" "$_zte_feature_write_enabled" \
 		"$_zte_feature_sim_enabled")
 	_zte_feature_cellular_effective=$(zte_adapter_effective_capability_bool \
@@ -212,6 +220,7 @@ zte_adapter_feature_status_json() {
 		"$ZTE_CAP_POWER_SUPPLY_WRITE" "$_zte_feature_write_enabled" \
 		"$_zte_feature_power_supply_enabled")
 	if [ "$ZTE_ADAPTER_ID" = zte_u30 ]; then
+		_zte_feature_sim_implementation=not_implemented
 		_zte_feature_cellular_implementation=implemented
 		_zte_feature_wifi_implementation=implemented
 		_zte_feature_power_supply_implementation=implemented
@@ -222,6 +231,7 @@ zte_adapter_feature_status_json() {
 		_zte_feature_reboot_implementation=implemented
 		_zte_feature_shutdown_implementation=implemented
 	else
+		_zte_feature_sim_implementation=implemented
 		_zte_feature_cellular_implementation=not_implemented
 		_zte_feature_wifi_implementation=not_implemented
 		_zte_feature_power_supply_implementation=unsupported
@@ -240,7 +250,8 @@ zte_adapter_feature_status_json() {
 	printf '%s' '"traffic_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
 	printf '%s' '"sms_read":{"implementation":"implemented","verification":"simulator_only","access":"read","enabled":true},'
 	printf '%s' '"device_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
-	printf '"sim_switch":{"implementation":"implemented","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_sim_effective"
+	printf '"sim_switch":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' \
+		"$_zte_feature_sim_implementation" "$_zte_feature_sim_effective"
 	printf '"cellular_write":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' \
 		"$_zte_feature_cellular_implementation" "$_zte_feature_cellular_effective"
 	printf '"wifi_write":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' \
@@ -285,7 +296,7 @@ zte_adapter_effective_capabilities_json() {
 		"$ZTE_ADAPTER_ID" "$ZTE_ADAPTER_MODEL" \
 		"$ZTE_ADAPTER_TRANSPORT" "$ZTE_ADAPTER_TLS_VERIFICATION" \
 		"$_zte_metadata_login_required" \
-		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SIM_SWITCH" "$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled")" \
+		"$(zte_adapter_sim_switch_effective_bool "$ZTE_CAP_SIM_SWITCH" "$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_CELLULAR_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_cellular_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_WIFI_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_wifi_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_TRAFFIC_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_traffic_enabled")" \
@@ -307,7 +318,10 @@ zte_adapter_capabilities_json() {
 
 zte_adapter_action_supported() {
 	case ${1-} in
-		switch_sim) [ "$ZTE_CAP_SIM_SWITCH" = 1 ] ;;
+		switch_sim)
+			[ "$ZTE_ADAPTER_ID" = zte_u25s ] &&
+				[ "$ZTE_CAP_SIM_SWITCH" = 1 ]
+			;;
 		set_apn|set_connection_mode) [ "$ZTE_CAP_CELLULAR_WRITE" = 1 ] ;;
 		set_wifi) [ "$ZTE_CAP_WIFI_WRITE" = 1 ] ;;
 		set_traffic_plan|reset_traffic) [ "$ZTE_CAP_TRAFFIC_WRITE" = 1 ] ;;
@@ -422,8 +436,12 @@ zte_adapter_action_payload_valid() {
 			;;
 		switch_sim)
 			zte_adapter_payload_schema \
-				"$_zte_metadata_payload" 'action target' \
-				'action target' || return 1
+				"$_zte_metadata_payload" 'action target confirm' \
+				'action target confirm' || return 1
+			[ "$(zte_json_flat_type \
+				"$_zte_metadata_payload" confirm)" = boolean ] || return 1
+			[ "$(zte_json_flat_get \
+				"$_zte_metadata_payload" confirm)" = true ] || return 1
 			_zte_metadata_target=$(
 				zte_json_flat_get "$_zte_metadata_payload" target
 			)
@@ -479,10 +497,16 @@ zte_adapter_action_payload_valid() {
 			zte_adapter_payload_schema "$_zte_metadata_payload" \
 				'action enabled band ssid security password channel' \
 				'action enabled band ssid security channel' || return 1
-			case $(zte_json_flat_get "$_zte_metadata_payload" band) in
-				2g|5g) ;;
-				*) return 1 ;;
-			esac
+			_zte_metadata_band=$(zte_json_flat_get \
+				"$_zte_metadata_payload" band)
+			if [ "$ZTE_ADAPTER_ID" = zte_u30 ]; then
+				[ "$_zte_metadata_band" = 2g ] || return 1
+			else
+				case $_zte_metadata_band in
+					2g|5g) ;;
+					*) return 1 ;;
+				esac
+			fi
 			zte_adapter_payload_text "$(zte_json_flat_get \
 				"$_zte_metadata_payload" ssid)" 1 32 || return 1
 			_zte_metadata_security=$(zte_json_flat_get \
@@ -498,9 +522,13 @@ zte_adapter_action_payload_valid() {
 			esac
 			_zte_metadata_channel=$(zte_json_flat_get \
 				"$_zte_metadata_payload" channel)
-			[ "$_zte_metadata_channel" = auto ] ||
-				zte_adapter_payload_uint_range \
-					"$_zte_metadata_channel" 1 196
+			if [ "$ZTE_ADAPTER_ID" = zte_u30 ]; then
+				[ "$_zte_metadata_channel" = auto ]
+			else
+				[ "$_zte_metadata_channel" = auto ] ||
+					zte_adapter_payload_uint_range \
+						"$_zte_metadata_channel" 1 196
+			fi
 			;;
 		set_traffic_plan)
 			_zte_metadata_enabled=$(zte_json_flat_get \

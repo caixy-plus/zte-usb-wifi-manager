@@ -67,7 +67,7 @@ var callClearCredentials = rpc.declare({
 var callCellularAction = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'cellular_action',
-	params: [ 'action', 'target', 'apn', 'auth', 'username', 'password', 'mode' ],
+	params: [ 'action', 'target', 'confirm', 'apn', 'auth', 'username', 'password', 'mode' ],
 	reject: true
 });
 
@@ -648,16 +648,23 @@ function renderWifi(status, capabilities, onAction, actionBusy) {
 	var guest = wifi.guest && typeof wifi.guest === 'object' ? wifi.guest : {};
 	var advanced = wifi.advanced && typeof wifi.advanced === 'object'
 		? wifi.advanced : {};
+	var isU30 = capabilities.adapter === 'zte_u30';
 
 	var children = [
 		row(_('Wi-Fi 开关'), enabledLabel(wifi.enabled)),
 		row(_('访客网络'), enabledLabel(wifi.guest_enabled)),
 		row(_('2.4 GHz SSID'), wifi24.ssid),
 		row(_('2.4 GHz 安全模式'), wifi24.auth_mode),
-		row(_('2.4 GHz 客户端'), wifi24.clients),
-		row(_('5 GHz SSID'), wifi5.ssid),
-		row(_('5 GHz 安全模式'), wifi5.auth_mode),
-		row(_('5 GHz 客户端'), wifi5.clients),
+		row(_('2.4 GHz 客户端'), wifi24.clients)
+	];
+	if (!isU30) {
+		children.push(
+			row(_('5 GHz SSID'), wifi5.ssid),
+			row(_('5 GHz 安全模式'), wifi5.auth_mode),
+			row(_('5 GHz 客户端'), wifi5.clients)
+		);
+	}
+	children = children.concat([
 		row(_('无线开关原始值'), wifi.radio_off_raw),
 		row(_('主网络 SSID'), primary.ssid),
 		row(_('主网络安全模式'), primary.auth_mode),
@@ -675,33 +682,43 @@ function renderWifi(status, capabilities, onAction, actionBusy) {
 		row(_('带宽原始值'), advanced.bandwidth_raw),
 		row(_('覆盖范围原始值'), advanced.coverage_raw),
 		row(_('休眠状态原始值'), wifi.sleep_status_raw)
-	];
+	]);
 	if (capabilities.wifi_write === true) {
 		var enabled = actionInput('wifi-enabled', 'checkbox', wifi.enabled !== false);
-		var band = actionSelect('wifi-band', [ [ '2g', '2.4 GHz' ], [ '5g', '5 GHz' ] ], '2g');
+		var band = isU30 ? null : actionSelect('wifi-band',
+			[ [ '2g', '2.4 GHz' ], [ '5g', '5 GHz' ] ], '2g');
 		var ssid = actionInput('wifi-ssid', 'text', wifi24.ssid || '');
 		var security = actionSelect('wifi-security', [
 			[ 'open', _('开放') ], [ 'wpa2_psk', 'WPA2-PSK' ],
 			[ 'wpa3_sae', 'WPA3-SAE' ], [ 'wpa2_wpa3', 'WPA2/WPA3' ]
 		], 'wpa2_psk');
 		var wifiPassword = actionInput('wifi-password', 'password', '');
-		var channel = actionInput('wifi-channel', 'text', 'auto');
-		children.push(actionSection(_('Wi-Fi 设置'), [
-			actionRow(_('启用'), enabled), actionRow(_('频段'), band),
-			actionRow(_('SSID'), ssid), actionRow(_('安全模式'), security),
-			actionRow(_('密码'), wifiPassword), actionRow(_('信道'), channel),
+		var channel = isU30 ? null : actionInput('wifi-channel', 'text', 'auto');
+		var wifiRows = [ actionRow(_('启用'), enabled) ];
+		if (isU30) {
+			wifiRows.push(actionRow(_('U30 Wi-Fi 约束'),
+				_('U30 仅支持 2.4 GHz，信道固定为自动')));
+		} else {
+			wifiRows.push(actionRow(_('频段'), band));
+		}
+		wifiRows.push(actionRow(_('SSID'), ssid), actionRow(_('安全模式'), security),
+			actionRow(_('密码'), wifiPassword));
+		if (!isU30)
+			wifiRows.push(actionRow(_('信道'), channel));
+		wifiRows.push(
 			actionButton(_('保存 Wi-Fi 设置'), actionBusy, function() {
 				var request = { action: 'set_wifi', enabled: enabled.checked === true };
 				if (request.enabled) {
-					request.band = band.value; request.ssid = ssid.value;
+					request.band = isU30 ? '2g' : band.value; request.ssid = ssid.value;
 					request.security = security.value;
 					if (security.value !== 'open')
 						request['password'] = wifiPassword.value;
-					request.channel = channel.value;
+					request.channel = isU30 ? 'auto' : channel.value;
 				}
 				return onAction('wifi', request, _('Wi-Fi 设置'));
 			})
-		]));
+		);
+		children.push(actionSection(_('Wi-Fi 设置'), wifiRows));
 	}
 	return panelRoot('wifi', _('设备 Wi-Fi'), children);
 }
@@ -967,7 +984,7 @@ function renderSimSwitch(sim, onAction, actionBusy) {
 			'disabled': actionBusy ? 'disabled' : null,
 			'click': function() {
 				return onAction('cellular', {
-					action: 'switch_sim', target: targetSelect.value
+					action: 'switch_sim', target: targetSelect.value, confirm: true
 				}, _('SIM 切换'), confirmation,
 				_('请先确认该操作会短暂中断蜂窝网络。'));
 			}
@@ -1484,7 +1501,7 @@ return view.extend({
 			request = request || {};
 			switch (method) {
 			case 'cellular':
-				return callCellularAction(request.action, request.target, request.apn,
+				return callCellularAction(request.action, request.target, request.confirm, request.apn,
 					request.auth, request.username, request.password, request.mode);
 			case 'wifi':
 				return callWifiAction(request.action, request.enabled, request.band,

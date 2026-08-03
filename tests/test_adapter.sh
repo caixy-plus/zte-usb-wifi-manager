@@ -51,6 +51,19 @@ assert_eq true "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdi
 assert_eq 51 "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).battery.percent)))')"
 assert_eq true "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).traffic.plan.auto_clear)))')"
 assert_eq U30ProV1.0.0B23 "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).firmware))')"
+
+# U30 has no calibrated switch_sim request contract. Even an accidentally
+# raised profile/effective flag must not advertise or authorize the action.
+ZTE_U30_CAP_SIM_SWITCH=1
+ZTE_CAP_SIM_SWITCH=1
+u30_sim_capabilities=$(zte_adapter_capabilities_json)
+assert_eq false "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
+assert_eq not_implemented "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.sim_switch.implementation))')"
+assert_eq spare_device_required "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.sim_switch.verification))')"
+assert_eq false "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).feature_status.sim_switch.enabled)))')"
+assert_failure zte_adapter_action_supported switch_sim
+ZTE_U30_CAP_SIM_SWITCH=0
+ZTE_CAP_SIM_SWITCH=0
 assert_success zte_device_profile_select_named zte_u25s
 assert_success zte_adapter_apply_profile
 
@@ -163,9 +176,15 @@ ZTE_CAP_SIM_SWITCH=0
 # mapping. Unknown fields are rejected so ubus cannot smuggle unreviewed
 # device parameters into the root-only action queue.
 assert_success zte_adapter_action_payload_valid switch_sim \
+    '{"action":"switch_sim","target":"sim2","confirm":true}'
+assert_failure zte_adapter_action_payload_valid switch_sim \
     '{"action":"switch_sim","target":"sim2"}'
 assert_failure zte_adapter_action_payload_valid switch_sim \
-    '{"action":"switch_sim","target":"sim2","extra":"x"}'
+    '{"action":"switch_sim","target":"sim2","confirm":false}'
+assert_failure zte_adapter_action_payload_valid switch_sim \
+    '{"action":"switch_sim","target":"sim2","confirm":"true"}'
+assert_failure zte_adapter_action_payload_valid switch_sim \
+    '{"action":"switch_sim","target":"sim2","confirm":true,"extra":"x"}'
 assert_success zte_adapter_action_payload_valid set_apn \
     '{"action":"set_apn","apn":"internet","auth":"none"}'
 assert_success zte_adapter_action_payload_valid set_apn \
@@ -188,6 +207,18 @@ assert_failure zte_adapter_action_payload_valid set_wifi \
     '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U25S","security":"wpa2_psk","channel":"auto"}'
 assert_failure zte_adapter_action_payload_valid set_wifi \
     '{"action":"set_wifi","enabled":true,"band":"6g","ssid":"U25S","security":"open","channel":"auto"}'
+assert_success zte_device_profile_select_named zte_u30
+assert_success zte_adapter_apply_profile
+assert_success zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U30","security":"open","channel":"auto"}'
+assert_failure zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"5g","ssid":"U30","security":"open","channel":"auto"}'
+assert_failure zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U30","security":"open","channel":"6"}'
+assert_success zte_device_profile_select_named zte_u25s
+assert_success zte_adapter_apply_profile
+assert_success zte_adapter_action_payload_valid set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"5g","ssid":"U25S","security":"open","channel":"36"}'
 assert_success zte_adapter_action_payload_valid set_traffic_plan \
     '{"action":"set_traffic_plan","enabled":false}'
 assert_success zte_adapter_action_payload_valid set_traffic_plan \

@@ -114,7 +114,7 @@ zte_execute_switch_sim() {
 
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345678-1234 switch_sim \
-    '{"action":"switch_sim","target":"sim2"}' 1722345678
+    '{"action":"switch_sim","target":"sim2","confirm":true}' 1722345678
 assert_success process_actions
 assert_eq \
     '{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"succeeded","code":"ok","updated":1722345680}' \
@@ -129,7 +129,7 @@ assert_eq 'info|action|action_succeeded|1722345680' \
 sim_switch_enabled=0
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345679-1240 switch_sim \
-    '{"action":"switch_sim","target":"sim2"}' 1722345679
+    '{"action":"switch_sim","target":"sim2","confirm":true}' 1722345679
 assert_success process_actions
 assert_eq \
     '{"operation_id":"op-1722345679-1240","type":"switch_sim","state":"failed","code":"write_not_enabled","updated":1722345680}' \
@@ -145,7 +145,7 @@ zte_execute_switch_sim() {
 }
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345681-1235 switch_sim \
-    '{"action":"switch_sim","target":"physical"}' 1722345681
+    '{"action":"switch_sim","target":"physical","confirm":true}' 1722345681
 assert_success process_actions
 assert_eq \
     '{"operation_id":"op-1722345681-1235","type":"switch_sim","state":"failed","code":"readback_mismatch","updated":1722345680}' \
@@ -157,7 +157,7 @@ assert_eq 'error|action|action_failed|1722345680' \
 zte_read_password() { return 1; }
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345682-1236 switch_sim \
-    '{"action":"switch_sim","target":"sim1"}' 1722345682
+    '{"action":"switch_sim","target":"sim1","confirm":true}' 1722345682
 assert_success process_actions
 assert_eq \
     '{"operation_id":"op-1722345682-1236","type":"switch_sim","state":"failed","code":"credentials_missing","updated":1722345680}' \
@@ -174,7 +174,7 @@ zte_execute_switch_sim() {
 }
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345682-1239 switch_sim \
-    '{"action":"switch_sim","target":"sim1"}' 1722345682
+    '{"action":"switch_sim","target":"sim1","confirm":true}' 1722345682
 assert_success process_actions
 assert_eq \
     '{"operation_id":"op-1722345682-1239","type":"switch_sim","state":"succeeded","code":"ok","updated":1722345680}' \
@@ -191,7 +191,7 @@ zte_execute_switch_sim() {
 }
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345683-1237 switch_sim \
-    '{"action":"switch_sim","target":"invalid"}' 1722345683
+    '{"action":"switch_sim","target":"invalid","confirm":true}' 1722345683
 assert_success process_actions
 assert_eq \
     '{"operation_id":"op-1722345683-1237","type":"switch_sim","state":"failed","code":"invalid_action","updated":1722345680}' \

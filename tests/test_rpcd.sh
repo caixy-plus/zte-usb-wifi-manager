@@ -59,7 +59,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}' \
+assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","confirm":"Boolean","apn":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -193,6 +193,8 @@ sed \
     -e 's/^ZTE_CAP_DEVICE_REBOOT=0$/ZTE_CAP_DEVICE_REBOOT=1/' \
     -e 's/^ZTE_CAP_DEVICE_SHUTDOWN=0$/ZTE_CAP_DEVICE_SHUTDOWN=1/' \
     -e 's/^ZTE_CAP_POWER_SUPPLY_WRITE=0$/ZTE_CAP_POWER_SUPPLY_WRITE=1/' \
+    -e 's/^ZTE_U30_CAP_SIM_SWITCH=0$/ZTE_U30_CAP_SIM_SWITCH=1/' \
+    -e 's/^ZTE_U30_CAP_WIFI_WRITE=0$/ZTE_U30_CAP_WIFI_WRITE=1/' \
     "$metadata" >"$write_lib/adapter-zte-u25s-metadata.sh"
 # The generated stub must expand this variable when it executes, not here.
 # shellcheck disable=SC2016
@@ -268,25 +270,40 @@ assert_eq false "$(printf '%s' "$globally_disabled_capabilities" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
 
 sim_write_disabled=$(printf '%s\n' \
-    '{"action":"switch_sim","target":"sim2"}' |
+    '{"action":"switch_sim","target":"sim2","confirm":true}' |
     ZTE_TEST_WRITE_ENABLED=0 rpcd_call call cellular_action)
 assert_eq '{"ok":false,"error":"write_not_enabled"}' "$sim_write_disabled"
 sim_feature_disabled=$(printf '%s\n' \
-    '{"action":"switch_sim","target":"sim2"}' |
+    '{"action":"switch_sim","target":"sim2","confirm":true}' |
     ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=0 \
         rpcd_call call cellular_action)
 assert_eq '{"ok":false,"error":"write_not_enabled"}' \
     "$sim_feature_disabled"
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
-    printf '%s\n' '{"action":"switch_sim"}' |
+    printf '%s\n' '{"action":"switch_sim","target":"sim2"}' |
         ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action
 )"
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
-    printf '%s\n' '{"action":"switch_sim","target":"invalid"}' |
+    printf '%s\n' '{"action":"switch_sim","target":"sim2","confirm":false}' |
         ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action
 )"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"switch_sim","target":"sim2","confirm":"true"}' |
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+            rpcd_call call cellular_action
+)"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"switch_sim","target":"invalid","confirm":true}' |
+        ZTE_TEST_WRITE_ENABLED=1 rpcd_call call cellular_action
+)"
+if find "$state_dir/actions/pending" -type f -name '*.json' 2>/dev/null |
+    grep -q .; then
+    fail 'unconfirmed SIM switches must not create queue files'
+else
+    pass
+fi
 sim_queued=$(printf '%s\n' \
-    '{"action":"switch_sim","target":"physical"}' |
+    '{"action":"switch_sim","target":"physical","confirm":true}' |
     ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=1 \
         rpcd_call call cellular_action)
 assert_success assert_json "$sim_queued"
@@ -296,6 +313,11 @@ assert_eq physical "$(
     zte_json_path_get \
         "$(cat "$state_dir/actions/pending/$sim_queued_id.json")" \
         payload target
+)"
+assert_eq true "$(
+    zte_json_path_get \
+        "$(cat "$state_dir/actions/pending/$sim_queued_id.json")" \
+        payload confirm
 )"
 zte_action_claim "$state_dir" >/dev/null
 assert_success zte_action_finish \
@@ -386,6 +408,41 @@ unknown_field=$(printf '%s\n' \
     ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
         rpcd_call call wifi_action)
 assert_eq '{"ok":false,"error":"invalid_action"}' "$unknown_field"
+
+printf '%s\n' '{"online":true,"model":"U30 Pro","device":{"adapter":"zte_u30","model":"U30 Pro"}}' >"$status_file"
+u30_write_capabilities=$(
+    ZTE_TEST_WRITE_ENABLED=1 \
+    ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+    ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+        rpcd_call call capabilities
+)
+assert_eq false "$(printf '%s' "$u30_write_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
+assert_eq not_implemented "$(printf '%s' "$u30_write_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.sim_switch.implementation))')"
+assert_eq false "$(printf '%s' "$u30_write_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).feature_status.sim_switch.enabled)))')"
+assert_eq '{"ok":false,"error":"unsupported"}' "$(
+    printf '%s\n' '{"action":"switch_sim","target":"sim2","confirm":true}' |
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+            rpcd_call call cellular_action
+)"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"set_wifi","enabled":true,"band":"5g","ssid":"U30","security":"open","channel":"auto"}' |
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+            rpcd_call call wifi_action
+)"
+assert_eq '{"ok":false,"error":"invalid_action"}' "$(
+    printf '%s\n' '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U30","security":"open","channel":"6"}' |
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+            rpcd_call call wifi_action
+)"
+u30_wifi_queued=$(printf '%s\n' \
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U30","security":"open","channel":"auto"}' |
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+        rpcd_call call wifi_action)
+assert_queued_action "$u30_wifi_queued" band 2g
+rm -f "$status_file"
 
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
     printf '%s\n' '{"action":"set_wifi"}' |
