@@ -199,9 +199,9 @@ IFS= read -r sdk_dir <"$sdk_list"
     make defconfig
     ! grep -Eq '^CONFIG_ALL(_KMODS|_NONSHARED)?=[my]$' .config ||
         die 'SDK retained a full package selection'
-    _zte_selected_kmods=$(grep -c '^CONFIG_PACKAGE_kmod-.*=m$' .config || :)
-    [ "$_zte_selected_kmods" -le 32 ] ||
-        die "SDK selected too many kernel packages: $_zte_selected_kmods"
+    # SDK Config-build.in also exposes its precompiled packages as hidden,
+    # immutable =m symbols. Their count is not a build-target count; the two
+    # explicit package/.../compile invocations below remain the build boundary.
     grep -Fqx 'CONFIG_PACKAGE_zte-usb-wifi-manager=m' .config ||
         die 'SDK configuration did not select the backend package'
     grep -Fqx 'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' .config ||

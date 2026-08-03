@@ -439,6 +439,14 @@ case " $* " in
             grep -Fqx '# CONFIG_PACKAGE_unrelated-sdk-default is not set' .config
             grep -Fqx 'CONFIG_PACKAGE_zte-usb-wifi-manager=m' .config
             grep -Fqx 'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' .config
+            # Official SDK Config-build.in contains hidden, immutable =m
+            # entries for its precompiled packages. They are not build targets.
+            immutable_kmod=1
+            while [ "$immutable_kmod" -le 33 ]; do
+                printf 'CONFIG_PACKAGE_kmod-sdk-default-%s=m\n' \
+                    "$immutable_kmod" >>.config
+                immutable_kmod=$((immutable_kmod + 1))
+            done
         fi
         ;;
     *' package/zte-usb-wifi-manager/compile '*)
