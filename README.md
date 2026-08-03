@@ -15,9 +15,9 @@
 ## 当前状态
 
 仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r23 / LuCI r12
-已完成本地离线自动化验证；按当前交付顺序，r23/r12 的官方双 SDK 构建、QEMU
-生命周期和真机调试统一留到最后执行。最近完成双 SDK/QEMU 验证的是 backend r21 /
-LuCI r10，最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
+已完成本地离线自动化验证和 OpenWrt 25.12.5 / 24.10.7 官方双 SDK 构建；按当前
+交付顺序，QEMU 生命周期和真机调试继续留在最后执行。最近完成 QEMU 验证的是
+backend r21 / LuCI r10，最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
 - 已接入 U30 Pro 的 CDC-NCM 自动识别、HTTPS 匿名只读状态、设备原生
@@ -88,6 +88,9 @@ LuCI r10，最近完成路由器验证的发布包仍是 backend r15 / LuCI r4�
   [r21/r10 QEMU 验证](docs/validation/2026-08-01-r21-r10-qemu.md)。
 - 阶段 4 已冻结[首版能力矩阵](docs/validation/first-release-capability-matrix.md)，
   并完成 [r20/r9 到 r21/r10 的双版本 QEMU 升级验证](docs/validation/2026-08-01-r21-r10-upgrade-qemu.md)。
+- 当前 r23/r12 已通过两套官方 SDK 的 APK/IPK 构建和独立 SHA-256 复核；详见
+  [r23/r12 SDK 验证](docs/validation/2026-08-03-r23-r12-sdk.md)。QEMU 与真机结果
+  不使用历史版本证据替代。
 
 当前状态不代表已经完成人工上机验收。
 
