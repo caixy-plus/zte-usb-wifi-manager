@@ -22,6 +22,8 @@ esac
 output_parent=$(dirname "$output_dir")
 output_name=$(basename "$output_dir")
 mkdir -p "$output_parent"
+download_cache=$output_parent/.openwrt-sdk-cache
+mkdir -p "$download_cache"
 
 image=zte-openwrt-sdk-builder:ubuntu-24.04-amd64
 docker build --platform linux/amd64 -t "$image" \
@@ -33,5 +35,7 @@ docker run --rm --platform linux/amd64 \
 	-v "$repo_root:$repo_root:ro" \
 	-v "$git_common_dir:$git_common_dir:ro" \
 	-v "$output_parent:/output" \
+	-v "$download_cache:/downloads" \
+	-e OPENWRT_DOWNLOAD_CACHE=/downloads \
 	-w "$repo_root" "$image" \
 	./scripts/build-openwrt-packages.sh "$release" "/output/$output_name"

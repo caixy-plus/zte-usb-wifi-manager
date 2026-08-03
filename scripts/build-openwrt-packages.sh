@@ -99,8 +99,27 @@ curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --proto '=https' \
     "$base_url/sha256sums" -o "$work_dir/sha256sums"
 curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --proto '=https' \
     "$base_url/feeds.buildinfo" -o "$work_dir/feeds.buildinfo"
-curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --proto '=https' \
-    "$base_url/$sdk_file" -o "$work_dir/$sdk_file"
+download_cache=${OPENWRT_DOWNLOAD_CACHE:-}
+cache_sdk=
+if [ -n "$download_cache" ]; then
+    mkdir -p "$download_cache"
+    cache_sdk=$download_cache/$sdk_file
+fi
+if [ -n "$cache_sdk" ] && [ -f "$cache_sdk" ] &&
+    printf '%s  %s\n' "$sdk_sha256" "$cache_sdk" | sha256sum -c - \
+        >/dev/null 2>&1; then
+    cp "$cache_sdk" "$work_dir/$sdk_file"
+else
+    curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --proto '=https' \
+        "$base_url/$sdk_file" -o "$work_dir/$sdk_file"
+    if [ -n "$cache_sdk" ]; then
+        printf '%s  %s\n' "$sdk_sha256" "$work_dir/$sdk_file" |
+            sha256sum -c - >/dev/null
+        cache_tmp=$cache_sdk.tmp.$$
+        cp "$work_dir/$sdk_file" "$cache_tmp"
+        mv "$cache_tmp" "$cache_sdk"
+    fi
+fi
 
 official_entry="$sdk_sha256 *$sdk_file"
 grep -Fqx "$official_entry" "$work_dir/sha256sums" ||
@@ -139,6 +158,13 @@ IFS= read -r sdk_dir <"$sdk_list"
         package/zte-usb-wifi-manager
     ln -s "$repo_root/luci-app-zte-usb-wifi-manager" \
         package/luci-app-zte-usb-wifi-manager
+    [ -f .config ] || : >.config
+    sed \
+        -e 's/^CONFIG_ALL=y$/# CONFIG_ALL is not set/' \
+        -e 's/^CONFIG_ALL_KMODS=y$/# CONFIG_ALL_KMODS is not set/' \
+        -e 's/^CONFIG_ALL_NONSHARED=y$/# CONFIG_ALL_NONSHARED is not set/' \
+        .config >.config.minimal
+    mv .config.minimal .config
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
         'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
