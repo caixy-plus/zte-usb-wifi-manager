@@ -321,13 +321,22 @@ _zte_json_flat_query() {
                 if (!parse_string())
                     return 0
                 key = parsed_string
+                if (seen_top_key[key]++)
+                    return 0
                 skip_space()
                 if (substr(json, pos, 1) != ":")
                     return 0
                 pos++
                 skip_space()
                 c = substr(json, pos, 1)
-                if (mode == "pathget" && key == parent && c == "{") {
+                if (mode == "objectget" && key == wanted && c == "{") {
+                    object_start = pos
+                    if (!parse_nested_object())
+                        return 0
+                    found = 1
+                    found_value = substr(json, object_start, pos - object_start)
+                    found_kind = "object"
+                } else if (mode == "pathget" && key == parent && c == "{") {
                     if (!parse_path_object())
                         return 0
                 } else if (mode == "topget" && key == wanted && c != "{" && c != "[") {
@@ -361,7 +370,7 @@ _zte_json_flat_query() {
         }
         END {
             pos = 1
-            if (mode == "topget" || mode == "pathget")
+            if (mode == "topget" || mode == "pathget" || mode == "objectget")
                 valid = parse_top_object()
             else
                 valid = parse_object()
@@ -381,7 +390,7 @@ _zte_json_flat_query() {
                     printf "%s", found_value
                 exit 0
             }
-            if (mode == "topget" || mode == "pathget") {
+            if (mode == "topget" || mode == "pathget" || mode == "objectget") {
                 if (found && found_kind != "null")
                     printf "%s", found_value
                 exit 0
@@ -438,6 +447,17 @@ zte_json_path_get() {
         ''|*[!A-Za-z0-9_]*) return 1 ;;
     esac
     _zte_json_flat_query pathget "$1" "$3" "$2"
+}
+
+# Print an exact top-level object from a general JSON object. The returned
+# value is still JSON and can be passed to the strict flat-object validator.
+zte_json_top_object_get() {
+    case ${2-} in
+        ''|*[!A-Za-z0-9_]*) return 1 ;;
+    esac
+    _zte_json_object=$(_zte_json_flat_query objectget "$1" "$2") || return 1
+    [ -n "$_zte_json_object" ] || return 1
+    printf '%s' "$_zte_json_object"
 }
 
 zte_json_mac_valid() {

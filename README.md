@@ -15,8 +15,9 @@
 ## 当前状态
 
 仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r23 / LuCI r12
-已完成本地自动化、双 SDK 和双版本 QEMU 生命周期验证；
-最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
+已完成本地离线自动化验证；按当前交付顺序，r23/r12 的官方双 SDK 构建、QEMU
+生命周期和真机调试统一留到最后执行。最近完成双 SDK/QEMU 验证的是 backend r21 /
+LuCI r10，最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
 - 已接入 U30 Pro 的 CDC-NCM 自动识别、HTTPS 匿名只读状态、设备原生
@@ -474,7 +475,7 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 ```text
 .
 ├── package/zte-usb-wifi-manager/        # 后端包、守护进程、策略与适配器
-├── luci-app-zte-usb-wifi-manager/       # LuCI 菜单、ACL 和只读状态总览
+├── luci-app-zte-usb-wifi-manager/       # LuCI 菜单、ACL、状态与安全门控操作
 ├── tests/                               # POSIX Shell 测试
 ├── docs/design/                         # UI 成品稿与详细设计文档
 ├── docs/plans/                          # 可执行实施计划
@@ -487,6 +488,7 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 - [详细设计文档](docs/design/zte-usb-wifi-manager-design.md)
 - [四阶段交付与 QEMU 验证](docs/validation/2026-07-30-four-stage-delivery.md)
 - [TR3000 USB 供电与稳定性预检](docs/validation/2026-07-31-power-hardware-preflight.md)
+- [r23/r12 离线开发验证](docs/validation/2026-08-03-r23-r12-offline.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
 - [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 
@@ -514,10 +516,12 @@ Shell/JSON 语法和敏感信息模式检查。
 ## 路线
 
 1. ✅ 已接入 U25S 只读登录和批量状态读取。
-2. 补齐经过脱敏和审核的 Wi-Fi、流量及短信元数据 fixture。
-3. 在备用 TR3000 + U25S 上逐项校准设备写接口和操作后验证。
-4. 实现设备设置、短信、SIM 和系统动作的逐项回读验证。
-5. 完成备用硬件 72 小时稳定性测试，再进行主路由器安全验收。
+2. ✅ 已补齐静态源码契约、合成 fixture 和敏感数据门禁；真实响应 fixture 只在最终
+   实机验收中脱敏补充。
+3. ✅ 已实现设备设置、短信、SIM、系统动作和 U30 智能充电的单次写入与逐项读回链。
+4. 在备用 Cudy + U30 Pro 上逐项校准成功、拒绝、超时、状态关联和恢复路径；只开放
+   实际通过的独立 capability。
+5. 完成备用硬件 72 小时稳定性测试、回滚演练，再进行正式发布验收。
 
 ## 贡献
 

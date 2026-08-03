@@ -194,7 +194,7 @@ assert_success zte_action_enqueue \
     '{"action":"switch_sim","target":"invalid"}' 1722345683
 assert_success process_actions
 assert_eq \
-    '{"operation_id":"op-1722345683-1237","type":"switch_sim","state":"failed","code":"invalid_target","updated":1722345680}' \
+    '{"operation_id":"op-1722345683-1237","type":"switch_sim","state":"failed","code":"invalid_action","updated":1722345680}' \
     "$(zte_action_get "$STATE_DIR" op-1722345683-1237)"
 
 # Source-reviewed U30 non-destructive settings share the same queue, feature
@@ -229,9 +229,26 @@ case $(tail -n 1 "$execute_log") in
     192.168.0.1\|*\|set_connection_mode\|*'"mode":"automatic"'*) pass ;;
     *) fail 'daemon did not pass the validated queued setting to the executor' ;;
 esac
+# Revalidate the exact queued payload at execution time. A tampered record or
+# a destructive action without its confirmation must never reach an executor.
+execute_count=$(wc -l <"$execute_log" | tr -d ' ')
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1247 set_connection_mode \
+    '{"action":"set_connection_mode","mode":"automatic","extra":"raw"}' 1722345684
+assert_success process_actions
+assert_eq invalid_action "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1247)" code)"
+assert_eq "$execute_count" "$(wc -l <"$execute_log" | tr -d ' ')"
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1248 reset_traffic \
+    '{"action":"reset_traffic"}' 1722345684
+assert_success process_actions
+assert_eq invalid_action "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1248)" code)"
+assert_eq "$execute_count" "$(wc -l <"$execute_log" | tr -d ' ')"
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345684-1246 set_apn \
-    '{"action":"set_apn","apn":"fixture","pdp_type":"ipv4","auth":"none"}' 1722345684
+    '{"action":"set_apn","apn":"fixture","auth":"none"}' 1722345684
 assert_success process_actions
 assert_eq succeeded "$(zte_json_top_get \
     "$(zte_action_get "$STATE_DIR" op-1722345684-1246)" state)"

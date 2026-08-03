@@ -370,7 +370,7 @@ zte_adapter_u30_fetch_flat() {
 	case $_zte_u30_fetch_fields in
 		'ConnectionMode,autoConnectWhenRoaming'|\
 'index,profile_name,apn_wan_apn,apn_ppp_auth_mode,apn_ppp_username'|\
-'flux_data_volume_limit_switch,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_clear_date,flux_limited_disconnect'|\
+'flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect'|\
 'flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time'|\
 'wifi_onoff_state,wifi_chip1_ssid1_switch_onoff,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode') ;;
 		*) return 1 ;;
@@ -387,12 +387,19 @@ zte_adapter_fetch_connection_mode() {
 	_zte_connection_response=$(zte_adapter_u30_fetch_flat "$1" \
 		'ConnectionMode,autoConnectWhenRoaming' "$2") || return 1
 	zte_json_flat_has "$_zte_connection_response" ConnectionMode || return 1
+	zte_json_flat_has "$_zte_connection_response" autoConnectWhenRoaming || return 1
 	case $(zte_json_flat_get "$_zte_connection_response" ConnectionMode) in
-		auto_dial) printf '%s\n' automatic ;;
-		manual_dial) printf '%s\n' manual ;;
-		on_demand) printf '%s\n' on_demand ;;
+		auto_dial) _zte_connection_semantic=automatic ;;
+		manual_dial) _zte_connection_semantic=manual ;;
+		on_demand) _zte_connection_semantic=on_demand ;;
 		*) return 1 ;;
 	esac
+	case $(zte_json_flat_get "$_zte_connection_response" autoConnectWhenRoaming) in
+		off|on) _zte_connection_roaming=$(zte_json_flat_get \
+			"$_zte_connection_response" autoConnectWhenRoaming) ;;
+		*) return 1 ;;
+	esac
+	printf '%s|%s\n' "$_zte_connection_semantic" "$_zte_connection_roaming"
 }
 
 zte_adapter_fetch_apn_context() {
@@ -409,18 +416,16 @@ zte_adapter_fetch_apn_context() {
 	printf '%s\n' "$_zte_apn_read_response"
 }
 
-zte_adapter_set_apn() {
+zte_adapter_set_apn() (
 	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
 	_zte_apn_set_host=$1
 	_zte_apn_set_apn=$2
-	_zte_apn_set_pdp=$3
-	_zte_apn_set_auth=$4
-	_zte_apn_set_username=$5
-	_zte_apn_set_password=$6
-	_zte_apn_set_jar=$7
+	_zte_apn_set_auth=$3
+	_zte_apn_set_username=$4
+	_zte_apn_set_password=$5
+	_zte_apn_set_jar=$6
 	case $_zte_apn_set_apn in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
 	[ "${#_zte_apn_set_apn}" -le 100 ] || return 1
-	case $_zte_apn_set_pdp in ipv4|ipv6|ipv4v6) ;; *) return 1 ;; esac
 	case $_zte_apn_set_auth in
 		none)
 			_zte_apn_set_username=''
@@ -445,9 +450,17 @@ zte_adapter_set_apn() {
 		"$_zte_apn_set_context" profile_name)
 	[ -n "$_zte_apn_set_profile" ] || return 1
 	_zte_apn_set_form="isTest=false&goformId=APN_PROC&apn_action=set_default&$(zte_form_pair index "$_zte_apn_set_index")&apn_mode=manual&$(zte_form_pair profile_name "$_zte_apn_set_profile")&$(zte_form_pair apn_wan_apn "$_zte_apn_set_apn")&dns_mode=auto&prefer_dns_manual=&w_standby_dns_manual=&$(zte_form_pair apn_ppp_username "$_zte_apn_set_username")&$(zte_form_pair apn_ppp_passwd "$_zte_apn_set_password")&$(zte_form_pair apn_ppp_auth_mode "$_zte_apn_set_auth")&apn_select=manual&$(zte_form_pair apn_wan_dial '*99#')&apn_pdp_type=PPP&apn_pdp_select=auto&apn_pdp_addr=&set_default_flag=1"
-	zte_adapter_u30_post_body "$_zte_apn_set_host" \
-		"$_zte_apn_set_form" "$_zte_apn_set_jar"
-}
+	if zte_adapter_u30_post_body "$_zte_apn_set_host" \
+		"$_zte_apn_set_form" "$_zte_apn_set_jar"; then
+		_zte_apn_set_status=0
+	else
+		_zte_apn_set_status=$?
+	fi
+	_zte_apn_set_password=''
+	_zte_apn_set_username=''
+	_zte_apn_set_form=''
+	return "$_zte_apn_set_status"
+)
 
 zte_adapter_fetch_apn_setting() {
 	_zte_apn_setting=$(zte_adapter_fetch_apn_context "$1" "$2") || return 1
@@ -467,7 +480,7 @@ zte_adapter_fetch_apn_setting() {
 		"$(zte_json_escape "$_zte_apn_setting_username")"
 }
 
-zte_adapter_set_wifi() {
+zte_adapter_set_wifi() (
 	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
 	_zte_wifi_set_host=$1
 	_zte_wifi_set_enabled=$2
@@ -509,9 +522,16 @@ zte_adapter_set_wifi() {
 		*) return 1 ;;
 	esac
 	_zte_wifi_set_form="isTest=false&goformId=setAccessPointInfo&ChipIndex=0&AccessPointIndex=0&AccessPointSwitchStatus=1&$(zte_form_pair SSID "$_zte_wifi_set_ssid")&ApIsolate=0&AuthMode=$_zte_wifi_set_auth&ApBroadcastDisabled=0$_zte_wifi_set_crypto"
-	zte_adapter_u30_post_body "$_zte_wifi_set_host" \
-		"$_zte_wifi_set_form" "$_zte_wifi_set_jar"
-}
+	if zte_adapter_u30_post_body "$_zte_wifi_set_host" \
+		"$_zte_wifi_set_form" "$_zte_wifi_set_jar"; then
+		_zte_wifi_set_status=0
+	else
+		_zte_wifi_set_status=$?
+	fi
+	_zte_wifi_set_password=''
+	_zte_wifi_set_form=''
+	return "$_zte_wifi_set_status"
+)
 
 zte_adapter_fetch_wifi_setting() {
 	_zte_wifi_read_response=$(zte_adapter_u30_fetch_flat "$1" \
@@ -580,11 +600,12 @@ zte_adapter_set_traffic_plan() {
 
 zte_adapter_fetch_traffic_plan() {
 	_zte_traffic_response=$(zte_adapter_u30_fetch_flat "$1" \
-		'flux_data_volume_limit_switch,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_clear_date,flux_limited_disconnect' \
+		'flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect' \
 		"$2") || return 1
 	for _zte_traffic_field in \
-		flux_data_volume_limit_switch flux_data_volume_limit_size \
-		flux_data_volume_alert_percent flux_clear_date \
+		flux_data_volume_limit_switch flux_data_volume_limit_unit \
+		flux_data_volume_limit_size flux_data_volume_alert_percent \
+		flux_auto_clear_flow_data_switch flux_clear_date \
 		flux_limited_disconnect; do
 		zte_json_flat_has "$_zte_traffic_response" \
 			"$_zte_traffic_field" || return 1
@@ -593,15 +614,19 @@ zte_adapter_fetch_traffic_plan() {
 		"$_zte_traffic_response" flux_data_volume_limit_switch)
 	case $_zte_traffic_read_enabled in 0|1) ;; *) return 1 ;; esac
 	if [ "$_zte_traffic_read_enabled" = 0 ]; then
-		printf '%s\n' '0||||'
+		printf '%s\n' '0||||||'
 		return
 	fi
 	_zte_traffic_read_limit=$(zte_json_flat_get \
 		"$_zte_traffic_response" flux_data_volume_limit_size)
+	_zte_traffic_read_unit=$(zte_json_flat_get \
+		"$_zte_traffic_response" flux_data_volume_limit_unit)
 	_zte_traffic_read_alert=$(zte_json_flat_get \
 		"$_zte_traffic_response" flux_data_volume_alert_percent)
 	_zte_traffic_read_day=$(zte_json_flat_get \
 		"$_zte_traffic_response" flux_clear_date)
+	_zte_traffic_read_auto_clear=$(zte_json_flat_get \
+		"$_zte_traffic_response" flux_auto_clear_flow_data_switch)
 	_zte_traffic_read_disconnect=$(zte_json_flat_get \
 		"$_zte_traffic_response" flux_limited_disconnect)
 	zte_adapter_payload_uint_range "$_zte_traffic_read_limit" \
@@ -609,7 +634,9 @@ zte_adapter_fetch_traffic_plan() {
 		zte_adapter_payload_uint_range "$_zte_traffic_read_alert" 1 100 &&
 		zte_adapter_payload_uint_range "$_zte_traffic_read_day" 1 31 || return 1
 	case $_zte_traffic_read_disconnect in 0|1) ;; *) return 1 ;; esac
-	printf '1|%s|%s|%s|%s\n' "$_zte_traffic_read_limit" \
+	[ "$_zte_traffic_read_unit" = data ] &&
+		[ "$_zte_traffic_read_auto_clear" = 1 ] || return 1
+	printf '1|data|%s|%s|1|%s|%s\n' "$_zte_traffic_read_limit" \
 		"$_zte_traffic_read_alert" "$_zte_traffic_read_day" \
 		"$_zte_traffic_read_disconnect"
 }
@@ -681,10 +708,15 @@ EOF
 # digits, exactly as the browser implementation does.
 zte_adapter_sms_encode() {
 	printf '%s' "${1-}" | od -An -v -tu1 | LC_ALL=C awk '
+		function gsm7_extension(cp) {
+			return cp == 12 || cp == 91 || cp == 92 || cp == 93 ||
+				cp == 94 || cp == 123 || cp == 124 || cp == 125 ||
+				cp == 126 || cp == 8364
+		}
 		function gsm7(cp) {
 			if (cp == 10 || cp == 13 || (cp >= 32 && cp <= 126 && cp != 96))
 				return 1
-			return cp == 163 || cp == 165 || cp == 232 || cp == 233 ||
+			return cp == 163 || cp == 164 || cp == 165 || cp == 232 || cp == 233 ||
 				cp == 249 || cp == 236 || cp == 242 || cp == 199 ||
 				cp == 216 || cp == 248 || cp == 197 || cp == 229 ||
 				cp == 916 || cp == 934 || cp == 915 || cp == 923 ||
@@ -702,6 +734,8 @@ zte_adapter_sms_encode() {
 			}
 			if (!gsm7(cp))
 				type = "UNICODE"
+			gsm_units += gsm7_extension(cp) ? 2 : 1
+			utf16_units += cp > 65535 ? 2 : 1
 			if (cp <= 65535)
 				body = body sprintf("%04X", cp)
 			else
@@ -746,9 +780,26 @@ zte_adapter_sms_encode() {
 			}
 			if (bad)
 				exit 1
-			printf "%s|%s\n", type, body
+			units = type == "UNICODE" ? utf16_units : gsm_units
+			printf "%s|%s|%d\n", type, body, units
 		}
 	'
+}
+
+zte_adapter_sms_payload_valid() {
+	# 765 GSM7 or 335 UTF-16 units fit in at most 3060 UTF-8 bytes. Keep a
+	# coarse transport bound here; the encoder below enforces the exact unit
+	# limit independently of the shell locale's character-count semantics.
+	zte_adapter_payload_text "${1-}" 1 3060 || return 1
+	_zte_sms_payload_encoded=$(zte_adapter_sms_encode "$1") || return 1
+	_zte_sms_payload_type=${_zte_sms_payload_encoded%%|*}
+	_zte_sms_payload_units=${_zte_sms_payload_encoded##*|}
+	zte_is_uint "$_zte_sms_payload_units" || return 1
+	case $_zte_sms_payload_type in
+		GSM7_default) [ "$_zte_sms_payload_units" -le 765 ] ;;
+		UNICODE) [ "$_zte_sms_payload_units" -le 335 ] ;;
+		*) return 1 ;;
+	esac
 }
 
 zte_adapter_sms_time() {
@@ -773,25 +824,37 @@ zte_adapter_sms_time() {
 	printf '%s;%s\n' "$_zte_sms_time_base" "$_zte_sms_time_zone"
 }
 
-zte_adapter_send_sms() {
+zte_adapter_send_sms() (
 	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
 	_zte_sms_send_host=$1
 	_zte_sms_send_number=$2
 	_zte_sms_send_content=$3
 	_zte_sms_send_jar=$4
 	if ! zte_adapter_payload_phone "$_zte_sms_send_number" ||
-		! zte_adapter_payload_text "$_zte_sms_send_content" 1 700; then
+		! zte_adapter_sms_payload_valid "$_zte_sms_send_content"; then
 		return 1
 	fi
 	_zte_sms_send_encoded=$(zte_adapter_sms_encode \
 		"$_zte_sms_send_content") || return 1
 	_zte_sms_send_type=${_zte_sms_send_encoded%%|*}
-	_zte_sms_send_body=${_zte_sms_send_encoded#*|}
+	_zte_sms_send_encoded_rest=${_zte_sms_send_encoded#*|}
+	_zte_sms_send_body=${_zte_sms_send_encoded_rest%|*}
 	_zte_sms_send_time=$(zte_adapter_sms_time) || return 1
 	_zte_sms_send_form="isTest=false&goformId=SEND_SMS&notCallback=true&$(zte_form_pair Number "$_zte_sms_send_number")&$(zte_form_pair sms_time "$_zte_sms_send_time")&MessageBody=$_zte_sms_send_body&ID=-1&encode_type=$_zte_sms_send_type"
-	zte_adapter_u30_post_body "$_zte_sms_send_host" \
-		"$_zte_sms_send_form" "$_zte_sms_send_jar"
-}
+	if zte_adapter_u30_post_body "$_zte_sms_send_host" \
+		"$_zte_sms_send_form" "$_zte_sms_send_jar"; then
+		_zte_sms_send_status=0
+	else
+		_zte_sms_send_status=$?
+	fi
+	_zte_sms_send_content=''
+	_zte_sms_send_number=''
+	_zte_sms_send_encoded=''
+	_zte_sms_send_encoded_rest=''
+	_zte_sms_send_body=''
+	_zte_sms_send_form=''
+	return "$_zte_sms_send_status"
+)
 
 zte_adapter_fetch_sms_command_status() {
 	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1

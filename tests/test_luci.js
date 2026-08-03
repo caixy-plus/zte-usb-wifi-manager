@@ -286,7 +286,7 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 	assert.strictEqual(rpcSpecs.clear_credentials.params, undefined);
 	assert.strictEqual(rpcSpecs.cellular_action.reject, true);
 	assert.deepStrictEqual(rpcSpecs.cellular_action.params,
-		[ 'action', 'target', 'apn', 'pdp_type', 'auth', 'username', 'password', 'mode' ]);
+		[ 'action', 'target', 'apn', 'auth', 'username', 'password', 'mode' ]);
 	assert.deepStrictEqual(rpcSpecs.wifi_action.params,
 		[ 'action', 'enabled', 'band', 'ssid', 'security', 'password', 'channel' ]);
 	assert.deepStrictEqual(rpcSpecs.traffic_action.params,
@@ -523,7 +523,7 @@ test('submits normalized requests for each write family', async function() {
 		return text(node) === '保存 APN';
 	}).attrs.click();
 	assert.deepStrictEqual(calls[0].slice(0, 6),
-		[ 'cellular', 'set_apn', undefined, 'internet', 'ipv4v6', 'none' ]);
+		[ 'cellular', 'set_apn', undefined, 'internet', 'none', undefined ]);
 
 	tree = renderPanel({}, 'wifi', null, { wifi_write: true });
 	nodesByTag(tree, 'input').find(function(node) {

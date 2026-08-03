@@ -794,6 +794,7 @@ record_state_change() {
 }
 
 process_actions() {
+	(
 	_zte_action_record=$(zte_action_claim "$STATE_DIR" 2>/dev/null) ||
 		return 0
 	_zte_operation_id=$(zte_json_top_get "$_zte_action_record" operation_id)
@@ -808,8 +809,16 @@ process_actions() {
 	_zte_action_code=unsupported
 	_zte_action_event_level=warn
 	_zte_action_event_code=action_unsupported
+	_zte_action_payload=$(zte_json_top_object_get \
+		"$_zte_action_record" payload 2>/dev/null) || _zte_action_payload=''
 
-	if zte_adapter_action_supported "$_zte_action_type" &&
+	if [ -z "$_zte_action_payload" ] ||
+		! zte_adapter_action_payload_valid \
+			"$_zte_action_type" "$_zte_action_payload"; then
+		_zte_action_code=invalid_action
+		_zte_action_event_level=error
+		_zte_action_event_code=action_failed
+	elif zte_adapter_action_supported "$_zte_action_type" &&
 		! configured_action_enabled "$_zte_action_type"; then
 		_zte_action_code=write_not_enabled
 		_zte_action_event_level=error
@@ -963,6 +972,7 @@ process_actions() {
 	record_event \
 		"$_zte_action_event_level" action "$_zte_action_event_code" \
 		"$_zte_action_time" || :
+	)
 }
 
 # Evaluate and, when every server-side gate is open, apply U30 Pro's

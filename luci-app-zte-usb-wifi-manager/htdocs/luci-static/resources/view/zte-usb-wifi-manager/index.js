@@ -67,7 +67,7 @@ var callClearCredentials = rpc.declare({
 var callCellularAction = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'cellular_action',
-	params: [ 'action', 'target', 'apn', 'pdp_type', 'auth', 'username', 'password', 'mode' ],
+	params: [ 'action', 'target', 'apn', 'auth', 'username', 'password', 'mode' ],
 	reject: true
 });
 
@@ -592,9 +592,6 @@ function renderNetwork(status, capabilities, onAction, actionBusy) {
 	];
 	if (capabilities.cellular_write === true) {
 		var apn = actionInput('apn', 'text', '');
-		var pdpSelect = actionSelect('pdp-type', [
-			[ 'ipv4', 'IPv4' ], [ 'ipv6', 'IPv6' ], [ 'ipv4v6', 'IPv4/IPv6' ]
-		], 'ipv4v6');
 		var auth = actionSelect('apn-auth', [
 			[ 'none', _('无') ], [ 'pap', 'PAP' ], [ 'chap', 'CHAP' ],
 			[ 'pap_or_chap', 'PAP/CHAP' ]
@@ -606,13 +603,12 @@ function renderNetwork(status, capabilities, onAction, actionBusy) {
 			[ 'on_demand', _('按需') ]
 		], 'automatic');
 		children.push(actionSection(_('APN 设置'), [
-			actionRow(_('APN'), apn), actionRow(_('PDP 类型'), pdpSelect),
+			actionRow(_('APN'), apn),
 			actionRow(_('认证'), auth), actionRow(_('用户名'), username),
 			actionRow(_('密码'), password),
 			actionButton(_('保存 APN'), actionBusy, function() {
 				var request = {
-					action: 'set_apn', apn: apn.value, pdp_type: pdpSelect.value,
-					auth: auth.value
+					action: 'set_apn', apn: apn.value, auth: auth.value
 				};
 				if (auth.value !== 'none') {
 					request.username = username.value;
@@ -1489,8 +1485,7 @@ return view.extend({
 			switch (method) {
 			case 'cellular':
 				return callCellularAction(request.action, request.target, request.apn,
-					request.pdp_type, request.auth, request.username, request.password,
-					request.mode);
+					request.auth, request.username, request.password, request.mode);
 			case 'wifi':
 				return callWifiAction(request.action, request.enabled, request.band,
 					request.ssid, request.security, request.password, request.channel);

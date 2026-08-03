@@ -384,17 +384,13 @@ zte_adapter_action_payload_valid() {
 			;;
 		set_apn)
 			zte_adapter_payload_schema "$_zte_metadata_payload" \
-				'action apn pdp_type auth username password' \
-				'action apn pdp_type auth' || return 1
+				'action apn auth username password' \
+				'action apn auth' || return 1
 			_zte_metadata_apn=$(zte_json_flat_get "$_zte_metadata_payload" apn)
 			case $_zte_metadata_apn in
 				''|*[!A-Za-z0-9._-]*) return 1 ;;
 			esac
 			[ "${#_zte_metadata_apn}" -le 100 ] || return 1
-			case $(zte_json_flat_get "$_zte_metadata_payload" pdp_type) in
-				ipv4|ipv6|ipv4v6) ;;
-				*) return 1 ;;
-			esac
 			_zte_metadata_auth=$(zte_json_flat_get "$_zte_metadata_payload" auth)
 			case $_zte_metadata_auth in
 				none) ;;
@@ -494,7 +490,7 @@ zte_adapter_action_payload_valid() {
 			zte_adapter_payload_phone "$(zte_json_flat_get \
 				"$_zte_metadata_payload" number)" &&
 				zte_adapter_payload_text "$(zte_json_flat_get \
-				"$_zte_metadata_payload" content)" 1 700
+					"$_zte_metadata_payload" content)" 1 3060
 			;;
 		delete_sms)
 			zte_adapter_payload_schema "$_zte_metadata_payload" \

@@ -140,15 +140,15 @@ assert_success zte_adapter_action_payload_valid switch_sim \
 assert_failure zte_adapter_action_payload_valid switch_sim \
     '{"action":"switch_sim","target":"sim2","extra":"x"}'
 assert_success zte_adapter_action_payload_valid set_apn \
-    '{"action":"set_apn","apn":"internet","pdp_type":"ipv4v6","auth":"none"}'
+    '{"action":"set_apn","apn":"internet","auth":"none"}'
 assert_success zte_adapter_action_payload_valid set_apn \
-    '{"action":"set_apn","apn":"carrier.apn","pdp_type":"ipv4","auth":"chap","username":"user","password":"PLACEHOLDER"}'
+    '{"action":"set_apn","apn":"carrier.apn","auth":"chap","username":"user","password":"PLACEHOLDER"}'
 assert_failure zte_adapter_action_payload_valid set_apn \
-    '{"action":"set_apn","apn":"","pdp_type":"ipv4","auth":"none"}'
+    '{"action":"set_apn","apn":"","auth":"none"}'
 assert_failure zte_adapter_action_payload_valid set_apn \
-    '{"action":"set_apn","apn":"internet","pdp_type":"invalid","auth":"none"}'
+    '{"action":"set_apn","apn":"internet","pdp_type":"ipv4","auth":"none"}'
 assert_failure zte_adapter_action_payload_valid set_apn \
-    '{"action":"set_apn","apn":"internet","pdp_type":"ipv4","auth":"chap"}'
+    '{"action":"set_apn","apn":"internet","auth":"chap"}'
 assert_success zte_adapter_action_payload_valid set_connection_mode \
     '{"action":"set_connection_mode","mode":"automatic"}'
 assert_failure zte_adapter_action_payload_valid set_connection_mode \
@@ -277,6 +277,16 @@ assert_eq \
 assert_success zte_adapter_set_connection_mode 192.168.0.1 manual "$jar"
 assert_file_contains "$u30_action_log" 'ConnectionMode=manual_dial'
 assert_failure zte_adapter_set_connection_mode 192.168.0.1 invalid "$jar"
+zte_http_get() {
+    printf '%s\n' '{"ConnectionMode":"auto_dial","autoConnectWhenRoaming":"off"}'
+}
+assert_eq 'automatic|off' \
+    "$(zte_adapter_fetch_connection_mode 192.168.0.1 "$jar")"
+zte_http_get() {
+    printf '%s\n' '{"ConnectionMode":"auto_dial","autoConnectWhenRoaming":"on"}'
+}
+assert_eq 'automatic|on' \
+    "$(zte_adapter_fetch_connection_mode 192.168.0.1 "$jar")"
 
 : >"$u30_action_log"
 assert_success zte_adapter_set_traffic_plan \
@@ -291,6 +301,15 @@ assert_eq \
     "$(cut -d'|' -f2 "$u30_action_log")"
 assert_failure zte_adapter_set_traffic_plan \
     192.168.0.1 1 '1&goformId=REBOOT_DEVICE' 90 1 0 "$jar"
+zte_http_get() {
+    printf '%s\n' '{"flux_data_volume_limit_switch":"1","flux_data_volume_limit_unit":"data","flux_data_volume_limit_size":"10737418240","flux_data_volume_alert_percent":"90","flux_auto_clear_flow_data_switch":"1","flux_clear_date":"1","flux_limited_disconnect":"0"}'
+}
+assert_eq '1|data|10737418240|90|1|1|0' \
+    "$(zte_adapter_fetch_traffic_plan 192.168.0.1 "$jar")"
+zte_http_get() {
+    printf '%s\n' '{"flux_data_volume_limit_switch":"1","flux_data_volume_limit_unit":"time","flux_data_volume_limit_size":"10737418240","flux_data_volume_alert_percent":"90","flux_auto_clear_flow_data_switch":"1","flux_clear_date":"1","flux_limited_disconnect":"0"}'
+}
+assert_failure zte_adapter_fetch_traffic_plan 192.168.0.1 "$jar"
 
 : >"$u30_action_log"
 assert_success zte_adapter_reset_traffic 192.168.0.1 "$jar"
@@ -306,9 +325,18 @@ isTest=false&goformId=SHUTDOWN_DEVICE' \
     "$(cut -d'|' -f2 "$u30_action_log")"
 assert_failure zte_adapter_delete_sms 192.168.0.1 '../42' "$jar"
 assert_failure zte_adapter_device_command 192.168.0.1 factory_reset "$jar"
-assert_eq 'GSM7_default|00480069' "$(zte_adapter_sms_encode 'Hi')"
-assert_eq 'UNICODE|4F60597D' "$(zte_adapter_sms_encode '你好')"
+assert_eq 'GSM7_default|00480069|2' "$(zte_adapter_sms_encode 'Hi')"
+assert_eq 'GSM7_default|005E|2' "$(zte_adapter_sms_encode '^')"
+assert_eq 'UNICODE|4F60597D|2' "$(zte_adapter_sms_encode '你好')"
 assert_failure zte_adapter_sms_encode "$(printf '\377')"
+gsm_limit=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 765; i++) printf "A" }')
+gsm_over=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 766; i++) printf "A" }')
+unicode_limit=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 335; i++) printf "你" }')
+unicode_over=$(LC_ALL=C awk 'BEGIN { for (i = 0; i < 336; i++) printf "你" }')
+assert_success zte_adapter_sms_payload_valid "$gsm_limit"
+assert_failure zte_adapter_sms_payload_valid "$gsm_over"
+assert_success zte_adapter_sms_payload_valid "$unicode_limit"
+assert_failure zte_adapter_sms_payload_valid "$unicode_over"
 zte_adapter_sms_time() { printf '%s\n' '26;08;03;14;05;09;+8'; }
 : >"$u30_action_log"
 assert_success zte_adapter_send_sms \
@@ -357,12 +385,12 @@ zte_http_get() {
     printf '%s\n' '{"index":"2","profile_name":"Carrier","apn_wan_apn":"old.apn","apn_ppp_auth_mode":"none","apn_ppp_username":""}'
 }
 : >"$u30_action_log"
-assert_success zte_adapter_set_apn 192.168.0.1 internet ipv4v6 chap \
+assert_success zte_adapter_set_apn 192.168.0.1 internet chap \
     fixture-user fixture-pass "$jar"
 assert_eq \
     'isTest=false&goformId=APN_PROC&apn_action=set_default&index=2&apn_mode=manual&profile_name=Carrier&apn_wan_apn=internet&dns_mode=auto&prefer_dns_manual=&w_standby_dns_manual=&apn_ppp_username=fixture-user&apn_ppp_passwd=fixture-pass&apn_ppp_auth_mode=chap&apn_select=manual&apn_wan_dial=%2A99%23&apn_pdp_type=PPP&apn_pdp_select=auto&apn_pdp_addr=&set_default_flag=1' \
     "$(cut -d'|' -f2 "$u30_action_log")"
-assert_failure zte_adapter_set_apn 192.168.0.1 'bad&apn' ipv4 none '' '' "$jar"
+assert_failure zte_adapter_set_apn 192.168.0.1 'bad&apn' none '' '' "$jar"
 assert_eq '{"apn":"old.apn","auth":"none","username":""}' \
     "$(zte_adapter_fetch_apn_setting 192.168.0.1 "$jar")"
 u30_raw=$(

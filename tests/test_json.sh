@@ -41,6 +41,11 @@ assert_eq true "$(zte_json_top_get "$normalized" online)"
 assert_eq U25S "$(zte_json_top_get "$normalized" model)"
 assert_eq '' "$(zte_json_top_get "$normalized" percent)"
 assert_eq 82 "$(zte_json_path_get "$normalized" battery percent)"
+assert_eq '{"percent":82}' \
+    "$(zte_json_top_object_get "$normalized" battery)"
+assert_failure zte_json_top_object_get "$normalized" model
+assert_failure zte_json_top_object_get \
+    '{"payload":{"action":"safe"},"payload":{"action":"tampered"}}' payload
 assert_success zte_json_is_flat_object '{"a":"b"}'
 assert_success zte_json_is_flat_object '{}'
 assert_eq 'action
