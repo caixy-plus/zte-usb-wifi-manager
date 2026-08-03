@@ -95,11 +95,11 @@ mkdir -p "$output_parent"
 staged_output=$(mktemp -d "$output_parent/.${output_name}.tmp.XXXXXX")
 
 base_url="https://downloads.openwrt.org/releases/$release/targets/x86/64"
-curl -fL --retry 3 --proto '=https' \
+curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --proto '=https' \
     "$base_url/sha256sums" -o "$work_dir/sha256sums"
-curl -fL --retry 3 --proto '=https' \
+curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --proto '=https' \
     "$base_url/feeds.buildinfo" -o "$work_dir/feeds.buildinfo"
-curl -fL --retry 3 --proto '=https' \
+curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --proto '=https' \
     "$base_url/$sdk_file" -o "$work_dir/$sdk_file"
 
 official_entry="$sdk_sha256 *$sdk_file"
