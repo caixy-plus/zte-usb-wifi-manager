@@ -295,6 +295,50 @@ zte_adapter_switch_sim() {
 	[ "$(zte_json_flat_get "$_zte_switch_response" result)" = success ]
 }
 
+zte_adapter_power_supply_raw_mode() {
+	case ${1-} in
+		charging) printf '%s\n' 0 ;;
+		direct_supply) printf '%s\n' 1 ;;
+		*) return 1 ;;
+	esac
+}
+
+# U30 Pro's calibrated WebUI contract. The caller supplies only a semantic
+# mode; every request key and value is fixed here.
+zte_adapter_set_power_supply_mode() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_power_host=$1
+	_zte_power_target=$2
+	_zte_power_jar=$3
+	_zte_power_raw=$(zte_adapter_power_supply_raw_mode \
+		"$_zte_power_target") || return 1
+	_zte_power_origin=$(zte_adapter_origin "$_zte_power_host") || return 1
+	_zte_power_response=$(zte_http_post \
+		"$_zte_power_origin/goform/goform_set_cmd_process" \
+		"isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=$_zte_power_raw" \
+		"$_zte_power_jar") || return 1
+	zte_json_is_flat_object "$_zte_power_response" || return 1
+	[ "$(zte_json_flat_get "$_zte_power_response" result)" = success ]
+}
+
+zte_adapter_fetch_power_supply_mode() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_power_read_host=$1
+	_zte_power_read_jar=$2
+	_zte_power_read_origin=$(zte_adapter_origin \
+		"$_zte_power_read_host") || return 1
+	_zte_power_read_response=$(zte_http_get \
+		"$_zte_power_read_origin/goform/goform_get_cmd_process?cmd=power_supply_mode&isTest=false" \
+		"$_zte_power_read_jar") || return 1
+	zte_json_is_flat_object "$_zte_power_read_response" || return 1
+	zte_json_flat_has "$_zte_power_read_response" power_supply_mode || return 1
+	case $(zte_json_flat_get "$_zte_power_read_response" power_supply_mode) in
+		0) printf '%s\n' charging ;;
+		1) printf '%s\n' direct_supply ;;
+		*) return 1 ;;
+	esac
+}
+
 # $1 raw flat device JSON, $2 optional normalized client collection ->
 # normalized device object on stdout.
 # sim.active_slot_raw passes the firmware value through unmapped until the
@@ -445,6 +489,19 @@ zte_adapter_normalize() {
 		"$_zte_raw" flux_clear_date 0) || return 1
 	_zte_plan_disconnect=$(zte_adapter_optional_bool_json \
 		"$_zte_raw" flux_limited_disconnect) || return 1
+	if zte_json_flat_has "$_zte_raw" power_supply_mode; then
+		_zte_power_supply_mode=$(zte_json_flat_get \
+			"$_zte_raw" power_supply_mode)
+		case $_zte_power_supply_mode in
+			0) _zte_direct_supply=false ;;
+			1) _zte_direct_supply=true ;;
+			*) return 1 ;;
+		esac
+		_zte_power_supply_mode_json="\"$_zte_power_supply_mode\""
+	else
+		_zte_power_supply_mode_json=null
+		_zte_direct_supply=null
+	fi
 
 	if zte_json_flat_has "$_zte_raw" battery_exist; then
 		_zte_present_raw=$(zte_json_flat_get "$_zte_raw" battery_exist)
@@ -514,7 +571,7 @@ zte_adapter_normalize() {
 	done
 	IFS=$_zte_old_ifs
 
-	printf '{"online":true,"adapter":"%s","model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"connection_mode":%s,"auto_roaming_raw":%s,"network_mode_raw":%s,"network_selection_mode_raw":%s,"radio":{"snr_raw":%s,"sinr_raw":%s,"ca_state_raw":%s,"primary_band_raw":%s,"primary_bandwidth_raw":%s,"secondary_band_raw":%s,"secondary_bandwidth_raw":%s,"primary_arfcn_raw":%s,"secondary_arfcn_raw":%s,"active_band_raw":%s},"pdp":{"ipv4_type_raw":%s,"ipv6_type_raw":%s},"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}},"radio_off_raw":%s,"primary":{"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"guest":{"enabled_raw":%s,"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"advanced":{"mode_raw":%s,"country_raw":%s,"channel_raw":%s,"bandwidth_raw":%s,"coverage_raw":%s},"sleep_status_raw":%s},"clients":%s,"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
+	printf '{"online":true,"adapter":"%s","model":"%s","firmware":%s,"hardware_version":%s,"webui_version":%s,"software_version":%s,"market_name":%s,"upgrade":{"new_version_state":%s,"current_state":%s},"modem_state":"%s","cellular":{"type":"%s","provider":"%s","signalbar":"%s","rsrp":"%s","lte_rsrp":%s,"rscp":%s,"rssi":%s,"roaming":%s,"dial_mode":%s,"wan_mode":%s,"connection_mode":%s,"auto_roaming_raw":%s,"network_mode_raw":%s,"network_selection_mode_raw":%s,"radio":{"snr_raw":%s,"sinr_raw":%s,"ca_state_raw":%s,"primary_band_raw":%s,"primary_bandwidth_raw":%s,"secondary_band_raw":%s,"secondary_bandwidth_raw":%s,"primary_arfcn_raw":%s,"secondary_arfcn_raw":%s,"active_band_raw":%s},"pdp":{"ipv4_type_raw":%s,"ipv6_type_raw":%s},"mcc":%s,"mnc":%s,"ppp_status":"%s"},"sim":{"active_slot_raw":%s,"type":%s},"wifi":{"enabled":%s,"guest_enabled":%s,"bands":{"wifi_2_4":{"ssid":%s,"auth_mode":%s,"clients":%s},"wifi_5":{"ssid":%s,"auth_mode":%s,"clients":%s}},"radio_off_raw":%s,"primary":{"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"guest":{"enabled_raw":%s,"ssid":%s,"auth_mode":%s,"hidden_raw":%s,"max_clients_raw":%s,"isolation_raw":%s},"advanced":{"mode_raw":%s,"country_raw":%s,"channel_raw":%s,"bandwidth_raw":%s,"coverage_raw":%s},"sleep_status_raw":%s},"clients":%s,"battery":{"present":%s,"percent":%s,"charging":%s,"value":%s,"pers":%s,"temperature_level":%s},"power_supply":{"mode_raw":%s,"direct_supply":%s},"traffic":{"realtime":{"upload_bps":%s,"download_bps":%s},"current":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s},"monthly":{"sent_bytes":%s,"received_bytes":%s,"connected_seconds":%s,"month":%s},"plan":{"enabled":%s,"unit":%s,"limit":%s,"alert_percent":%s,"auto_clear":%s,"clear_day":%s,"disconnect":%s}},"sms":{"total":%s},"missing":"%s"}\n' \
 		"$ZTE_ADAPTER_ID" "$ZTE_ADAPTER_MODEL" "$_zte_firmware" \
 		"$_zte_hardware_version" "$_zte_webui_version" \
 		"$_zte_software_version" "$_zte_market_name" \
@@ -551,6 +608,7 @@ zte_adapter_normalize() {
 		"$_zte_clients" \
 		"$_zte_present" "$_zte_percent" "$_zte_charging" \
 		"$_zte_battery_value" "$_zte_battery_pers" "$_zte_temperature_level" \
+		"$_zte_power_supply_mode_json" "$_zte_direct_supply" \
 		"$_zte_realtime_tx" "$_zte_realtime_rx" \
 		"$_zte_current_tx" "$_zte_current_rx" "$_zte_current_time" \
 		"$_zte_monthly_tx" "$_zte_monthly_rx" "$_zte_monthly_time" \

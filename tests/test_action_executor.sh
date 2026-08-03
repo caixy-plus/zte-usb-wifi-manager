@@ -217,4 +217,41 @@ assert_eq ok "$(
 )"
 assert_eq 0 "$(wc -l <"$login_log" | tr -d ' ')"
 
+# U30 power-supply writes are never retried after an ambiguous POST. A result
+# is accepted only after an exact safe GET readback.
+power_write_log=$work/power-writes
+power_read_log=$work/power-reads
+: >"$power_write_log"
+: >"$power_read_log"
+zte_adapter_set_power_supply_mode() {
+    printf '%s\n' "$2" >>"$power_write_log"
+}
+zte_adapter_fetch_power_supply_mode() {
+    printf '%s\n' read >>"$power_read_log"
+    printf '%s\n' direct_supply
+}
+export ZTE_POWER_SUPPLY_READBACK_ATTEMPTS=2
+export ZTE_POWER_SUPPLY_READBACK_INTERVAL=0
+assert_eq ok "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" direct_supply)"
+assert_eq 1 "$(wc -l <"$power_write_log" | tr -d ' ')"
+assert_eq 1 "$(wc -l <"$power_read_log" | tr -d ' ')"
+
+zte_adapter_set_power_supply_mode() {
+    printf '%s\n' attempted >>"$power_write_log"
+    return 1
+}
+: >"$power_write_log"
+assert_eq write_ambiguous "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" charging)"
+assert_eq 1 "$(wc -l <"$power_write_log" | tr -d ' ')"
+
+zte_adapter_set_power_supply_mode() { return 0; }
+zte_adapter_fetch_power_supply_mode() { printf '%s\n' charging; }
+export ZTE_POWER_SUPPLY_READBACK_ATTEMPTS=1
+assert_eq readback_mismatch "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" direct_supply)"
+assert_eq invalid_target "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" invalid)"
+
 finish

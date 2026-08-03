@@ -223,6 +223,29 @@ jsonfilter() {
 u30_url_log=$work/u30-url
 assert_success zte_device_profile_select_named zte_u30
 assert_success zte_adapter_apply_profile
+(
+    post_log=$work/u30-power-post
+    get_log=$work/u30-power-get
+    zte_http_post() {
+        printf '%s\n%s\n%s\n' "$1" "$2" "$3" >"$post_log"
+        printf '%s\n' '{"result":"success"}'
+    }
+    zte_http_get() {
+        printf '%s\n%s\n' "$1" "$2" >"$get_log"
+        printf '%s\n' '{"power_supply_mode":"1"}'
+    }
+    assert_success zte_adapter_set_power_supply_mode \
+        192.168.0.1 direct_supply "$jar"
+    assert_eq 'https://192.168.0.1/goform/goform_set_cmd_process' \
+        "$(sed -n '1p' "$post_log")"
+    assert_eq 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=1' \
+        "$(sed -n '2p' "$post_log")"
+    assert_eq "$jar" "$(sed -n '3p' "$post_log")"
+    assert_eq direct_supply "$(zte_adapter_fetch_power_supply_mode 192.168.0.1 "$jar")"
+    assert_eq 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=power_supply_mode&isTest=false' \
+        "$(sed -n '1p' "$get_log")"
+    assert_failure zte_adapter_set_power_supply_mode 192.168.0.1 invalid "$jar"
+)
 u30_raw=$(
     zte_http_get() {
         printf '%s\n' "$1" >"$u30_url_log"
@@ -231,6 +254,12 @@ u30_raw=$(
     zte_adapter_fetch 192.168.0.1 '' "$jar"
 )
 assert_eq "$(cat tests/fixtures/u30/status.json)" "$u30_raw"
+u30_normalized=$(zte_adapter_normalize "$u30_raw")
+assert_eq 0 "$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).power_supply.mode_raw)' "$u30_normalized")"
+assert_eq false "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).power_supply.direct_supply))' "$u30_normalized")"
+u30_direct=$(zte_adapter_normalize '{"power_supply_mode":"1"}')
+assert_eq true "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).power_supply.direct_supply))' "$u30_direct")"
+assert_failure zte_adapter_normalize '{"power_supply_mode":"2"}'
 case $(cat "$u30_url_log") in
     https://192.168.0.1/goform/goform_get_cmd_process\?cmd=*'&multi_data=1&isTest=false') pass ;;
     *) fail 'U30 adapter read must use the selected HTTPS origin' ;;
@@ -446,6 +475,7 @@ assert_failure zte_adapter_sms_unavailable_json unknown
 expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","hardware_version":null,"webui_version":null,"software_version":null,"market_name":null,"upgrade":{"new_version_state":null,"current_state":null},"modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","lte_rsrp":null,"rscp":null,"rssi":null,"roaming":null,"dial_mode":null,"wan_mode":null,"mcc":null,"mnc":null,"ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"wifi":{"enabled":null,"guest_enabled":null,"bands":{"wifi_2_4":{"ssid":null,"auth_mode":null,"clients":null},"wifi_5":{"ssid":null,"auth_mode":null,"clients":null}}},"clients":{"available":false,"reason":"not_loaded","items":[]},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":"network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state"}'
 expected=$(printf '%s' "$expected" | sed \
 	-e 's/{"online":true,/{"online":true,"adapter":"zte_u25s",/' \
+	-e 's/},"traffic"/},"power_supply":{"mode_raw":null,"direct_supply":null},"traffic"/' \
 	-e 's/"wan_mode":null,/"wan_mode":null,"connection_mode":null,"auto_roaming_raw":null,"network_mode_raw":null,"network_selection_mode_raw":null,/' \
     -e 's/}}},"clients"/}},"radio_off_raw":null,"primary":{"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"guest":{"enabled_raw":null,"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"advanced":{"mode_raw":null,"country_raw":null,"channel_raw":null,"bandwidth_raw":null,"coverage_raw":null},"sleep_status_raw":null},"clients"/' \
     -e 's/"network_selection_mode_raw":null,/"network_selection_mode_raw":null,"radio":{"snr_raw":null,"sinr_raw":null,"ca_state_raw":null,"primary_band_raw":null,"primary_bandwidth_raw":null,"secondary_band_raw":null,"secondary_bandwidth_raw":null,"primary_arfcn_raw":null,"secondary_arfcn_raw":null,"active_band_raw":null},"pdp":{"ipv4_type_raw":null,"ipv6_type_raw":null},/' \

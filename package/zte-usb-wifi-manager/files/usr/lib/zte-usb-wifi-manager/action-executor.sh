@@ -2,6 +2,67 @@
 
 ZTE_SIM_READBACK_ATTEMPTS=${ZTE_SIM_READBACK_ATTEMPTS:-4}
 ZTE_SIM_READBACK_INTERVAL=${ZTE_SIM_READBACK_INTERVAL:-2}
+ZTE_POWER_SUPPLY_READBACK_ATTEMPTS=${ZTE_POWER_SUPPLY_READBACK_ATTEMPTS:-3}
+ZTE_POWER_SUPPLY_READBACK_INTERVAL=${ZTE_POWER_SUPPLY_READBACK_INTERVAL:-1}
+
+# Execute one non-retriable U30 power mode write and verify it with safe reads.
+# A failed POST is deliberately reported as ambiguous and is never repeated.
+zte_execute_power_supply_mode() {
+	_zte_power_execute_host=$1
+	_zte_power_execute_password=$2
+	_zte_power_execute_jar=$3
+	_zte_power_execute_target=$4
+	case $_zte_power_execute_target in
+		charging|direct_supply) ;;
+		*) printf '%s\n' invalid_target; return 1 ;;
+	esac
+	if zte_adapter_login_required; then
+		[ -n "$_zte_power_execute_password" ] || {
+			printf '%s\n' credentials_missing
+			return 1
+		}
+		zte_session_login "$_zte_power_execute_host" \
+			"$_zte_power_execute_password" "$_zte_power_execute_jar" || {
+			printf '%s\n' authentication_failed
+			return 1
+		}
+	fi
+	if ! zte_adapter_set_power_supply_mode "$_zte_power_execute_host" \
+		"$_zte_power_execute_target" "$_zte_power_execute_jar"; then
+		printf '%s\n' write_ambiguous
+		return 1
+	fi
+	_zte_power_execute_attempts=$ZTE_POWER_SUPPLY_READBACK_ATTEMPTS
+	_zte_power_execute_interval=$ZTE_POWER_SUPPLY_READBACK_INTERVAL
+	zte_is_uint "$_zte_power_execute_attempts" &&
+		[ "$_zte_power_execute_attempts" -ge 1 ] ||
+		_zte_power_execute_attempts=3
+	zte_is_uint "$_zte_power_execute_interval" ||
+		_zte_power_execute_interval=1
+	_zte_power_execute_failure=readback_failed
+	_zte_power_execute_attempt=1
+	while [ "$_zte_power_execute_attempt" -le \
+		"$_zte_power_execute_attempts" ]; do
+		if _zte_power_execute_observed=$(
+			zte_adapter_fetch_power_supply_mode \
+				"$_zte_power_execute_host" "$_zte_power_execute_jar"
+		); then
+			if [ "$_zte_power_execute_observed" = \
+				"$_zte_power_execute_target" ]; then
+				printf '%s\n' ok
+				return 0
+			fi
+			_zte_power_execute_failure=readback_mismatch
+		fi
+		if [ "$_zte_power_execute_attempt" -lt \
+			"$_zte_power_execute_attempts" ]; then
+			sleep "$_zte_power_execute_interval"
+		fi
+		_zte_power_execute_attempt=$((_zte_power_execute_attempt + 1))
+	done
+	printf '%s\n' "$_zte_power_execute_failure"
+	return 1
+}
 
 # Execute the one target-firmware write whose request shape is currently
 # verified. The result is a stable, non-secret code printed on stdout.
