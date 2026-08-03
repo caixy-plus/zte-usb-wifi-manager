@@ -53,6 +53,9 @@ zte_u30_power_calibration_profile_ready() {
 	[ "$ZTE_U30_CALIBRATION_ADAPTER" = zte_u30 ] || return 1
 	zte_device_profile_select_named zte_u30 || return 1
 	zte_adapter_apply_profile || return 1
+	ZTE_DEVICE_TLS_INSECURE=$ZTE_DEVICE_PROFILE_TLS_INSECURE
+	ZTE_LOGIN_REQUIRED=$ZTE_DEVICE_PROFILE_LOGIN_REQUIRED
+	export ZTE_DEVICE_TLS_INSECURE ZTE_LOGIN_REQUIRED
 	[ "$ZTE_ADAPTER_ID" = zte_u30 ]
 }
 

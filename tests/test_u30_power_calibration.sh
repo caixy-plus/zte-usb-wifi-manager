@@ -98,6 +98,10 @@ fi
 # shellcheck source=/dev/null
 . "$tool"
 
+assert_success zte_u30_power_calibration_profile_ready
+assert_eq 1 "${ZTE_DEVICE_TLS_INSECURE-}"
+assert_eq 0 "${ZTE_LOGIN_REQUIRED-}"
+
 rmdir() {
 	if [ "${ZTE_TEST_FINALIZE_RMDIR_FAIL:-0}" = 1 ] &&
 		[ "${1-}" = "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
