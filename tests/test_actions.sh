@@ -214,10 +214,33 @@ assert_failure test -e "$exclusive_state/actions/active"
 
 # A daemon-owned slot whose PID no longer exists is abandoned and may be
 # removed, unlike the live claim-before-record window above.
-printf '%s\n' 'automatic 999999' >"$exclusive_state/actions/active"
+printf '%s\n' 'automatic 999999 123' >"$exclusive_state/actions/active"
 chmod 600 "$exclusive_state/actions/active"
 assert_success zte_action_reconcile_active "$exclusive_state"
 assert_failure test -e "$exclusive_state/actions/active"
+
+# Unverifiable owners and unsafe slot types are not proof of staleness. Keep
+# them fail-closed; only the recognized empty legacy directory above is clear.
+unknown_state=$work/unknown-owner
+assert_success zte_action_init "$unknown_state"
+printf '%s\n' malformed >"$unknown_state/actions/active"
+chmod 600 "$unknown_state/actions/active"
+assert_success zte_action_reconcile_active "$unknown_state"
+assert_success test -f "$unknown_state/actions/active"
+rm -f "$unknown_state/actions/active"
+printf '%s\n' 'automatic 999999 123' >"$unknown_state/actions/active"
+chmod 644 "$unknown_state/actions/active"
+assert_success zte_action_reconcile_active "$unknown_state"
+assert_success test -f "$unknown_state/actions/active"
+rm -f "$unknown_state/actions/active"
+ln -s "$work/missing-owner-target" "$unknown_state/actions/active"
+assert_success zte_action_reconcile_active "$unknown_state"
+assert_success test -L "$unknown_state/actions/active"
+rm -f "$unknown_state/actions/active"
+mkfifo "$unknown_state/actions/active"
+assert_success zte_action_reconcile_active "$unknown_state"
+assert_success test -p "$unknown_state/actions/active"
+rm -f "$unknown_state/actions/active"
 
 # PID liveness alone is insufficient after reuse. Reconciliation also compares
 # the process start identity, while an unreadable identity stays fail-closed.
@@ -235,8 +258,36 @@ assert_success zte_action_reconcile_active "$reuse_state"
 assert_success test -e "$reuse_state/actions/active"
 assert_success zte_device_action_release "$reuse_state"
 
+permission_state=$work/owner-permission
+test_start_id=444
+zte_action_process_start_id() { printf '%s\n' "$test_start_id"; }
+assert_success zte_device_action_claim "$permission_state"
+zte_action_process_liveness() { return 2; }
+if zte_action_slot_owner_live "$permission_state"; then
+    owner_status=0
+else
+    owner_status=$?
+fi
+assert_eq 2 "$owner_status"
+assert_success zte_action_reconcile_active "$permission_state"
+assert_success test -e "$permission_state/actions/active"
+assert_success zte_device_action_release "$permission_state"
+
 assert_success zte_power_transition_claim "$exclusive_state"
 assert_failure zte_device_action_claim "$exclusive_state"
 assert_success zte_power_transition_release "$exclusive_state"
+
+# If the slot was absent at the initial observation, reconciliation returns
+# without a stale removal. Inject a new claim immediately after that observed
+# absence to make the former check/remove race deterministic.
+race_state=$work/reconcile-race
+assert_success zte_action_init "$race_state"
+zte_action_slot_observe() {
+    printf '%s\n' "automatic $$ portable" >"$race_state/actions/active"
+    chmod 600 "$race_state/actions/active"
+    printf '%s\n' absent
+}
+assert_success zte_action_reconcile_active "$race_state"
+assert_success test -f "$race_state/actions/active"
 
 finish

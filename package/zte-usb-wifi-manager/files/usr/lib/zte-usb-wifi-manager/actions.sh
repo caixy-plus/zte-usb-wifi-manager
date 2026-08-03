@@ -84,6 +84,18 @@ zte_action_process_start_id() {
 	printf '%s\n' "$_zte_action_process_start"
 }
 
+# Tri-state result: 0 exists, 1 is positively absent, and 2 is unknown (for
+# example, kill permission was denied while the proc entry still exists).
+zte_action_process_liveness() {
+	_zte_action_process_pid=$1
+	zte_is_uint "$_zte_action_process_pid" || return 2
+	kill -0 "$_zte_action_process_pid" 2>/dev/null && return 0
+	if [ -d /proc ] && [ -d "/proc/$_zte_action_process_pid" ]; then
+		return 2
+	fi
+	return 1
+}
+
 zte_action_slot_create() {
 	_zte_action_root=$1
 	_zte_action_owner=$2
@@ -128,31 +140,69 @@ zte_action_slot_remove() {
 	fi
 }
 
+# Print the slot type observed at one point in time. Callers must treat
+# absent as final for that reconciliation pass: removing after an observed
+# absence could delete a new owner that claimed immediately afterwards.
+zte_action_slot_observe() {
+	_zte_action_root=$1
+	_zte_action_slot=$_zte_action_root/actions/active
+	if [ -L "$_zte_action_slot" ]; then
+		printf '%s\n' unknown
+	elif [ -d "$_zte_action_slot" ]; then
+		printf '%s\n' legacy
+	elif [ -f "$_zte_action_slot" ]; then
+		printf '%s\n' regular
+	elif [ -e "$_zte_action_slot" ]; then
+		printf '%s\n' unknown
+	else
+		printf '%s\n' absent
+	fi
+}
+
+zte_action_slot_file_mode() {
+	if _zte_action_slot_mode=$(stat -c '%a' "$1" 2>/dev/null); then
+		printf '%s\n' "$_zte_action_slot_mode"
+	else
+		stat -f '%Lp' "$1" 2>/dev/null
+	fi
+}
+
+# Tri-state result: 0 is live, 1 is positively stale, and 2 is unknown.
+# Unknown includes malformed ownership and process-identity read failures and
+# must always be retained fail-closed by reconciliation.
 zte_action_slot_owner_live() {
 	_zte_action_root=$1
 	_zte_action_slot=$_zte_action_root/actions/active
-	[ -f "$_zte_action_slot" ] && [ ! -L "$_zte_action_slot" ] || return 1
-	_zte_action_owner_record=$(cat "$_zte_action_slot" 2>/dev/null) || return 1
+	[ -f "$_zte_action_slot" ] && [ ! -L "$_zte_action_slot" ] || return 2
+	[ "$(zte_action_slot_file_mode "$_zte_action_slot")" = 600 ] || return 2
+	_zte_action_owner_record=$(cat "$_zte_action_slot" 2>/dev/null) || return 2
 	_zte_action_owner=${_zte_action_owner_record%% *}
 	_zte_action_owner_rest=${_zte_action_owner_record#* }
 	_zte_action_owner_pid=${_zte_action_owner_rest%% *}
 	_zte_action_owner_start=${_zte_action_owner_rest#* }
 	[ "$_zte_action_owner_record" = \
 		"$_zte_action_owner $_zte_action_owner_pid $_zte_action_owner_start" ] ||
-		return 1
+		return 2
 	case $_zte_action_owner in
 		queue|automatic|reconcile) ;;
-		*) return 1 ;;
+		*) return 2 ;;
 	esac
 	zte_is_uint "$_zte_action_owner_pid" &&
-		[ "$_zte_action_owner_pid" -ge 2 ] || return 1
+		[ "$_zte_action_owner_pid" -ge 2 ] || return 2
 	case $_zte_action_owner_start in
-		''|*[!A-Za-z0-9_-]*) return 1 ;;
+		''|*[!A-Za-z0-9_-]*) return 2 ;;
 	esac
-	kill -0 "$_zte_action_owner_pid" 2>/dev/null || return 1
+	if zte_action_process_liveness "$_zte_action_owner_pid"; then
+		:
+	else
+		_zte_action_process_status=$?
+		[ "$_zte_action_process_status" = 1 ] && return 1
+		return 2
+	fi
 	_zte_action_owner_observed=$(zte_action_process_start_id \
 		"$_zte_action_owner_pid") || return 2
-	[ "$_zte_action_owner_observed" = "$_zte_action_owner_start" ]
+	[ "$_zte_action_owner_observed" = "$_zte_action_owner_start" ] || return 1
+	return 0
 }
 
 # Claim the exclusive slot shared by queued rpcd actions and daemon-owned
@@ -369,18 +419,29 @@ zte_action_reconcile_active() {
 	done
 
 	_zte_action_slot=$_zte_action_root/actions/active
+	_zte_action_slot_observed=$(zte_action_slot_observe "$_zte_action_root") ||
+		return 1
 	if [ "$_zte_action_record_found" = 1 ]; then
-		if [ ! -e "$_zte_action_slot" ] && [ ! -L "$_zte_action_slot" ]; then
+		if [ "$_zte_action_slot_observed" = absent ]; then
 			zte_action_slot_create "$_zte_action_root" reconcile || return 1
 		fi
 	else
+		case $_zte_action_slot_observed in
+			absent|unknown) return 0 ;;
+			legacy)
+				zte_action_slot_remove "$_zte_action_root" || :
+				return 0
+				;;
+			regular) ;;
+			*) return 0 ;;
+		esac
 		if zte_action_slot_owner_live "$_zte_action_root"; then
 			return 0
 		else
 			_zte_action_owner_status=$?
-			[ "$_zte_action_owner_status" = 2 ] && return 0
-			zte_action_slot_remove "$_zte_action_root" || :
 		fi
+		[ "$_zte_action_owner_status" = 1 ] || return 0
+		zte_action_slot_remove "$_zte_action_root" || :
 	fi
 }
 
