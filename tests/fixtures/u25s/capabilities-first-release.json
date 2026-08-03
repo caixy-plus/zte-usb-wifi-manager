@@ -1,6 +1,8 @@
 {
   "adapter": "zte_u25s",
   "model": "U25S",
+  "transport": "http",
+  "tls_verification": "not_applicable",
   "login_required": true,
   "read_status": true,
   "sim_switch": false,

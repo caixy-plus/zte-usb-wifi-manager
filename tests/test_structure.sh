@@ -53,6 +53,10 @@ assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+coreutils-stat([[:space:]]|$)'
 assert_file_contains "$backend/Makefile" \
     '^  DEPENDS:=.*\+jsonfilter([[:space:]]|$)'
+assert_file_contains "$backend/Makefile" \
+    '^  DEPENDS:=.*\+kmod-usb-net-cdc-ncm([[:space:]]|$)'
+assert_file_contains "$backend/Makefile" \
+    '^  DEPENDS:=.*\+kmod-usb-net-cdc-ether([[:space:]]|$)'
 assert_file_contains "$backend/Makefile" '^  EXTRA_DEPENDS:=ip \(>=1\)$'
 if grep -q '\+ip\(-tiny\|-full\)\{0,1\}\([[:space:]]\|$\)' \
     "$backend/Makefile"; then

@@ -12,13 +12,13 @@ define Package/zte-usb-wifi-manager
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=ZTE USB WiFi Manager backend
-  DEPENDS:=+coreutils-stat +curl +jshn +jsonfilter +rpcd +ubus +uci
+  DEPENDS:=+coreutils-stat +curl +jshn +jsonfilter +kmod-usb-net-cdc-ether +kmod-usb-net-cdc-ncm +rpcd +ubus +uci
   EXTRA_DEPENDS:=ip (>=1)
   PKGARCH:=all
 endef
 
 define Package/zte-usb-wifi-manager/description
-  U25S device-console integration and safely gated device actions for OpenWrt.
+  ZTE U25S/U30 Pro console integration and safely gated actions for OpenWrt.
 endef
 
 define Build/Compile

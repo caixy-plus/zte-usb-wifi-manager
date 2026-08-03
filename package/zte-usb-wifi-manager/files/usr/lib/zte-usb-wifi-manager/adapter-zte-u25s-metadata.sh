@@ -4,6 +4,8 @@
 # capabilities without loading the HTTP and session implementation.
 ZTE_ADAPTER_ID=zte_u25s
 ZTE_ADAPTER_MODEL=U25S
+ZTE_ADAPTER_TRANSPORT=http
+ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
 
 # The current target firmware's published WebUI config declares HAS_LOGIN:true
 # and PASSWORD_ENCODE:true. Anonymous reads are still probed first, but every
@@ -32,6 +34,35 @@ zte_adapter_apply_profile() {
 	ZTE_ADAPTER_ID=$ZTE_DEVICE_PROFILE_ID
 	ZTE_ADAPTER_MODEL=$ZTE_DEVICE_PROFILE_MODEL
 	ZTE_LOGIN_REQUIRED=$ZTE_DEVICE_PROFILE_LOGIN_REQUIRED
+	ZTE_ADAPTER_TRANSPORT=$ZTE_DEVICE_PROFILE_SCHEME
+	if [ "$ZTE_DEVICE_PROFILE_SCHEME" = https ] &&
+		[ "$ZTE_DEVICE_PROFILE_TLS_INSECURE" = 1 ]; then
+		ZTE_ADAPTER_TLS_VERIFICATION=device_certificate_unverified
+	else
+		ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
+	fi
+}
+
+# rpcd may apply only an exact identity already written by the polling daemon.
+# It does not probe USB or contact the device.
+zte_adapter_apply_cached_profile() {
+	case ${1-}:${2-} in
+		zte_u25s:U25S)
+			ZTE_ADAPTER_ID=zte_u25s
+			ZTE_ADAPTER_MODEL=U25S
+			ZTE_LOGIN_REQUIRED=1
+			ZTE_ADAPTER_TRANSPORT=http
+			ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
+			;;
+		zte_u30:'U30 Pro')
+			ZTE_ADAPTER_ID=zte_u30
+			ZTE_ADAPTER_MODEL='U30 Pro'
+			ZTE_LOGIN_REQUIRED=0
+			ZTE_ADAPTER_TRANSPORT=https
+			ZTE_ADAPTER_TLS_VERIFICATION=device_certificate_unverified
+			;;
+		*) return 1 ;;
+	esac
 }
 
 ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_exist,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total'
@@ -142,8 +173,9 @@ zte_adapter_effective_capabilities_json() {
 	else
 		_zte_metadata_login_required=false
 	fi
-	printf '{"adapter":"%s","model":"%s","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s,"device_reboot":%s,"device_shutdown":%s,"feature_status":%s}\n' \
+	printf '{"adapter":"%s","model":"%s","transport":"%s","tls_verification":"%s","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s,"device_reboot":%s,"device_shutdown":%s,"feature_status":%s}\n' \
 		"$ZTE_ADAPTER_ID" "$ZTE_ADAPTER_MODEL" \
+		"$ZTE_ADAPTER_TRANSPORT" "$ZTE_ADAPTER_TLS_VERIFICATION" \
 		"$_zte_metadata_login_required" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SIM_SWITCH" "$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_CELLULAR_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_cellular_enabled")" \

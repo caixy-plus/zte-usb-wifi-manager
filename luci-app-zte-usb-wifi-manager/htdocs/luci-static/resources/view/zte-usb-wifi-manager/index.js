@@ -96,7 +96,7 @@ var callOperationStatus = rpc.declare({
 var tabs = [
 	{ id: 'overview', label: _('总览') },
 	{ id: 'network', label: _('移动网络') },
-	{ id: 'wifi', label: _('U25S Wi-Fi') },
+	{ id: 'wifi', label: _('设备 Wi-Fi') },
 	{ id: 'clients', label: _('接入设备') },
 	{ id: 'traffic', label: _('流量') },
 	{ id: 'sms', label: _('短信') },
@@ -201,6 +201,9 @@ function stateLabel(state, hasDevice) {
 	case 'framework_ready':
 		label = _('框架已就绪');
 		break;
+	case 'unsupported_device':
+		label = _('不支持的 USB 设备');
+		break;
 	default:
 		label = typeof state === 'string' ? state : null;
 	}
@@ -231,13 +234,20 @@ function operatorCodeLabel(cellular) {
 	return cellular.mcc + '-' + cellular.mnc;
 }
 
-function nativeConsoleUrl(status) {
+function nativeConsoleUrl(status, capabilities) {
 	var network = status.network && typeof status.network === 'object'
 		? status.network : {};
+	var transport = capabilities && capabilities.transport === 'https'
+		? 'https' : 'http';
 	if (typeof network.gateway !== 'string' ||
 		!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(network.gateway))
 		return null;
-	return 'http://' + network.gateway + '/';
+	return transport + '://' + network.gateway + '/';
+}
+
+function deviceModel(status, capabilities) {
+	var device = status.device && typeof status.device === 'object' ? status.device : {};
+	return device.model || status.model || capabilities.model || 'U25S';
 }
 
 function batteryLabel(battery) {
@@ -668,7 +678,7 @@ function renderWifi(status, capabilities, onAction, actionBusy) {
 			})
 		]));
 	}
-	return panelRoot('wifi', _('U25S Wi-Fi'), children);
+	return panelRoot('wifi', _('设备 Wi-Fi'), children);
 }
 
 function clientCollectionLabel(clients, count) {
@@ -947,6 +957,7 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 	var sim = device.sim && typeof device.sim === 'object' ? device.sim : {};
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 	var upgrade = device.upgrade && typeof device.upgrade === 'object' ? device.upgrade : {};
+	var model = deviceModel(status, capabilities);
 	var children = [
 		row(_('设备型号'), device.model || status.model || capabilities.model),
 		row(_('固件版本'), device.firmware),
@@ -974,13 +985,13 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 			action: 'reboot_device',
 			capability: 'device_reboot',
 			purpose: 'device-reboot-confirm',
-			label: _('重启 U25S'),
+			label: _('重启 ') + model,
 			warning: _('我确认重启会暂时中断移动网络连接。')
 		}, {
 			action: 'shutdown_device',
 			capability: 'device_shutdown',
 			purpose: 'device-shutdown-confirm',
-			label: _('关闭 U25S'),
+			label: _('关闭 ') + model,
 			warning: _('我确认关机后需要人工恢复设备供电或开机。')
 		} ].forEach(function(definition) {
 			if (capabilities[definition.capability] !== true)
@@ -1070,6 +1081,12 @@ function renderDiagnostics(status, capabilities) {
 	var hasDevice = Object.keys(device).length > 0;
 
 	return panelRoot('diagnostics', _('系统与诊断'), [
+		row(_('设备适配器'), capabilities.adapter || device.adapter),
+		row(_('管理传输'), capabilities.transport === 'https' ? 'HTTPS' :
+			(capabilities.transport === 'http' ? 'HTTP' : null)),
+		row(_('TLS 验证'), capabilities.tls_verification ===
+			'device_certificate_unverified' ? _('设备证书未验证') :
+			(capabilities.tls_verification === 'verified' ? _('已验证') : null)),
 		row(_('后端状态'), stateLabel(status.state, hasDevice)),
 		row(_('失败次数'), status.failures),
 		row(_('缺失字段'), device.missing),
@@ -1152,7 +1169,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 		var smsResult = data && data[4] && typeof data[4] === 'object'
 			? data[4] : { ok: false, value: {} };
 		var alerts = [];
-		var consoleUrl = nativeConsoleUrl(status);
+		var consoleUrl = nativeConsoleUrl(status, capabilities);
+		var currentModel = deviceModel(status, capabilities);
 
 		if (!statusResult.ok)
 			alerts.push(E('div', { 'class': 'alert-message error' },
@@ -1179,7 +1197,7 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 					'href': consoleUrl,
 					'target': '_blank',
 					'rel': 'noreferrer noopener'
-				}, _('打开 U25S 原生控制台'))
+				}, _('打开 ') + currentModel + _(' 原生控制台'))
 			]) : null,
 			alerts,
 			renderCredentialEntry(credentialsResult, onCredentialSave,

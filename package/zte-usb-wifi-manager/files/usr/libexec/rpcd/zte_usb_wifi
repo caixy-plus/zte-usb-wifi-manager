@@ -46,6 +46,19 @@ get_credential_status() {
 }
 
 get_capabilities() {
+	if [ -s "$STATUS_FILE" ]; then
+		_zte_cap_status=$(cat "$STATUS_FILE" 2>/dev/null) || _zte_cap_status=''
+		if [ -n "$_zte_cap_status" ]; then
+			_zte_cap_cached_adapter=$(zte_json_path_get \
+				"$_zte_cap_status" device adapter 2>/dev/null) ||
+				_zte_cap_cached_adapter=''
+			_zte_cap_cached_model=$(zte_json_path_get \
+				"$_zte_cap_status" device model 2>/dev/null) ||
+				_zte_cap_cached_model=''
+			zte_adapter_apply_cached_profile \
+				"$_zte_cap_cached_adapter" "$_zte_cap_cached_model" || :
+		fi
+	fi
 	_zte_cap_write=$(
 		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
 	) || _zte_cap_write=0

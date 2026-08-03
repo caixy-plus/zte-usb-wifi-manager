@@ -1184,6 +1184,29 @@ test('links to the native U25S console through the management gateway', function
 	assert.strictEqual(link.attrs.rel, 'noreferrer noopener');
 });
 
+test('renders the U30 HTTPS transport and native console identity', function() {
+	const status = Object.assign({}, completeStatus, {
+		model: 'U30 Pro',
+		device: Object.assign({}, completeStatus.device, {
+			adapter: 'zte_u30', model: 'U30 Pro'
+		})
+	});
+	const capabilities = {
+		adapter: 'zte_u30', model: 'U30 Pro', transport: 'https',
+		tls_verification: 'device_certificate_unverified'
+	};
+	const tree = render(status, null, capabilities);
+	const link = nodesByTag(tree, 'a').find(function(node) {
+		return text(node) === '打开 U30 Pro 原生控制台';
+	});
+	assert.ok(link);
+	assert.strictEqual(link.attrs.href, 'https://192.168.0.1/');
+	const diagnostics = renderPanel(status, 'diagnostics', null, capabilities);
+	assert.strictEqual(rowValue(diagnostics, '设备适配器'), 'zte_u30');
+	assert.strictEqual(rowValue(diagnostics, '管理传输'), 'HTTPS');
+	assert.strictEqual(rowValue(diagnostics, 'TLS 验证'), '设备证书未验证');
+});
+
 test('renders aggregate counts and authenticated client details', function() {
 	const tree = renderPanel(completeStatus, 'clients');
 	assert.strictEqual(rowValue(tree, '接入设备总数'), '3');

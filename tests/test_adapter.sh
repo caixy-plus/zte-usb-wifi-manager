@@ -36,11 +36,15 @@ assert_success zte_adapter_apply_profile
 assert_eq zte_u30 "$ZTE_ADAPTER_ID"
 assert_eq 'U30 Pro' "$ZTE_ADAPTER_MODEL"
 assert_failure zte_adapter_login_required
+u30_capabilities=$(zte_adapter_capabilities_json)
+assert_eq https "$(printf '%s' "$u30_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).transport))')"
+assert_eq device_certificate_unverified "$(printf '%s' "$u30_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).tls_verification))')"
 assert_eq 'https://192.168.0.1' "$(zte_adapter_origin 192.168.0.1)"
 assert_eq 'https://192.168.0.1' "$(zte_adapter_origin https://192.168.0.1)"
 assert_failure zte_adapter_origin 'http://192.168.0.1/path'
 u30_normalized=$(zte_adapter_normalize "$(cat tests/fixtures/u30/status.json)")
 assert_eq 'U30 Pro' "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).model))')"
+assert_eq zte_u30 "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).adapter))')"
 assert_success zte_device_profile_select_named zte_u25s
 assert_success zte_adapter_apply_profile
 
@@ -418,7 +422,8 @@ assert_failure zte_adapter_sms_unavailable_json unknown
 # normalize maps every field
 expected='{"online":true,"model":"U25S","firmware":"TEST_FIRMWARE","hardware_version":null,"webui_version":null,"software_version":null,"market_name":null,"upgrade":{"new_version_state":null,"current_state":null},"modem_state":"connected","cellular":{"type":"NR5G-SA","provider":"中国移动","signalbar":"4","rsrp":"-68","lte_rsrp":null,"rscp":null,"rssi":null,"roaming":null,"dial_mode":null,"wan_mode":null,"mcc":null,"mnc":null,"ppp_status":"ipv4_ipv6_connected"},"sim":{"active_slot_raw":"1","type":"physical"},"wifi":{"enabled":null,"guest_enabled":null,"bands":{"wifi_2_4":{"ssid":null,"auth_mode":null,"clients":null},"wifi_5":{"ssid":null,"auth_mode":null,"clients":null}}},"clients":{"available":false,"reason":"not_loaded","items":[]},"battery":{"present":true,"percent":82,"charging":false,"value":"4050","pers":"82","temperature_level":"normal"},"traffic":{"realtime":{"upload_bps":1250,"download_bps":3400},"current":{"sent_bytes":1024,"received_bytes":2048,"connected_seconds":3600},"monthly":{"sent_bytes":4096,"received_bytes":8192,"connected_seconds":7200,"month":"2026-08"},"plan":{"enabled":true,"unit":"data","limit":"10240","alert_percent":80,"auto_clear":true,"clear_day":1,"disconnect":false}},"sms":{"total":3},"missing":"network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc,wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num,wifi_chip2_ssid1_ssid,wifi_chip2_ssid1_auth_mode,wifi_chip2_ssid1_access_sta_num,hardware_version,web_version,wa_version,device_market_name,new_version_state,current_upgrade_state"}'
 expected=$(printf '%s' "$expected" | sed \
-    -e 's/"wan_mode":null,/"wan_mode":null,"connection_mode":null,"auto_roaming_raw":null,"network_mode_raw":null,"network_selection_mode_raw":null,/' \
+	-e 's/{"online":true,/{"online":true,"adapter":"zte_u25s",/' \
+	-e 's/"wan_mode":null,/"wan_mode":null,"connection_mode":null,"auto_roaming_raw":null,"network_mode_raw":null,"network_selection_mode_raw":null,/' \
     -e 's/}}},"clients"/}},"radio_off_raw":null,"primary":{"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"guest":{"enabled_raw":null,"ssid":null,"auth_mode":null,"hidden_raw":null,"max_clients_raw":null,"isolation_raw":null},"advanced":{"mode_raw":null,"country_raw":null,"channel_raw":null,"bandwidth_raw":null,"coverage_raw":null},"sleep_status_raw":null},"clients"/' \
     -e 's/"network_selection_mode_raw":null,/"network_selection_mode_raw":null,"radio":{"snr_raw":null,"sinr_raw":null,"ca_state_raw":null,"primary_band_raw":null,"primary_bandwidth_raw":null,"secondary_band_raw":null,"secondary_bandwidth_raw":null,"primary_arfcn_raw":null,"secondary_arfcn_raw":null,"active_band_raw":null},"pdp":{"ipv4_type_raw":null,"ipv6_type_raw":null},/' \
     -e 's/current_upgrade_state"}/current_upgrade_state,ConnectionMode,autoConnectWhenRoaming,network_current_network_mode,network_net_select_mode,RadioOff,SSID1,AuthMode,HideSSID,MAX_Access_num,NoForwarding,m_ssid_enable,m_SSID,m_AuthMode,m_HideSSID,m_MAX_Access_num,m_NoForwarding,WirelessMode,CountryCode,Channel,wifi_11n_cap,wifi_coverage,SleepStatusForSingleChipCpe,Z5g_snr,Z5g_SINR,wan_lte_ca,network_lte_ca_pcell_band,bandwidth,network_lte_ca_scell_band,network_lte_ca_scell_bandwidth,network_lte_ca_pcell_arfcn,lte_ca_scell_arfcn,wan_active_band,apn_pdp_type,apn_ipv6_pdp_type"}/')
