@@ -31,6 +31,7 @@ EVENT_LOG_MAX_BYTES=524288
 ACTION_RESULT_MAX_COUNT=50
 PRIVATE_AUTH_BACKOFF_SECONDS=900
 SMS_POLL_INTERVAL_SECONDS=300
+SMART_CHARGE_RETRY_SECONDS=300
 RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
 RECOVERY_INHIBIT_SECONDS=600
 RECOVERY_SERVICE=/etc/init.d/zte-usb-recover
@@ -63,6 +64,7 @@ load_config() {
 	battery_enabled=''
 	battery_low=''
 	battery_high=''
+	smart_charge_retry_seconds=''
 	manual_full=''
 	schedule_enabled=''
 	schedule_weekdays=''
@@ -93,9 +95,10 @@ load_config() {
 	config_get netdev zte netdev eth2
 	config_get credential_file zte credential_file \
 		/etc/zte-usb-wifi-manager/credentials
-	config_get battery_enabled policy enabled 0
-	config_get battery_low policy low_percent 70
-	config_get battery_high policy high_percent 100
+	config_get battery_enabled charging enabled 0
+	config_get battery_low charging low_percent 30
+	config_get battery_high charging high_percent 80
+	config_get smart_charge_retry_seconds charging retry_seconds 300
 	config_get manual_full policy manual_full 0
 	config_get schedule_enabled work enabled 0
 	config_get schedule_weekdays work weekdays '1 2 3 4 5'
@@ -138,6 +141,13 @@ load_config() {
 		logger -t zte-usb-wifi-manager 'invalid battery thresholds'
 		return 1
 	}
+	if ! zte_is_uint "$smart_charge_retry_seconds" ||
+		[ "$smart_charge_retry_seconds" -lt 30 ] ||
+		[ "$smart_charge_retry_seconds" -gt 3600 ]; then
+		logger -t zte-usb-wifi-manager 'invalid smart-charge retry interval'
+		return 1
+	fi
+	SMART_CHARGE_RETRY_SECONDS=$smart_charge_retry_seconds
 	case $enabled:$write_enabled:$sim_switch_enabled:\
 $cellular_write_enabled:$wifi_write_enabled:$traffic_write_enabled:\
 $sms_write_enabled:$device_reboot_enabled:$device_shutdown_enabled:\
@@ -886,6 +896,77 @@ process_actions() {
 		"$_zte_action_time" || :
 }
 
+# Evaluate and, when every server-side gate is open, apply U30 Pro's
+# device-side power-supply mode. This function never calls the legacy USB
+# power adapter. A failed or ambiguous POST is cooled down before another
+# fresh snapshot can cause a new attempt.
+apply_smart_charge_policy() {
+	policy_state=STATE_UNKNOWN
+	power_action=keep
+	smart_charge_last_error=''
+
+	if [ "${ZTE_ADAPTER_ID:-}" != zte_u30 ]; then
+		policy_state=UNSUPPORTED_DEVICE
+		return 0
+	fi
+	_zte_smart_battery=$(zte_json_path_get \
+		"$device_json" battery percent 2>/dev/null) || _zte_smart_battery=''
+	_zte_smart_raw_mode=$(zte_json_path_get \
+		"$device_json" power_supply mode_raw 2>/dev/null) || _zte_smart_raw_mode=''
+	case $_zte_smart_raw_mode in
+		0) _zte_smart_current=charging ;;
+		1) _zte_smart_current=direct_supply ;;
+		*) _zte_smart_current=unknown ;;
+	esac
+	_zte_smart_result=$(zte_smart_charge_decide \
+		"$battery_enabled" "$_zte_smart_battery" "$battery_low" \
+		"$battery_high" "$_zte_smart_current") || {
+		policy_state=STATE_UNKNOWN
+		return 0
+	}
+	policy_state=${_zte_smart_result%%:*}
+	_zte_smart_decision=${_zte_smart_result#*:}
+	case $_zte_smart_decision in
+		KEEP) return 0 ;;
+		CHARGE) _zte_smart_target=charging ;;
+		DIRECT_SUPPLY) _zte_smart_target=direct_supply ;;
+		*) policy_state=STATE_UNKNOWN; return 0 ;;
+	esac
+	if [ "$_zte_smart_target" = "$_zte_smart_current" ]; then
+		return 0
+	fi
+	if ! zte_adapter_action_supported set_power_supply_mode; then
+		policy_state=AWAITING_CALIBRATION
+		return 0
+	fi
+	if ! configured_action_enabled set_power_supply_mode; then
+		policy_state=WRITE_DISABLED
+		return 0
+	fi
+	_zte_smart_now=$(date +%s)
+	if [ "${smart_charge_retry_after:-0}" -gt "$_zte_smart_now" ]; then
+		policy_state=COOLDOWN
+		return 0
+	fi
+	_zte_smart_execute_result=''
+	if _zte_smart_execute_result=$(zte_execute_power_supply_mode \
+		"$host" '' "$COOKIE_FILE" "$_zte_smart_target"); then
+		power_action=$_zte_smart_target
+		smart_charge_retry_after=0
+		record_event info smart_charge smart_charge_applied \
+			"$_zte_smart_now" || :
+		return 0
+	fi
+	smart_charge_last_error=$_zte_smart_execute_result
+	smart_charge_retry_after=$((_zte_smart_now + SMART_CHARGE_RETRY_SECONDS))
+	policy_state=WRITE_FAILED
+	power_action=keep
+	logger -t zte-usb-wifi-manager \
+		"smart-charge write failed: $smart_charge_last_error"
+	record_event error smart_charge smart_charge_failed "$_zte_smart_now" || :
+	return 0
+}
+
 read_current_power_state() {
 	case $power_backend in
 		dry-run) ;;
@@ -1191,12 +1272,13 @@ poll_once() {
 
 	collect_network
 
-	# Battery data is telemetry only. USB VBUS removal interrupts the U25S data
-	# link, so normal polling must never turn the controller off in response to
-	# battery level or a schedule. Keep the legacy snapshot fields stable for
-	# upgrades while explicitly marking the retired behavior.
-	policy_state=retired
-	power_action=none
+	# Smart charging changes only U30 Pro's internal power_supply_mode. It never
+	# invokes the legacy USB VBUS adapter, so USB networking remains connected.
+	policy_state=unavailable
+	power_action=keep
+	if [ "$ok" = 1 ]; then
+		apply_smart_charge_policy
+	fi
 	collect_power_snapshot
 
 	updated=$(date +%s)
@@ -1232,6 +1314,7 @@ main() {
 	last_logged_state=''
 	private_auth_retry_after=0
 	next_sms_poll_at=0
+	smart_charge_retry_after=0
 	credential_revision=$(
 		zte_credential_revision "$credential_file" 2>/dev/null
 	) || credential_revision=invalid

@@ -20,6 +20,7 @@ test:
 		tests/test_action_executor.sh \
 		tests/test_sim_calibration.sh \
 		tests/test_daemon_actions.sh \
+		tests/test_daemon_smart_charge.sh \
 		tests/test_daemon_power_cycle.sh \
 		tests/test_power_adapter.sh \
 		tests/test_power_restore.sh \

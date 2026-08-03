@@ -13,16 +13,24 @@ config="$backend/files/etc/config/zte-usb-wifi-manager"
 daemon="$backend/files/usr/sbin/zte-usb-wifi-managerd"
 
 if grep -Eq "^config (battery 'policy'|schedule 'work')$" "$config"; then
-    fail 'default config must not expose retired battery automation'
+    fail 'default config must not expose retired USB battery automation'
 else
     pass
 fi
+assert_file_contains "$config" "^config smart_charge 'charging'$"
+assert_file_contains "$config" "option enabled '0'"
+assert_file_contains "$config" "option low_percent '30'"
+assert_file_contains "$config" "option high_percent '80'"
 poll_once_source=$(sed -n '/^poll_once() {$/,/^}$/p' "$daemon")
 case $poll_once_source in
     *zte_policy_decide*|*apply_policy_action*)
-        fail 'polling must not execute battery-driven USB power actions'
+        fail 'polling must not execute battery-driven USB VBUS actions'
         ;;
     *) pass ;;
+esac
+case $poll_once_source in
+    *'apply_smart_charge_policy'*) pass ;;
+    *) fail 'polling must evaluate U30 device-side smart charging' ;;
 esac
 case $poll_once_source in
     *'collect_private_clients '*) pass ;;
@@ -582,6 +590,7 @@ extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
 eval "$(extract_daemon_function poll_once)"
+eval "$(extract_daemon_function apply_smart_charge_policy)"
 eval "$(extract_daemon_function collect_private_clients)"
 eval "$(extract_daemon_function collect_private_sms)"
 eval "$(extract_daemon_function refresh_credential_revision)"
@@ -599,6 +608,9 @@ eval "$(extract_daemon_function write_sms_cache)"
 eval "$(extract_daemon_function record_event)"
 eval "$(extract_daemon_function record_state_change)"
 handle_planned_power_off() { return 1; }
+# Smart-charge behavior has a dedicated orchestration suite. These legacy
+# polling assertions keep their historical snapshot expectation isolated.
+apply_smart_charge_policy() { policy_state=retired; power_action=none; }
 
 work=/tmp/zte-test-daemon.$$
 mkdir -p "$work"
@@ -897,7 +909,7 @@ zte_adapter_fetch() { return 2; }
 poll_once
 assert_eq \
     "$(zte_snapshot_compose credentials_missing device_credentials_required '' \
-        "$net" retired none 0 1722345678)" \
+        "$net" unavailable keep 0 1722345678)" \
     "$(sed -n '1p' "$status_log")"
 
 # Adapter status 3 means LOGIN was attempted and rejected. It must remain a
@@ -911,7 +923,7 @@ zte_adapter_fetch() { return 3; }
 poll_once
 assert_eq \
     "$(zte_snapshot_compose authentication_failed device_authentication_failed '' \
-        "$net" retired none 1 1722345678)" \
+        "$net" unavailable keep 1 1722345678)" \
     "$(sed -n '1p' "$status_log")"
 
 # Restore the configured-credential sequence used by the degradation tests.
@@ -955,10 +967,10 @@ assert_eq \
     "$(zte_snapshot_compose ok '' "$dev1" "$net" retired none 0 1722345678)" \
     "$(sed -n '1p' "$status_log")"
 assert_eq \
-    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" retired none 1 1722345678)" \
+    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" unavailable keep 1 1722345678)" \
     "$(sed -n '2p' "$status_log")"
 assert_eq \
-    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" retired none 2 1722345678)" \
+    "$(zte_snapshot_compose degraded device_read_failed "$dev1" "$net" unavailable keep 2 1722345678)" \
     "$(sed -n '3p' "$status_log")"
 assert_eq \
     "$(zte_snapshot_compose ok '' "$dev2" "$net" retired none 0 1722345678)" \
@@ -1088,6 +1100,7 @@ config_get() {
         battery_enabled) battery_enabled=0 ;;
         battery_low) battery_low=70 ;;
         battery_high) battery_high=100 ;;
+        smart_charge_retry_seconds) smart_charge_retry_seconds=300 ;;
         manual_full) manual_full=0 ;;
         schedule_enabled) schedule_enabled=0 ;;
         schedule_weekdays) schedule_weekdays='1 2 3 4 5' ;;

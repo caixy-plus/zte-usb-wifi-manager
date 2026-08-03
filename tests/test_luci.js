@@ -34,6 +34,7 @@ const rpcBehavior = {
 	traffic_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	sms_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	device_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
+	power_action: function() { return Promise.resolve({ ok: true, operation_id: 'op-test' }); },
 	operation_status: function() { return Promise.resolve({ operation_id: 'op-test', state: 'queued' }); }
 };
 const rpcSpecs = {};
@@ -287,6 +288,8 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 		[ 'action', 'message_id', 'number', 'content', 'confirm' ]);
 	assert.deepStrictEqual(rpcSpecs.device_action.params, [ 'action', 'confirm' ]);
 	assert.strictEqual(rpcSpecs.device_action.reject, true);
+	assert.deepStrictEqual(rpcSpecs.power_action.params, [ 'action', 'mode' ]);
+	assert.strictEqual(rpcSpecs.power_action.reject, true);
 	assert.strictEqual(rpcSpecs.operation_status.reject, true);
 	assert.deepStrictEqual(rpcSpecs.operation_status.params, [ 'operation_id' ]);
 	rpcBehavior.status = function() { return Promise.resolve(4); };
@@ -299,7 +302,8 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 test('capability-gates every semantic write form', function() {
 	const capabilities = {
 		cellular_write: true, wifi_write: true, traffic_write: true,
-		sms_write: true, sim_switch: true, device_reboot: true, device_shutdown: true
+		sms_write: true, sim_switch: true, device_reboot: true, device_shutdown: true,
+		power_supply_write: true
 	};
 	let tree = renderPanel({}, 'network', null, capabilities);
 	assert.ok(text(tree).indexOf('保存 APN') !== -1);
@@ -316,12 +320,50 @@ test('capability-gates every semantic write form', function() {
 	tree = renderPanel({}, 'device', null, capabilities);
 	assert.ok(text(tree).indexOf('重启 U25S') !== -1);
 	assert.ok(text(tree).indexOf('关闭 U25S') !== -1);
+	assert.ok(text(tree).indexOf('智能充电与电源直供') !== -1);
 
 	assert.strictEqual(text(renderPanel({}, 'network')).indexOf('保存 APN'), -1);
 	assert.strictEqual(text(renderPanel({}, 'wifi')).indexOf('保存 Wi-Fi 设置'), -1);
 	assert.strictEqual(text(renderPanel({}, 'traffic')).indexOf('保存流量套餐'), -1);
 	assert.strictEqual(text(renderPanel({}, 'sms')).indexOf('发送短信'), -1);
 	assert.strictEqual(text(renderPanel({}, 'device')).indexOf('重启 U25S'), -1);
+});
+
+test('submits U30 power-supply mode through the dedicated RPC method', async function() {
+	const calls = [];
+	rpcBehavior.power_action = function() {
+		calls.push(Array.from(arguments));
+		return Promise.resolve({ ok: true, operation_id: 'op-power' });
+	};
+	let tree = renderPanel({
+		state: 'ok', model: 'U30 Pro',
+		device: {
+			model: 'U30 Pro', battery: { percent: 85, charging: false },
+			power_supply: { mode_raw: '1', direct_supply: true }
+		}
+	}, 'device', null, { model: 'U30 Pro', power_supply_write: true });
+	const charge = nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '开始充电';
+	});
+	const direct = nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '切换电源直供';
+	});
+	assert.ok(charge);
+	assert.ok(direct);
+	await charge.attrs.click();
+	assert.deepStrictEqual(calls[0], [ 'set_power_supply_mode', 'charging' ]);
+
+	// Re-render after the first queued operation so the second semantic mode
+	// can be checked independently.
+	tree = renderPanel({
+		state: 'ok', model: 'U30 Pro',
+		device: { model: 'U30 Pro', battery: { percent: 85 },
+			power_supply: { mode_raw: '0', direct_supply: false } }
+	}, 'device', null, { model: 'U30 Pro', power_supply_write: true });
+	const directAgain = nodesByTag(tree, 'button').find(function(node) {
+		return text(node) === '切换电源直供';
+	});
+	assert.ok(directAgain);
 });
 
 test('requires independent confirmation and submits device controls', async function() {

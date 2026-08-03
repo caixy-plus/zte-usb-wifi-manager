@@ -23,5 +23,5 @@ tests/test_adapter.sh:359:MAC_ADDRESS
 tests/test_adapter.sh:417:MAC_ADDRESS
 tests/test_json.sh:67:MAC_ADDRESS
 tests/test_json.sh:68:MAC_ADDRESS
-tests/test_luci.js:1041:MAC_ADDRESS
-tests/test_luci.js:1218:MAC_ADDRESS
+tests/test_luci.js:1083:MAC_ADDRESS
+tests/test_luci.js:1260:MAC_ADDRESS

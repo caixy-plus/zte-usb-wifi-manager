@@ -21,6 +21,14 @@ config device 'zte'
 	option adapter 'auto'
 	option credential_file '/etc/zte-usb-wifi-manager/credentials'
 
+# U30 Pro device-side charging policy. This changes only the modem's
+# power_supply_mode; it never disables USB VBUS or the USB data connection.
+config smart_charge 'charging'
+	option enabled '0'
+	option low_percent '30'
+	option high_percent '80'
+	option retry_seconds '300'
+
 # USB control is retained only for fail-safe restoration and a future,
 # separately confirmed recovery action. It is never battery-policy driven.
 config power 'usb'

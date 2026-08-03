@@ -86,6 +86,13 @@ var callDeviceAction = rpc.declare({
 	reject: true
 });
 
+var callPowerAction = rpc.declare({
+	object: 'zte_usb_wifi',
+	method: 'power_action',
+	params: [ 'action', 'mode' ],
+	reject: true
+});
+
 var callOperationStatus = rpc.declare({
 	object: 'zte_usb_wifi',
 	method: 'operation_status',
@@ -297,6 +304,14 @@ function chargingLabel(value) {
 		return _('充电中');
 	if (value === false)
 		return _('未充电');
+	return null;
+}
+
+function powerSupplyModeLabel(powerSupply) {
+	if (powerSupply.direct_supply === true || powerSupply.mode_raw === '1')
+		return _('电源直供（停止给电池充电）');
+	if (powerSupply.direct_supply === false || powerSupply.mode_raw === '0')
+		return _('电池充电');
 	return null;
 }
 
@@ -957,6 +972,8 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 	var sim = device.sim && typeof device.sim === 'object' ? device.sim : {};
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
 	var upgrade = device.upgrade && typeof device.upgrade === 'object' ? device.upgrade : {};
+	var powerSupply = device.power_supply && typeof device.power_supply === 'object'
+		? device.power_supply : {};
 	var model = deviceModel(status, capabilities);
 	var children = [
 		row(_('设备型号'), device.model || status.model || capabilities.model),
@@ -974,8 +991,27 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy) 
 		row(_('电量'), battery.percent === null || battery.percent === undefined ||
 			battery.percent === '' ? null : battery.percent + '%'),
 		row(_('充电状态'), chargingLabel(battery.charging)),
+		row(_('供电模式'), powerSupplyModeLabel(powerSupply)),
 		row(_('温度级别'), battery.temperature_level)
 	];
+
+	if (capabilities.power_supply_write === true) {
+		children.push(actionSection(_('智能充电与电源直供'), [
+			row(_('当前模式'), powerSupplyModeLabel(powerSupply)),
+			E('div', { 'class': 'cbi-value-description' },
+				_('这里只切换 U30 Pro 内部供电模式，不会关闭 USB 数据连接。')),
+			actionButton(_('开始充电'), actionBusy, function() {
+				return onAction('power', {
+					action: 'set_power_supply_mode', mode: 'charging'
+				}, _('开始充电'));
+			}),
+			actionButton(_('切换电源直供'), actionBusy, function() {
+				return onAction('power', {
+					action: 'set_power_supply_mode', mode: 'direct_supply'
+				}, _('电源直供切换'));
+			})
+		]));
+	}
 
 	if (capabilities.sim_switch === true)
 		children.push(renderSimSwitch(sim, onAction, actionBusy));
@@ -1061,6 +1097,7 @@ function renderCapabilityMatrix(capabilities) {
 		[ 'sms_write', _('短信操作') ],
 		[ 'device_restart', _('设备重启') ],
 		[ 'device_shutdown', _('设备关机') ],
+		[ 'power_supply_mode', _('智能充电/电源直供') ],
 		[ 'firmware_update', _('固件更新') ],
 		[ 'factory_reset', _('恢复出厂设置') ],
 		[ 'backup_restore', _('备份与恢复') ],
@@ -1189,7 +1226,8 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 		var writesAvailable = capabilities.sim_switch === true ||
 			capabilities.cellular_write === true || capabilities.wifi_write === true ||
 			capabilities.traffic_write === true || capabilities.sms_write === true ||
-			capabilities.device_reboot === true || capabilities.device_shutdown === true;
+			capabilities.device_reboot === true || capabilities.device_shutdown === true ||
+			capabilities.power_supply_write === true;
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
 			consoleUrl ? E('p', { 'class': 'zte-native-console' }, [
@@ -1348,6 +1386,8 @@ return view.extend({
 					request.content, request.confirm);
 			case 'device':
 				return callDeviceAction(request.action, request.confirm);
+			case 'power':
+				return callPowerAction(request.action, request.mode);
 			default:
 				return Promise.reject(new Error('unsupported action method'));
 			}
