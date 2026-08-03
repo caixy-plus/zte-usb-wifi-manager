@@ -185,16 +185,20 @@ for library in validation.sh json.sh credentials.sh actions.sh event-log.sh; do
         "$write_lib/$library"
 done
 sed \
-    -e 's/^ZTE_CAP_SIM_SWITCH=0$/ZTE_CAP_SIM_SWITCH=1/' \
-    -e 's/^ZTE_CAP_CELLULAR_WRITE=0$/ZTE_CAP_CELLULAR_WRITE=1/' \
-    -e 's/^ZTE_CAP_WIFI_WRITE=0$/ZTE_CAP_WIFI_WRITE=1/' \
-    -e 's/^ZTE_CAP_TRAFFIC_WRITE=0$/ZTE_CAP_TRAFFIC_WRITE=1/' \
-    -e 's/^ZTE_CAP_SMS_WRITE=0$/ZTE_CAP_SMS_WRITE=1/' \
-    -e 's/^ZTE_CAP_DEVICE_REBOOT=0$/ZTE_CAP_DEVICE_REBOOT=1/' \
-    -e 's/^ZTE_CAP_DEVICE_SHUTDOWN=0$/ZTE_CAP_DEVICE_SHUTDOWN=1/' \
-    -e 's/^ZTE_CAP_POWER_SUPPLY_WRITE=0$/ZTE_CAP_POWER_SUPPLY_WRITE=1/' \
-    -e 's/^ZTE_U30_CAP_SIM_SWITCH=0$/ZTE_U30_CAP_SIM_SWITCH=1/' \
-    -e 's/^ZTE_U30_CAP_WIFI_WRITE=0$/ZTE_U30_CAP_WIFI_WRITE=1/' \
+    -e 's/^ZTE_CAP_SWITCH_SIM=0$/ZTE_CAP_SWITCH_SIM=1/' \
+    -e 's/^ZTE_CAP_SET_APN=0$/ZTE_CAP_SET_APN=1/' \
+    -e 's/^ZTE_CAP_SET_CONNECTION_MODE=0$/ZTE_CAP_SET_CONNECTION_MODE=1/' \
+    -e 's/^ZTE_CAP_SET_WIFI=0$/ZTE_CAP_SET_WIFI=1/' \
+    -e 's/^ZTE_CAP_SET_TRAFFIC_PLAN=0$/ZTE_CAP_SET_TRAFFIC_PLAN=1/' \
+    -e 's/^ZTE_CAP_RESET_TRAFFIC=0$/ZTE_CAP_RESET_TRAFFIC=1/' \
+    -e 's/^ZTE_CAP_SEND_SMS=0$/ZTE_CAP_SEND_SMS=1/' \
+    -e 's/^ZTE_CAP_DELETE_SMS=0$/ZTE_CAP_DELETE_SMS=1/' \
+    -e 's/^ZTE_CAP_MARK_SMS_READ=0$/ZTE_CAP_MARK_SMS_READ=1/' \
+    -e 's/^ZTE_CAP_REBOOT_DEVICE=0$/ZTE_CAP_REBOOT_DEVICE=1/' \
+    -e 's/^ZTE_CAP_SHUTDOWN_DEVICE=0$/ZTE_CAP_SHUTDOWN_DEVICE=1/' \
+    -e 's/^ZTE_CAP_SET_POWER_SUPPLY_MODE=0$/ZTE_CAP_SET_POWER_SUPPLY_MODE=1/' \
+    -e 's/^ZTE_U30_CAP_SWITCH_SIM=0$/ZTE_U30_CAP_SWITCH_SIM=1/' \
+    -e 's/^ZTE_U30_CAP_SET_WIFI=0$/ZTE_U30_CAP_SET_WIFI=1/' \
     "$metadata" >"$write_lib/adapter-zte-u25s-metadata.sh"
 # The generated stub must expand this variable when it executes, not here.
 # shellcheck disable=SC2016
@@ -202,14 +206,19 @@ printf '%s\n' \
     '#!/bin/sh' \
     'case "$*" in' \
     '  "-q get zte-usb-wifi-manager.main.write_enabled") value=${ZTE_TEST_WRITE_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.writes.sim_switch_enabled") value=${ZTE_TEST_SIM_SWITCH_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.switch_sim_enabled") value=${ZTE_TEST_SWITCH_SIM_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.cellular_write_enabled") value=${ZTE_TEST_CELLULAR_WRITE_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.writes.wifi_write_enabled") value=${ZTE_TEST_WIFI_WRITE_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.writes.traffic_write_enabled") value=${ZTE_TEST_TRAFFIC_WRITE_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.writes.sms_write_enabled") value=${ZTE_TEST_SMS_WRITE_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.writes.device_reboot_enabled") value=${ZTE_TEST_DEVICE_REBOOT_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.writes.device_shutdown_enabled") value=${ZTE_TEST_DEVICE_SHUTDOWN_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.writes.power_supply_write_enabled") value=${ZTE_TEST_POWER_SUPPLY_WRITE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.set_wifi_enabled") value=${ZTE_TEST_SET_WIFI_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.set_traffic_plan_enabled") value=${ZTE_TEST_SET_TRAFFIC_PLAN_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.reset_traffic_enabled") value=${ZTE_TEST_RESET_TRAFFIC_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.send_sms_enabled") value=${ZTE_TEST_SEND_SMS_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.delete_sms_enabled") value=${ZTE_TEST_DELETE_SMS_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.mark_sms_read_enabled") value=${ZTE_TEST_MARK_SMS_READ_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.reboot_device_enabled") value=${ZTE_TEST_REBOOT_DEVICE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.shutdown_device_enabled") value=${ZTE_TEST_SHUTDOWN_DEVICE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.set_power_supply_mode_enabled") value=${ZTE_TEST_SET_POWER_SUPPLY_MODE_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.set_apn_enabled") value=${ZTE_TEST_SET_APN_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.set_connection_mode_enabled") value=${ZTE_TEST_SET_CONNECTION_MODE_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.charging.enabled") value=${ZTE_TEST_CHARGING_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.charging.low_percent") value=${ZTE_TEST_CHARGING_LOW:-30} ;;' \
     '  "-q get zte-usb-wifi-manager.charging.high_percent") value=${ZTE_TEST_CHARGING_HIGH:-80} ;;' \
@@ -242,7 +251,7 @@ for profile_case in missing malformed device_null unknown mismatch; do
     esac
     profile_reply=$(printf '%s\n' \
         '{"action":"set_wifi","enabled":false}' |
-        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_WIFI_ENABLED=1 \
             rpcd_call call wifi_action)
     assert_eq '{"ok":false,"error":"unsupported"}' "$profile_reply" \
         "untrusted profile must reject write: $profile_case"
@@ -279,18 +288,46 @@ assert_eq '{"ok":false,"error":"invalid_settings"}' "$(printf '%s\n' \
 
 effective_capabilities=$(
     ZTE_TEST_WRITE_ENABLED=1 \
-    ZTE_TEST_SIM_SWITCH_ENABLED=1 \
-    ZTE_TEST_WIFI_WRITE_ENABLED=0 \
+    ZTE_TEST_SWITCH_SIM_ENABLED=1 \
+    ZTE_TEST_SET_WIFI_ENABLED=0 \
         rpcd_call call capabilities
 )
 assert_eq true "$(printf '%s' "$effective_capabilities" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
 assert_eq false "$(printf '%s' "$effective_capabilities" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).wifi_write)))')"
+per_action_capabilities=$(
+    ZTE_TEST_WRITE_ENABLED=1 \
+    ZTE_TEST_CELLULAR_WRITE_ENABLED=1 \
+    ZTE_TEST_SET_APN_ENABLED=1 \
+    ZTE_TEST_SET_CONNECTION_MODE_ENABLED=0 \
+        rpcd_call call capabilities
+)
+assert_eq true "$(printf '%s' "$per_action_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_apn)))')"
+assert_eq false "$(printf '%s' "$per_action_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_connection_mode)))')"
+assert_eq false "$(printf '%s' "$per_action_capabilities" |
+    node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).cellular_write)))')" \
+    'legacy cellular_write must be a safe all-actions aggregate'
+cross_action_denied=$(printf '%s\n' \
+    '{"action":"set_connection_mode","mode":"automatic"}' |
+    ZTE_TEST_WRITE_ENABLED=1 \
+    ZTE_TEST_CELLULAR_WRITE_ENABLED=1 \
+    ZTE_TEST_SET_APN_ENABLED=1 \
+    ZTE_TEST_SET_CONNECTION_MODE_ENABLED=0 \
+        rpcd_call call cellular_action)
+assert_eq '{"ok":false,"error":"write_not_enabled"}' "$cross_action_denied"
+if find "$state_dir/actions/pending" -type f -name '*.json' 2>/dev/null |
+    grep -q .; then
+    fail 'enabling APN or a legacy cellular gate must not enqueue connection mode'
+else
+    pass
+fi
 independent_device_capabilities=$(
     ZTE_TEST_WRITE_ENABLED=1 \
-    ZTE_TEST_DEVICE_REBOOT_ENABLED=1 \
-    ZTE_TEST_DEVICE_SHUTDOWN_ENABLED=0 \
+    ZTE_TEST_REBOOT_DEVICE_ENABLED=1 \
+    ZTE_TEST_SHUTDOWN_DEVICE_ENABLED=0 \
         rpcd_call call capabilities
 )
 assert_eq true "$(printf '%s' "$independent_device_capabilities" |
@@ -299,7 +336,7 @@ assert_eq false "$(printf '%s' "$independent_device_capabilities" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).device_shutdown)))')"
 globally_disabled_capabilities=$(
     ZTE_TEST_WRITE_ENABLED=0 \
-    ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+    ZTE_TEST_SWITCH_SIM_ENABLED=1 \
         rpcd_call call capabilities
 )
 assert_eq false "$(printf '%s' "$globally_disabled_capabilities" |
@@ -311,7 +348,7 @@ sim_write_disabled=$(printf '%s\n' \
 assert_eq '{"ok":false,"error":"write_not_enabled"}' "$sim_write_disabled"
 sim_feature_disabled=$(printf '%s\n' \
     '{"action":"switch_sim","target":"sim2","confirm":true}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=0 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SWITCH_SIM_ENABLED=0 \
         rpcd_call call cellular_action)
 assert_eq '{"ok":false,"error":"write_not_enabled"}' \
     "$sim_feature_disabled"
@@ -325,7 +362,7 @@ assert_eq '{"ok":false,"error":"invalid_action"}' "$(
 )"
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
     printf '%s\n' '{"action":"switch_sim","target":"sim2","confirm":"true"}' |
-        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SWITCH_SIM_ENABLED=1 \
             rpcd_call call cellular_action
 )"
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
@@ -340,7 +377,7 @@ else
 fi
 sim_queued=$(printf '%s\n' \
     '{"action":"switch_sim","target":"physical","confirm":true}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SWITCH_SIM_ENABLED=1 \
         rpcd_call call cellular_action)
 assert_success assert_json "$sim_queued"
 sim_queued_id=$(zte_json_flat_get "$sim_queued" operation_id)
@@ -378,78 +415,78 @@ assert_queued_action() {
 
 apn_queued=$(printf '%s\n' \
     '{"action":"set_apn","apn":"internet","auth":"chap","username":"fixture-user","password":"DUMMY_QUEUE_VALUE"}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_CELLULAR_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_APN_ENABLED=1 \
         rpcd_call call cellular_action)
 case $apn_queued in *DUMMY_QUEUE_VALUE*) fail 'APN password leaked in RPC reply' ;; *) pass ;; esac
 assert_queued_action "$apn_queued" apn internet
 
 mode_queued=$(printf '%s\n' \
     '{"action":"set_connection_mode","mode":"automatic"}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_CELLULAR_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_CONNECTION_MODE_ENABLED=1 \
         rpcd_call call cellular_action)
 assert_queued_action "$mode_queued" mode automatic
 
 wifi_queued=$(printf '%s\n' \
     '{"action":"set_wifi","enabled":true,"band":"5g","ssid":"Fixture WiFi","security":"wpa2_psk","password":"DUMMY_WIFI_VALUE","channel":"36"}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_WIFI_ENABLED=1 \
         rpcd_call call wifi_action)
 case $wifi_queued in *DUMMY_WIFI_VALUE*) fail 'Wi-Fi password leaked in RPC reply' ;; *) pass ;; esac
 assert_queued_action "$wifi_queued" ssid 'Fixture WiFi'
 
 traffic_queued=$(printf '%s\n' \
     '{"action":"set_traffic_plan","enabled":true,"limit_bytes":10737418240,"alert_percent":90,"cycle_day":1,"disconnect":false}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_TRAFFIC_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_TRAFFIC_PLAN_ENABLED=1 \
         rpcd_call call traffic_action)
 assert_queued_action "$traffic_queued" limit_bytes 10737418240
 
 reset_queued=$(printf '%s\n' \
     '{"action":"reset_traffic","confirm":true}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_TRAFFIC_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_RESET_TRAFFIC_ENABLED=1 \
         rpcd_call call traffic_action)
 assert_queued_action "$reset_queued" confirm true
 
 sms_queued=$(printf '%s\n' \
     '{"action":"send_sms","number":"+12025550123","content":"runtime fixture message"}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SMS_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SEND_SMS_ENABLED=1 \
         rpcd_call call sms_action)
 case $sms_queued in *runtime*|*12025550123*) fail 'SMS private data leaked in RPC reply' ;; *) pass ;; esac
 assert_queued_action "$sms_queued" action send_sms
 
 delete_queued=$(printf '%s\n' \
     '{"action":"delete_sms","message_id":"42","confirm":true}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SMS_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_DELETE_SMS_ENABLED=1 \
         rpcd_call call sms_action)
 assert_queued_action "$delete_queued" message_id 42
 
 read_queued=$(printf '%s\n' \
     '{"action":"mark_sms_read","message_id":"42"}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SMS_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_MARK_SMS_READ_ENABLED=1 \
         rpcd_call call sms_action)
 assert_queued_action "$read_queued" message_id 42
 
 reboot_queued=$(printf '%s\n' \
     '{"action":"reboot_device","confirm":true}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_DEVICE_REBOOT_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_REBOOT_DEVICE_ENABLED=1 \
         rpcd_call call device_action)
 assert_queued_action "$reboot_queued" confirm true
 
 shutdown_queued=$(printf '%s\n' \
     '{"action":"shutdown_device","confirm":true}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_DEVICE_SHUTDOWN_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SHUTDOWN_DEVICE_ENABLED=1 \
         rpcd_call call device_action)
 assert_queued_action "$shutdown_queued" confirm true
 
 unknown_field=$(printf '%s\n' \
     '{"action":"set_wifi","enabled":false,"goformId":"UNREVIEWED"}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_WIFI_ENABLED=1 \
         rpcd_call call wifi_action)
 assert_eq '{"ok":false,"error":"invalid_action"}' "$unknown_field"
 
 printf '%s\n' '{"online":true,"model":"U30 Pro","device":{"adapter":"zte_u30","model":"U30 Pro"}}' >"$status_file"
 u30_write_capabilities=$(
     ZTE_TEST_WRITE_ENABLED=1 \
-    ZTE_TEST_SIM_SWITCH_ENABLED=1 \
-    ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+    ZTE_TEST_SWITCH_SIM_ENABLED=1 \
+    ZTE_TEST_SET_WIFI_ENABLED=1 \
         rpcd_call call capabilities
 )
 assert_eq false "$(printf '%s' "$u30_write_capabilities" |
@@ -460,22 +497,22 @@ assert_eq false "$(printf '%s' "$u30_write_capabilities" |
     node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).feature_status.sim_switch.enabled)))')"
 assert_eq '{"ok":false,"error":"unsupported"}' "$(
     printf '%s\n' '{"action":"switch_sim","target":"sim2","confirm":true}' |
-        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SIM_SWITCH_ENABLED=1 \
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SWITCH_SIM_ENABLED=1 \
             rpcd_call call cellular_action
 )"
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
     printf '%s\n' '{"action":"set_wifi","enabled":true,"band":"5g","ssid":"U30","security":"open","channel":"auto"}' |
-        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_WIFI_ENABLED=1 \
             rpcd_call call wifi_action
 )"
 assert_eq '{"ok":false,"error":"invalid_action"}' "$(
     printf '%s\n' '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U30","security":"open","channel":"6"}' |
-        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+        ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_WIFI_ENABLED=1 \
             rpcd_call call wifi_action
 )"
 u30_wifi_queued=$(printf '%s\n' \
     '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"U30","security":"open","channel":"auto"}' |
-    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_WIFI_WRITE_ENABLED=1 \
+    ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_WIFI_ENABLED=1 \
         rpcd_call call wifi_action)
 assert_queued_action "$u30_wifi_queued" band 2g
 printf '%s\n' \

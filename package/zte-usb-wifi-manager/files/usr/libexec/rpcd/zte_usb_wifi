@@ -68,41 +68,49 @@ get_capabilities() {
 	_zte_cap_write=$(
 		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
 	) || _zte_cap_write=0
-	_zte_cap_sim=$(
-		uci -q get zte-usb-wifi-manager.writes.sim_switch_enabled 2>/dev/null
-	) || _zte_cap_sim=0
-	_zte_cap_cellular=$(
-		uci -q get \
-			zte-usb-wifi-manager.writes.cellular_write_enabled \
-			2>/dev/null
-	) || _zte_cap_cellular=0
-	_zte_cap_wifi=$(
-		uci -q get zte-usb-wifi-manager.writes.wifi_write_enabled 2>/dev/null
-	) || _zte_cap_wifi=0
-	_zte_cap_traffic=$(
-		uci -q get \
-			zte-usb-wifi-manager.writes.traffic_write_enabled \
-			2>/dev/null
-	) || _zte_cap_traffic=0
-	_zte_cap_sms=$(
-		uci -q get zte-usb-wifi-manager.writes.sms_write_enabled 2>/dev/null
-	) || _zte_cap_sms=0
-	_zte_cap_reboot=$(
-		uci -q get zte-usb-wifi-manager.writes.device_reboot_enabled 2>/dev/null
-	) || _zte_cap_reboot=0
-	_zte_cap_shutdown=$(
-		uci -q get zte-usb-wifi-manager.writes.device_shutdown_enabled 2>/dev/null
-	) || _zte_cap_shutdown=0
-	_zte_cap_power_supply=$(
-		uci -q get \
-			zte-usb-wifi-manager.writes.power_supply_write_enabled \
-			2>/dev/null
-	) || _zte_cap_power_supply=0
+	_zte_cap_switch_sim=$(uci -q get \
+		zte-usb-wifi-manager.writes.switch_sim_enabled 2>/dev/null) ||
+		_zte_cap_switch_sim=0
+	_zte_cap_set_apn=$(uci -q get \
+		zte-usb-wifi-manager.writes.set_apn_enabled 2>/dev/null) ||
+		_zte_cap_set_apn=0
+	_zte_cap_set_connection_mode=$(uci -q get \
+		zte-usb-wifi-manager.writes.set_connection_mode_enabled 2>/dev/null) ||
+		_zte_cap_set_connection_mode=0
+	_zte_cap_set_wifi=$(uci -q get \
+		zte-usb-wifi-manager.writes.set_wifi_enabled 2>/dev/null) ||
+		_zte_cap_set_wifi=0
+	_zte_cap_set_traffic_plan=$(uci -q get \
+		zte-usb-wifi-manager.writes.set_traffic_plan_enabled 2>/dev/null) ||
+		_zte_cap_set_traffic_plan=0
+	_zte_cap_reset_traffic=$(uci -q get \
+		zte-usb-wifi-manager.writes.reset_traffic_enabled 2>/dev/null) ||
+		_zte_cap_reset_traffic=0
+	_zte_cap_send_sms=$(uci -q get \
+		zte-usb-wifi-manager.writes.send_sms_enabled 2>/dev/null) ||
+		_zte_cap_send_sms=0
+	_zte_cap_delete_sms=$(uci -q get \
+		zte-usb-wifi-manager.writes.delete_sms_enabled 2>/dev/null) ||
+		_zte_cap_delete_sms=0
+	_zte_cap_mark_sms_read=$(uci -q get \
+		zte-usb-wifi-manager.writes.mark_sms_read_enabled 2>/dev/null) ||
+		_zte_cap_mark_sms_read=0
+	_zte_cap_reboot_device=$(uci -q get \
+		zte-usb-wifi-manager.writes.reboot_device_enabled 2>/dev/null) ||
+		_zte_cap_reboot_device=0
+	_zte_cap_shutdown_device=$(uci -q get \
+		zte-usb-wifi-manager.writes.shutdown_device_enabled 2>/dev/null) ||
+		_zte_cap_shutdown_device=0
+	_zte_cap_set_power_supply_mode=$(uci -q get \
+		zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 2>/dev/null) ||
+		_zte_cap_set_power_supply_mode=0
 	zte_adapter_effective_capabilities_json \
-		"$_zte_cap_write" "$_zte_cap_sim" "$_zte_cap_cellular" \
-		"$_zte_cap_wifi" "$_zte_cap_traffic" "$_zte_cap_sms" \
-		"$_zte_cap_reboot" "$_zte_cap_shutdown" \
-		"$_zte_cap_power_supply"
+		"$_zte_cap_write" "$_zte_cap_switch_sim" "$_zte_cap_set_apn" \
+		"$_zte_cap_set_connection_mode" "$_zte_cap_set_wifi" \
+		"$_zte_cap_set_traffic_plan" "$_zte_cap_reset_traffic" \
+		"$_zte_cap_send_sms" "$_zte_cap_delete_sms" \
+		"$_zte_cap_mark_sms_read" "$_zte_cap_reboot_device" \
+		"$_zte_cap_shutdown_device" "$_zte_cap_set_power_supply_mode"
 }
 
 get_charging_settings() {

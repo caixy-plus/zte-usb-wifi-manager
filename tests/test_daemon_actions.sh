@@ -102,11 +102,18 @@ zte_adapter_action_effectively_enabled() {
     [ "$1" = switch_sim ] && [ "$2" = 1 ] && [ "$3" = 1 ]
 }
 write_enabled=1
-sim_switch_enabled=1
-cellular_write_enabled=0
-wifi_write_enabled=0
-traffic_write_enabled=0
-sms_write_enabled=0
+switch_sim_enabled=1
+set_apn_enabled=0
+set_connection_mode_enabled=0
+set_wifi_enabled=0
+set_traffic_plan_enabled=0
+reset_traffic_enabled=0
+send_sms_enabled=0
+delete_sms_enabled=0
+mark_sms_read_enabled=0
+reboot_device_enabled=0
+shutdown_device_enabled=0
+set_power_supply_mode_enabled=0
 zte_execute_switch_sim() {
     printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$execute_log"
     printf '%s\n' ok
@@ -126,7 +133,7 @@ assert_eq 'info|action|action_succeeded|1722345680' \
     "$(cat "$event_log")"
 
 # A queued action cannot bypass a feature flag disabled before execution.
-sim_switch_enabled=0
+switch_sim_enabled=0
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345679-1240 switch_sim \
     '{"action":"switch_sim","target":"sim2","confirm":true}' 1722345679
@@ -134,7 +141,7 @@ assert_success process_actions
 assert_eq \
     '{"operation_id":"op-1722345679-1240","type":"switch_sim","state":"failed","code":"write_not_enabled","updated":1722345680}' \
     "$(zte_action_get "$STATE_DIR" op-1722345679-1240)"
-sim_switch_enabled=1
+switch_sim_enabled=1
 
 # A valid write response without matching readback is a failed operation.
 : >"$event_log"
@@ -210,10 +217,17 @@ zte_adapter_action_supported() {
 zte_adapter_action_effectively_enabled() {
     zte_adapter_action_supported "$1" && [ "$2" = 1 ] && [ "$3" = 1 ]
 }
-cellular_write_enabled=1
-traffic_write_enabled=1
-sms_write_enabled=1
-device_reboot_enabled=1
+set_apn_enabled=1
+set_connection_mode_enabled=0
+assert_success configured_action_enabled set_apn
+assert_failure configured_action_enabled set_connection_mode
+set_connection_mode_enabled=1
+set_wifi_enabled=1
+set_traffic_plan_enabled=1
+reset_traffic_enabled=1
+send_sms_enabled=1
+delete_sms_enabled=1
+reboot_device_enabled=1
 zte_execute_u30_setting() {
     printf '%s|%s|%s|%s\n' "$1" "$3" "$4" "$5" >>"$execute_log"
     printf '%s\n' ok
@@ -252,7 +266,6 @@ assert_success zte_action_enqueue \
 assert_success process_actions
 assert_eq succeeded "$(zte_json_top_get \
     "$(zte_action_get "$STATE_DIR" op-1722345684-1246)" state)"
-wifi_write_enabled=1
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345684-1245 set_wifi \
     '{"action":"set_wifi","enabled":false}' 1722345684

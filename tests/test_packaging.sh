@@ -165,35 +165,63 @@ for hook_format in apk ipk; do
         PATH="$postinst_bin:$PATH" sh "$hook_postinst"
     assert_eq auto "$(cat "$postinst_uci/zte-usb-wifi-manager_usb_control_path")"
     assert_eq zte_u25s "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
-    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_device_reboot_enabled")"
-    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_device_shutdown_enabled")"
-    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_power_supply_write_enabled")"
     assert_eq smart_charge "$(cat "$postinst_uci/zte-usb-wifi-manager_charging")"
     assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_enabled")"
     assert_eq 30 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_low_percent")"
     assert_eq 80 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_high_percent")"
     assert_eq 300 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_retry_seconds")"
+    for action_gate in \
+        switch_sim set_apn set_connection_mode set_wifi set_traffic_plan \
+        reset_traffic send_sms delete_sms mark_sms_read reboot_device \
+        shutdown_device set_power_supply_mode
+    do
+        assert_eq 0 "$(cat \
+            "$postinst_uci/zte-usb-wifi-manager_writes_${action_gate}_enabled")"
+    done
     assert_eq commit "$(cat "$postinst_uci/commits")"
 
-    # The final pre-U30 config generation already had independent lifecycle
-    # gates but no power-supply gate. Its explicit U25S profile must remain
-    # selected because auto detection has no calibrated U25S USB identity.
+    # Legacy family gates are preserved but must never seed a newly introduced
+    # semantic action gate during an upgrade.
+    reset_postinst_fixture
+    printf '%s\n' 1 \
+        >"$postinst_uci/zte-usb-wifi-manager_writes_cellular_write_enabled"
+    printf '%s\n' 1 \
+        >"$postinst_uci/zte-usb-wifi-manager_writes_traffic_write_enabled"
+    printf '%s\n' 1 \
+        >"$postinst_uci/zte-usb-wifi-manager_writes_sms_write_enabled"
+    assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
+        PATH="$postinst_bin:$PATH" sh "$hook_postinst"
+    for action_gate in \
+        set_apn set_connection_mode set_traffic_plan reset_traffic \
+        send_sms delete_sms mark_sms_read
+    do
+        assert_eq 0 "$(cat \
+            "$postinst_uci/zte-usb-wifi-manager_writes_${action_gate}_enabled")"
+    done
+
+    # A legacy config may contain old single-action names. They are preserved
+    # as conffile data but never substitute for the new semantic action gates.
     reset_postinst_fixture
     printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_reboot_enabled"
     printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_shutdown_enabled"
     assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
         PATH="$postinst_bin:$PATH" sh "$hook_postinst"
     assert_eq zte_u25s "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
-    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_power_supply_write_enabled")"
+    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_set_power_supply_mode_enabled")"
     assert_eq commit "$(cat "$postinst_uci/commits")"
 
     # A current config is not rewritten: explicit adapter selection and custom
     # smart-charge thresholds must survive a reinstall unchanged.
     reset_postinst_fixture
     printf '%s\n' cudy,tr3000-v1 >"$postinst_board"
-    printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_reboot_enabled"
-    printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_shutdown_enabled"
-    printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_power_supply_write_enabled"
+    for action_gate in \
+        switch_sim set_apn set_connection_mode set_wifi set_traffic_plan \
+        reset_traffic send_sms delete_sms mark_sms_read reboot_device \
+        shutdown_device set_power_supply_mode
+    do
+        printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_${action_gate}_enabled"
+    done
+    printf '%s\n' 1 >"$postinst_uci/zte-usb-wifi-manager_writes_set_apn_enabled"
     printf '%s\n' smart_charge >"$postinst_uci/zte-usb-wifi-manager_charging"
     printf '%s\n' 1 >"$postinst_uci/zte-usb-wifi-manager_charging_enabled"
     printf '%s\n' 25 >"$postinst_uci/zte-usb-wifi-manager_charging_low_percent"
@@ -202,6 +230,7 @@ for hook_format in apk ipk; do
     assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
         PATH="$postinst_bin:$PATH" sh "$hook_postinst"
     assert_eq zte_u25s "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
+    assert_eq 1 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_set_apn_enabled")"
     assert_eq 1 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_enabled")"
     assert_eq 25 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_low_percent")"
     assert_eq 75 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_high_percent")"

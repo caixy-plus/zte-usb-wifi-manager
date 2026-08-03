@@ -88,14 +88,20 @@ assert_file_contains "$backend/Makefile" \
 assert_file_contains "$backend/Makefile" \
     'rm -rf /var/run/zte-usb-wifi-manager'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option sim_switch_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option power_supply_write_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option cellular_write_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option wifi_write_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option traffic_write_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option sms_write_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option device_reboot_enabled '0'"
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option device_shutdown_enabled '0'"
+for action_gate in \
+    switch_sim set_apn set_connection_mode set_wifi set_traffic_plan \
+    reset_traffic send_sms delete_sms mark_sms_read reboot_device \
+    shutdown_device set_power_supply_mode
+do
+    assert_file_contains "$config" "option ${action_gate}_enabled '0'"
+    assert_file_contains "$backend/Makefile" \
+        "zte_ensure_config zte-usb-wifi-manager.writes.${action_gate}_enabled 0"
+done
+if grep -Eq 'option (cellular_write|traffic_write|sms_write)_enabled' "$config"; then
+    fail 'fresh config must not expose legacy write-family gates'
+else
+    pass
+fi
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
     "option off_probe_interval '900'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" \
@@ -215,7 +221,15 @@ rm -rf "$init_power_state"
 rm -rf "$init_gate_root"
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabilities"'
-assert_file_contains "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" '^ZTE_CAP_SIM_SWITCH=0$'
+for static_cap in \
+    SWITCH_SIM SET_APN SET_CONNECTION_MODE SET_WIFI SET_TRAFFIC_PLAN \
+    RESET_TRAFFIC SEND_SMS DELETE_SMS MARK_SMS_READ REBOOT_DEVICE \
+    SHUTDOWN_DEVICE SET_POWER_SUPPLY_MODE
+do
+    assert_file_contains \
+        "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" \
+        "^ZTE_CAP_${static_cap}=0$"
+done
 sim_calibration_tool="$backend/files/usr/libexec/zte-u25s-sim-calibrate"
 assert_success test -x "$sim_calibration_tool"
 assert_file_contains "$sim_calibration_tool" \
@@ -226,6 +240,12 @@ assert_file_contains "$sim_calibration_tool" \
     'ZTE_SIM_CALIBRATION_SYNC=.*:-/bin/sync}'
 u30_calibration_tool="$backend/files/usr/libexec/zte-u30-power-calibrate"
 assert_success test -x "$u30_calibration_tool"
+if grep -Eq 'writes\.(cellular_write|traffic_write|sms_write)_enabled' \
+    "$u30_calibration_tool"; then
+    fail 'U30 calibration safety gate must not read legacy write-family options'
+else
+    pass
+fi
 assert_file_contains "$u30_calibration_tool" \
     'ZTE_U30_CALIBRATION_STATE_DIR=.*:-/etc/zte-usb-wifi-manager/u30-power-calibration}'
 assert_file_contains "$u30_calibration_tool" \
@@ -1151,14 +1171,18 @@ config_get() {
     case $1 in
         enabled) enabled=1 ;;
         write_enabled) write_enabled=$_zte_test_write_enabled ;;
-        sim_switch_enabled) sim_switch_enabled=$_zte_test_action_flag ;;
-        cellular_write_enabled) cellular_write_enabled=0 ;;
-        wifi_write_enabled) wifi_write_enabled=0 ;;
-        traffic_write_enabled) traffic_write_enabled=0 ;;
-        sms_write_enabled) sms_write_enabled=0 ;;
-        device_reboot_enabled) device_reboot_enabled=0 ;;
-        device_shutdown_enabled) device_shutdown_enabled=0 ;;
-        power_supply_write_enabled) power_supply_write_enabled=0 ;;
+        switch_sim_enabled) switch_sim_enabled=$_zte_test_action_flag ;;
+        set_apn_enabled) set_apn_enabled=0 ;;
+        set_connection_mode_enabled) set_connection_mode_enabled=0 ;;
+        set_wifi_enabled) set_wifi_enabled=0 ;;
+        set_traffic_plan_enabled) set_traffic_plan_enabled=0 ;;
+        reset_traffic_enabled) reset_traffic_enabled=0 ;;
+        send_sms_enabled) send_sms_enabled=0 ;;
+        delete_sms_enabled) delete_sms_enabled=0 ;;
+        mark_sms_read_enabled) mark_sms_read_enabled=0 ;;
+        reboot_device_enabled) reboot_device_enabled=0 ;;
+        shutdown_device_enabled) shutdown_device_enabled=0 ;;
+        set_power_supply_mode_enabled) set_power_supply_mode_enabled=0 ;;
         poll_interval) poll_interval=30 ;;
         failure_threshold) failure_threshold=3 ;;
         host) host=192.168.0.1 ;;

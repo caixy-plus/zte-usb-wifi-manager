@@ -308,9 +308,10 @@ test('declares ubus calls as rejecting and rejects numeric error replies', async
 
 test('capability-gates every semantic write form', function() {
 	const capabilities = {
-		cellular_write: true, wifi_write: true, traffic_write: true,
-		sms_write: true, sim_switch: true, device_reboot: true, device_shutdown: true,
-		power_supply_write: true
+		set_apn: true, set_connection_mode: true, set_wifi: true,
+		set_traffic_plan: true, reset_traffic: true, send_sms: true,
+		delete_sms: true, mark_sms_read: true, switch_sim: true,
+		reboot_device: true, shutdown_device: true, set_power_supply_mode: true
 	};
 	let tree = renderPanel({}, 'network', null, capabilities);
 	assert.ok(text(tree).indexOf('保存 APN') !== -1);
@@ -336,6 +337,25 @@ test('capability-gates every semantic write form', function() {
 	assert.strictEqual(text(renderPanel({}, 'device')).indexOf('重启 U25S'), -1);
 });
 
+test('renders each write control only for its exact action capability', function() {
+	let tree = renderPanel({}, 'network', null, {
+		set_apn: true, set_connection_mode: false, cellular_write: true
+	});
+	assert.ok(text(tree).indexOf('保存 APN') !== -1);
+	assert.strictEqual(text(tree).indexOf('保存连接模式'), -1);
+	tree = renderPanel({}, 'traffic', null, {
+		set_traffic_plan: false, reset_traffic: true, traffic_write: true
+	});
+	assert.strictEqual(text(tree).indexOf('保存流量套餐'), -1);
+	assert.ok(text(tree).indexOf('清零流量统计') !== -1);
+	tree = renderPanel({}, 'sms', null, {
+		send_sms: false, delete_sms: true, mark_sms_read: false, sms_write: true
+	});
+	assert.strictEqual(text(tree).indexOf('发送短信'), -1);
+	assert.ok(text(tree).indexOf('删除短信') !== -1);
+	assert.strictEqual(text(tree).indexOf('标记已读'), -1);
+});
+
 test('submits U30 power-supply mode through the dedicated RPC method', async function() {
 	const calls = [];
 	rpcBehavior.power_action = function() {
@@ -348,7 +368,7 @@ test('submits U30 power-supply mode through the dedicated RPC method', async fun
 			model: 'U30 Pro', battery: { percent: 85, charging: false },
 			power_supply: { mode_raw: '1', direct_supply: true }
 		}
-	}, 'device', null, { model: 'U30 Pro', power_supply_write: true });
+	}, 'device', null, { model: 'U30 Pro', set_power_supply_mode: true });
 	const charge = nodesByTag(tree, 'button').find(function(node) {
 		return text(node) === '开始充电';
 	});
@@ -366,7 +386,7 @@ test('submits U30 power-supply mode through the dedicated RPC method', async fun
 		state: 'ok', model: 'U30 Pro',
 		device: { model: 'U30 Pro', battery: { percent: 85 },
 			power_supply: { mode_raw: '0', direct_supply: false } }
-	}, 'device', null, { model: 'U30 Pro', power_supply_write: true });
+	}, 'device', null, { model: 'U30 Pro', set_power_supply_mode: true });
 	const directAgain = nodesByTag(tree, 'button').find(function(node) {
 		return text(node) === '切换电源直供';
 	});
@@ -384,7 +404,7 @@ test('renders, validates, and saves U30 smart charging settings', async function
 	};
 	let current = app.render([
 		{ ok: true, value: { state: 'ok', model: 'U30 Pro', device: { model: 'U30 Pro' } } },
-		{ ok: true, value: { model: 'U30 Pro', power_supply_write: false } },
+		{ ok: true, value: { model: 'U30 Pro', set_power_supply_mode: false } },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: false } },
 		{ ok: true, value: { available: false, items: [] } },
@@ -446,7 +466,7 @@ test('requires independent confirmation and submits device controls', async func
 		return Promise.resolve({ ok: true, operation_id: 'op-device' });
 	};
 	let tree = renderPanel({}, 'device', null,
-		{ device_reboot: true, device_shutdown: true });
+		{ reboot_device: true, shutdown_device: true });
 	const reboot = nodesByTag(tree, 'button').find(function(node) {
 		return text(node) === '重启 U25S';
 	});
@@ -459,7 +479,7 @@ test('requires independent confirmation and submits device controls', async func
 	assert.strictEqual(calls.length, 0);
 
 	tree = renderPanel({}, 'device', null,
-		{ device_reboot: true, device_shutdown: true });
+		{ reboot_device: true, shutdown_device: true });
 	const rebootConfirmation = nodesByTag(tree, 'input').find(function(node) {
 		return node.attrs['data-purpose'] === 'device-reboot-confirm';
 	});
@@ -470,7 +490,7 @@ test('requires independent confirmation and submits device controls', async func
 	assert.deepStrictEqual(calls[0], [ 'reboot_device', true ]);
 
 	tree = renderPanel({}, 'device', null,
-		{ device_reboot: true, device_shutdown: true });
+		{ reboot_device: true, shutdown_device: true });
 	nodesByTag(tree, 'input').find(function(node) {
 		return node.attrs['data-purpose'] === 'device-reboot-confirm';
 	}).checked = true;
@@ -480,7 +500,7 @@ test('requires independent confirmation and submits device controls', async func
 	assert.strictEqual(calls.length, 1, 'reboot confirmation must not authorize shutdown');
 
 	tree = renderPanel({}, 'device', null,
-		{ device_reboot: true, device_shutdown: true });
+		{ reboot_device: true, shutdown_device: true });
 	nodesByTag(tree, 'input').find(function(node) {
 		return node.attrs['data-purpose'] === 'device-shutdown-confirm';
 	}).checked = true;
@@ -490,9 +510,9 @@ test('requires independent confirmation and submits device controls', async func
 	assert.deepStrictEqual(calls[1], [ 'shutdown_device', true ]);
 
 	assert.strictEqual(text(renderPanel({}, 'device', null,
-		{ device_reboot: true })).indexOf('关闭 U25S'), -1);
+		{ reboot_device: true })).indexOf('关闭 U25S'), -1);
 	assert.strictEqual(text(renderPanel({}, 'device', null,
-		{ device_shutdown: true })).indexOf('重启 U25S'), -1);
+		{ shutdown_device: true })).indexOf('重启 U25S'), -1);
 });
 
 test('submits normalized requests for each write family', async function() {
@@ -515,7 +535,8 @@ test('submits normalized requests for each write family', async function() {
 		return Promise.resolve({ ok: true, operation_id: 'op-sms' });
 	};
 
-	let tree = renderPanel({}, 'network', null, { cellular_write: true });
+	let tree = renderPanel({}, 'network', null,
+		{ set_apn: true, set_connection_mode: true });
 	nodesByTag(tree, 'input').find(function(node) {
 		return node.attrs['data-purpose'] === 'apn';
 	}).value = 'internet';
@@ -525,7 +546,7 @@ test('submits normalized requests for each write family', async function() {
 	assert.deepStrictEqual(calls[0].slice(0, 7),
 		[ 'cellular', 'set_apn', undefined, undefined, 'internet', 'none', undefined ]);
 
-	tree = renderPanel({}, 'wifi', null, { wifi_write: true });
+	tree = renderPanel({}, 'wifi', null, { set_wifi: true });
 	nodesByTag(tree, 'input').find(function(node) {
 		return node.attrs['data-purpose'] === 'wifi-ssid';
 	}).value = 'Fixture WiFi';
@@ -538,14 +559,16 @@ test('submits normalized requests for each write family', async function() {
 	assert.deepStrictEqual(calls[1].slice(0, 8),
 		[ 'wifi', 'set_wifi', true, '2g', 'Fixture WiFi', 'wpa2_psk', 'fixture-pass', 'auto' ]);
 
-	tree = renderPanel({}, 'traffic', null, { traffic_write: true });
+	tree = renderPanel({}, 'traffic', null,
+		{ set_traffic_plan: true, reset_traffic: true });
 	await nodesByTag(tree, 'button').find(function(node) {
 		return text(node) === '保存流量套餐';
 	}).attrs.click();
 	assert.deepStrictEqual(calls[2].slice(0, 4),
 		[ 'traffic', 'set_traffic_plan', false, undefined ]);
 
-	tree = renderPanel({}, 'sms', null, { sms_write: true });
+	tree = renderPanel({}, 'sms', null,
+		{ send_sms: true, delete_sms: true, mark_sms_read: true });
 	nodesByTag(tree, 'input').find(function(node) {
 		return node.attrs['data-purpose'] === 'sms-number';
 	}).value = '+12025550123';
@@ -565,7 +588,7 @@ test('keeps U30 Wi-Fi writes fixed to 2.4 GHz and automatic channel', async func
 	};
 	const tree = renderPanel({
 		device: { adapter: 'zte_u30', model: 'U30 Pro', wifi: { enabled: true } }
-	}, 'wifi', null, { adapter: 'zte_u30', wifi_write: true });
+	}, 'wifi', null, { adapter: 'zte_u30', set_wifi: true });
 	assert.strictEqual(text(tree).indexOf('5 GHz SSID'), -1);
 	assert.ok(text(tree).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
 	assert.strictEqual(nodesByTag(tree, 'select').some(function(node) {
@@ -590,7 +613,7 @@ test('keeps U30 Wi-Fi writes fixed to 2.4 GHz and automatic channel', async func
 test('shows U30 Wi-Fi constraints while writes remain disabled', function() {
 	const tree = renderPanel({
 		device: { adapter: 'zte_u30', model: 'U30 Pro', wifi: { enabled: true } }
-	}, 'wifi', null, { adapter: 'zte_u30', wifi_write: false });
+	}, 'wifi', null, { adapter: 'zte_u30', set_wifi: false });
 	assert.ok(text(tree).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
 	assert.strictEqual(text(tree).indexOf('保存 Wi-Fi 设置'), -1);
 });
@@ -620,7 +643,7 @@ test('uses trusted U30 status when capabilities are empty or inconsistent', asyn
 		return Promise.resolve({ ok: true, operation_id: 'op-u30-mismatch' });
 	};
 	const writable = renderPanel(status, 'wifi', null, {
-		adapter: 'zte_u25s', model: 'U25S', wifi_write: true
+		adapter: 'zte_u25s', model: 'U25S', set_wifi: true
 	});
 	assert.strictEqual(nodesByTag(writable, 'select').some(function(node) {
 		return node.attrs['data-purpose'] === 'wifi-band';
@@ -643,7 +666,7 @@ test('uses trusted U30 status when capabilities are empty or inconsistent', asyn
 
 test('uses trusted U30 capabilities when status reports U25S', function() {
 	const wifi = renderPanel(completeStatus, 'wifi', null, {
-		adapter: 'zte_u30', model: 'U30 Pro', wifi_write: false
+		adapter: 'zte_u30', model: 'U30 Pro', set_wifi: false
 	});
 	assert.ok(text(wifi).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
 	assert.strictEqual(text(wifi).indexOf('5 GHz SSID'), -1);
@@ -795,7 +818,7 @@ test('gates SIM switching by capability and reports asynchronous completion', as
 
 	let current = app.render([
 		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
-		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { switch_sim: true } },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: true } }
 	]);
@@ -845,7 +868,7 @@ test('gates SIM switching by capability and reports asynchronous completion', as
 test('does not render SIM write controls when the effective capability is false', function() {
 	let current = app.render([
 		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
-		{ ok: true, value: { sim_switch: false } },
+		{ ok: true, value: { switch_sim: false } },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: true } }
 	]);
@@ -860,12 +883,12 @@ test('does not render SIM write controls when the effective capability is false'
 
 test('renders precise capability readiness without bypassing legacy gates', function() {
 	const capabilities = {
-		sim_switch: false,
+		switch_sim: false,
 		feature_status: {
 			cellular_read: { implementation: 'implemented', verification: 'local_and_qemu', access: 'read', enabled: true },
 			clients_read: { implementation: 'implemented', verification: 'simulator_only', access: 'read', enabled: true },
-			sim_switch: { implementation: 'implemented', verification: 'spare_device_required', access: 'write', enabled: true },
-			wifi_write: { implementation: 'not_implemented', verification: 'spare_device_required', access: 'write', enabled: false },
+			switch_sim: { implementation: 'implemented', verification: 'spare_device_required', access: 'write', enabled: true },
+			set_wifi: { implementation: 'not_implemented', verification: 'spare_device_required', access: 'write', enabled: false },
 			firmware_update: { implementation: 'native_console_only', verification: 'native_console', access: 'write', enabled: false }
 		}
 	};
@@ -894,11 +917,11 @@ test('stops polling and reports timed-out or invalid operation states', async fu
 		statusCalls += 1;
 		return Promise.resolve({ operation_id: 'op-timeout', state: 'timed_out', code: 'deadline' });
 	};
-	rpcBehavior.capabilities = function() { return Promise.resolve({ sim_switch: true }); };
+	rpcBehavior.capabilities = function() { return Promise.resolve({ switch_sim: true }); };
 
 	let current = app.render([
 		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
-		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { switch_sim: true } },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: true } }
 	]);
@@ -951,7 +974,7 @@ test('guards duplicate submissions and ignores a late status from an old operati
 	const statusRequests = [];
 	let submitCalls = 0;
 	rpcBehavior.status = function() { return Promise.resolve({ state: 'ok' }); };
-	rpcBehavior.capabilities = function() { return Promise.resolve({ sim_switch: true }); };
+	rpcBehavior.capabilities = function() { return Promise.resolve({ switch_sim: true }); };
 	rpcBehavior.cellular_action = function() {
 		submitCalls += 1;
 		return submission.promise;
@@ -965,7 +988,7 @@ test('guards duplicate submissions and ignores a late status from an old operati
 
 	let current = app.render([
 		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
-		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { switch_sim: true } },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: true } }
 	]);
@@ -1028,7 +1051,7 @@ test('keeps an active operation guarded across a transient status RPC failure', 
 	pollEntries.length = 0;
 	let statusCalls = 0;
 	rpcBehavior.status = function() { return Promise.resolve({ state: 'ok' }); };
-	rpcBehavior.capabilities = function() { return Promise.resolve({ sim_switch: true }); };
+	rpcBehavior.capabilities = function() { return Promise.resolve({ switch_sim: true }); };
 	rpcBehavior.cellular_action = function() {
 		return Promise.resolve({ ok: true, operation_id: 'op-retry', state: 'queued' });
 	};
@@ -1041,7 +1064,7 @@ test('keeps an active operation guarded across a transient status RPC failure', 
 
 	let current = app.render([
 		{ ok: true, value: { state: 'ok', device: { sim: { type: 'physical' } } } },
-		{ ok: true, value: { sim_switch: true } },
+		{ ok: true, value: { switch_sim: true } },
 		{ ok: true, value: { events: [] } },
 		{ ok: true, value: { configured: true } }
 	]);
@@ -1593,6 +1616,15 @@ test('renders bounded event log entries as text', function() {
 	tabById(current, 'logs').attrs.click();
 	assert.ok(text(current).indexOf('warn · state · state_degraded') !== -1);
 	assert.strictEqual(source.indexOf('innerHTML'), -1);
+});
+
+test('derives write availability only from exact action capabilities', function() {
+	let tree = render({ state: 'ok' }, null, {
+		cellular_write: true, traffic_write: true, sms_write: true
+	});
+	assert.ok(text(tree).indexOf('未校准操作不会显示为可用控件') !== -1);
+	tree = render({ state: 'ok' }, null, { set_apn: true });
+	assert.ok(text(tree).indexOf('仅显示已通过实机校准并由管理员启用的写操作') !== -1);
 });
 
 testChain.then(function() {

@@ -54,44 +54,44 @@ assert_eq U30ProV1.0.0B23 "$(printf '%s' "$u30_normalized" | node -e 'let s="";p
 
 # U30 has no calibrated switch_sim request contract. Even an accidentally
 # raised profile/effective flag must not advertise or authorize the action.
-ZTE_U30_CAP_SIM_SWITCH=1
-ZTE_CAP_SIM_SWITCH=1
+ZTE_U30_CAP_SWITCH_SIM=1
+ZTE_CAP_SWITCH_SIM=1
 u30_sim_capabilities=$(zte_adapter_capabilities_json)
 assert_eq false "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
 assert_eq not_implemented "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.sim_switch.implementation))')"
 assert_eq spare_device_required "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.sim_switch.verification))')"
 assert_eq false "$(printf '%s' "$u30_sim_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).feature_status.sim_switch.enabled)))')"
 assert_failure zte_adapter_action_supported switch_sim
-ZTE_U30_CAP_SIM_SWITCH=0
-ZTE_CAP_SIM_SWITCH=0
+ZTE_U30_CAP_SWITCH_SIM=0
+ZTE_CAP_SWITCH_SIM=0
 assert_success zte_device_profile_select_named zte_u25s
 assert_success zte_adapter_apply_profile
 
 # Compile-time write evidence is model-specific. Unlocking a verified U30
 # contract must never make the same operation available on an uncalibrated
 # U25S, including the metadata-only profile path used by rpcd.
-ZTE_U30_CAP_POWER_SUPPLY_WRITE=1
-ZTE_U30_CAP_CELLULAR_WRITE=1
+ZTE_U30_CAP_SET_POWER_SUPPLY_MODE=1
+ZTE_U30_CAP_SET_APN=1
 assert_success zte_device_profile_select_named zte_u30
 assert_success zte_adapter_apply_profile
-assert_eq 1 "$ZTE_CAP_POWER_SUPPLY_WRITE"
-assert_eq 1 "$ZTE_CAP_CELLULAR_WRITE"
+assert_eq 1 "$ZTE_CAP_SET_POWER_SUPPLY_MODE"
+assert_eq 1 "$ZTE_CAP_SET_APN"
 assert_success zte_adapter_action_supported set_power_supply_mode
 assert_success zte_adapter_action_supported set_apn
 assert_success zte_device_profile_select_named zte_u25s
 assert_success zte_adapter_apply_profile
-assert_eq 0 "$ZTE_CAP_POWER_SUPPLY_WRITE"
-assert_eq 0 "$ZTE_CAP_CELLULAR_WRITE"
+assert_eq 0 "$ZTE_CAP_SET_POWER_SUPPLY_MODE"
+assert_eq 0 "$ZTE_CAP_SET_APN"
 assert_failure zte_adapter_action_supported set_power_supply_mode
 assert_failure zte_adapter_action_supported set_apn
 assert_success zte_adapter_apply_cached_profile zte_u30 'U30 Pro'
-assert_eq 1 "$ZTE_CAP_POWER_SUPPLY_WRITE"
-assert_eq 1 "$ZTE_CAP_CELLULAR_WRITE"
+assert_eq 1 "$ZTE_CAP_SET_POWER_SUPPLY_MODE"
+assert_eq 1 "$ZTE_CAP_SET_APN"
 assert_success zte_adapter_apply_cached_profile zte_u25s U25S
-assert_eq 0 "$ZTE_CAP_POWER_SUPPLY_WRITE"
-assert_eq 0 "$ZTE_CAP_CELLULAR_WRITE"
-ZTE_U30_CAP_POWER_SUPPLY_WRITE=0
-ZTE_U30_CAP_CELLULAR_WRITE=0
+assert_eq 0 "$ZTE_CAP_SET_POWER_SUPPLY_MODE"
+assert_eq 0 "$ZTE_CAP_SET_APN"
+ZTE_U30_CAP_SET_POWER_SUPPLY_MODE=0
+ZTE_U30_CAP_SET_APN=0
 
 case $ZTE_READ_FIELDS in
     *Password*|*WPAPSK*|*passwd*|*sim_iccid*|*imei*|*imsi*)
@@ -104,34 +104,69 @@ case $ZTE_READ_FIELDS in
 esac
 
 # Capability JSON and action gates must use the same compile-time flags.
-ZTE_CAP_SIM_SWITCH=1
+ZTE_CAP_SWITCH_SIM=1
 assert_eq true "$(
     zte_adapter_capabilities_json |
         node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))'
 )"
 assert_success zte_adapter_action_supported switch_sim
-ZTE_CAP_SIM_SWITCH=0
+ZTE_CAP_SWITCH_SIM=0
 assert_eq false "$(
     zte_adapter_capabilities_json |
         node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))'
 )"
 assert_failure zte_adapter_action_supported switch_sim
 
-ZTE_CAP_DEVICE_REBOOT=1
+ZTE_CAP_REBOOT_DEVICE=1
 assert_success zte_adapter_action_supported reboot_device
 assert_failure zte_adapter_action_supported shutdown_device
-assert_eq device_reboot_enabled "$(zte_adapter_action_feature_option reboot_device)"
+assert_eq reboot_device_enabled "$(zte_adapter_action_feature_option reboot_device)"
 assert_eq true "$(
-	 zte_adapter_effective_capabilities_json 1 0 0 0 0 0 1 0 |
+	 zte_adapter_effective_capabilities_json 1 0 0 0 0 0 0 0 0 0 1 0 0 |
 		 node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).device_reboot)))'
 )"
-ZTE_CAP_DEVICE_REBOOT=0
+ZTE_CAP_REBOOT_DEVICE=0
 assert_failure zte_adapter_action_supported reboot_device
-ZTE_CAP_DEVICE_SHUTDOWN=1
+ZTE_CAP_SHUTDOWN_DEVICE=1
 assert_success zte_adapter_action_supported shutdown_device
 assert_failure zte_adapter_action_supported reboot_device
-assert_eq device_shutdown_enabled "$(zte_adapter_action_feature_option shutdown_device)"
-ZTE_CAP_DEVICE_SHUTDOWN=0
+assert_eq shutdown_device_enabled "$(zte_adapter_action_feature_option shutdown_device)"
+ZTE_CAP_SHUTDOWN_DEVICE=0
+
+# Every semantic write has its own compile-time capability and UCI option.
+# Raising one action must never authorize another action from the old family.
+ZTE_CAP_SET_APN=1
+ZTE_CAP_SET_CONNECTION_MODE=0
+assert_success zte_adapter_action_supported set_apn
+assert_failure zte_adapter_action_supported set_connection_mode
+assert_eq set_apn_enabled "$(zte_adapter_action_feature_option set_apn)"
+assert_eq set_connection_mode_enabled \
+    "$(zte_adapter_action_feature_option set_connection_mode)"
+ZTE_CAP_SET_TRAFFIC_PLAN=1
+ZTE_CAP_RESET_TRAFFIC=0
+assert_success zte_adapter_action_supported set_traffic_plan
+assert_failure zte_adapter_action_supported reset_traffic
+ZTE_CAP_SEND_SMS=1
+ZTE_CAP_DELETE_SMS=0
+ZTE_CAP_MARK_SMS_READ=0
+assert_success zte_adapter_action_supported send_sms
+assert_failure zte_adapter_action_supported delete_sms
+assert_failure zte_adapter_action_supported mark_sms_read
+per_action_matrix=$(zte_adapter_effective_capabilities_json \
+    1 0 1 0 0 1 0 1 0 0 0 0 0)
+assert_eq true "$(printf '%s' "$per_action_matrix" | node -e \
+    'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_apn)))')"
+assert_eq false "$(printf '%s' "$per_action_matrix" | node -e \
+    'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_connection_mode)))')"
+assert_eq false "$(printf '%s' "$per_action_matrix" | node -e \
+    'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).cellular_write)))')"
+assert_eq false "$(printf '%s' "$per_action_matrix" | node -e \
+    'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).traffic_write)))')"
+assert_eq false "$(printf '%s' "$per_action_matrix" | node -e \
+    'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sms_write)))')"
+ZTE_CAP_SET_APN=0
+ZTE_CAP_SET_TRAFFIC_PLAN=0
+ZTE_CAP_SEND_SMS=0
 
 capability_matrix=$(zte_adapter_capabilities_json)
 if printf '%s' "$capability_matrix" | node -e '
@@ -156,21 +191,21 @@ assert_eq native_console_only "$(printf '%s' "$capability_matrix" | node -e 'let
 assert_eq spare_device_required "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).device_restart?.verification)))')"
 assert_eq false "$(printf '%s' "$capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).sim_switch?.enabled)))')"
 
-ZTE_CAP_SIM_SWITCH=1
+ZTE_CAP_SWITCH_SIM=1
 assert_success zte_adapter_action_effectively_enabled \
     switch_sim 1 1
 assert_eq true "$(
-    zte_adapter_effective_capabilities_json 1 1 0 0 0 0 |
+    zte_adapter_effective_capabilities_json 1 1 0 0 0 0 0 0 0 0 0 0 0 |
         node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).feature_status.sim_switch.enabled)))'
 )"
 assert_failure zte_adapter_action_effectively_enabled \
     switch_sim 0 1
 assert_failure zte_adapter_action_effectively_enabled \
     switch_sim 1 0
-assert_eq sim_switch_enabled "$(zte_adapter_action_feature_option switch_sim)"
-assert_eq wifi_write_enabled "$(zte_adapter_action_feature_option set_wifi)"
+assert_eq switch_sim_enabled "$(zte_adapter_action_feature_option switch_sim)"
+assert_eq set_wifi_enabled "$(zte_adapter_action_feature_option set_wifi)"
 assert_failure zte_adapter_action_feature_option unknown
-ZTE_CAP_SIM_SWITCH=0
+ZTE_CAP_SWITCH_SIM=0
 
 # Semantic write payloads are validated before any future target-firmware
 # mapping. Unknown fields are rejected so ubus cannot smuggle unreviewed
@@ -463,7 +498,8 @@ u30_normalized=$(zte_adapter_normalize "$u30_raw")
 assert_eq 0 "$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).power_supply.mode_raw)' "$u30_normalized")"
 assert_eq false "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).power_supply.direct_supply))' "$u30_normalized")"
 u30_capability_matrix=$(zte_adapter_capabilities_json)
-assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.cellular_write.implementation))')"
+assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.set_apn.implementation))')"
+assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.set_connection_mode.implementation))')"
 assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.wifi_write.implementation))')"
 assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.traffic_write.implementation))')"
 assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.sms_write.implementation))')"

@@ -590,7 +590,7 @@ function renderNetwork(status, capabilities, onAction, actionBusy) {
 		row(_('网关'), network.gateway),
 		row(_('默认出口'), yesNoLabel(network.is_default_route))
 	];
-	if (capabilities.cellular_write === true) {
+	if (capabilities.set_apn === true) {
 		var apn = actionInput('apn', 'text', '');
 		var auth = actionSelect('apn-auth', [
 			[ 'none', _('无') ], [ 'pap', 'PAP' ], [ 'chap', 'CHAP' ],
@@ -598,10 +598,6 @@ function renderNetwork(status, capabilities, onAction, actionBusy) {
 		], 'none');
 		var username = actionInput('apn-username', 'text', '');
 		var password = actionInput('apn-password', 'password', '');
-		var mode = actionSelect('connection-mode', [
-			[ 'automatic', _('自动') ], [ 'manual', _('手动') ],
-			[ 'on_demand', _('按需') ]
-		], 'automatic');
 		children.push(actionSection(_('APN 设置'), [
 			actionRow(_('APN'), apn),
 			actionRow(_('认证'), auth), actionRow(_('用户名'), username),
@@ -617,6 +613,12 @@ function renderNetwork(status, capabilities, onAction, actionBusy) {
 				return onAction('cellular', request, _('APN 设置'));
 			})
 		]));
+	}
+	if (capabilities.set_connection_mode === true) {
+		var mode = actionSelect('connection-mode', [
+			[ 'automatic', _('自动') ], [ 'manual', _('手动') ],
+			[ 'on_demand', _('按需') ]
+		], 'automatic');
 		children.push(actionSection(_('连接模式'), [
 			actionRow(_('模式'), mode),
 			actionButton(_('保存连接模式'), actionBusy, function() {
@@ -693,7 +695,7 @@ function renderWifi(status, capabilities, onAction, actionBusy) {
 	if (isU30)
 		children.push(row(_('U30 Wi-Fi 约束'),
 			_('U30 仅支持 2.4 GHz，信道固定为自动')));
-	if (capabilities.wifi_write === true) {
+	if (capabilities.set_wifi === true) {
 		var enabled = actionInput('wifi-enabled', 'checkbox', wifi.enabled !== false);
 		var band = isU30 ? null : actionSelect('wifi-band',
 			[ [ '2g', '2.4 GHz' ], [ '5g', '5 GHz' ] ], '2g');
@@ -859,15 +861,13 @@ function renderSms(status, messagesResult, capabilities, onAction, actionBusy) {
 			decodeSmsContent(message.content_encoded)));
 		rows.push(row(_('消息 ID ') + (index + 1), message.id));
 	});
-	if (capabilities.sms_write === true) {
+	if (capabilities.send_sms === true) {
 		var number = actionInput('sms-number', 'text', '');
 		var content = E('textarea', {
 			'class': 'cbi-input-textarea', 'data-purpose': 'sms-content',
 			'maxlength': '700'
 		}, '');
 		content.value = '';
-		var messageId = actionInput('sms-message-id', 'text', '');
-		var deleteConfirmation = actionInput('delete-sms', 'checkbox', false);
 		rows.push(actionSection(_('发送短信'), [
 			actionRow(_('号码'), number), actionRow(_('内容'), content),
 			actionButton(_('发送短信'), actionBusy, function() {
@@ -876,20 +876,27 @@ function renderSms(status, messagesResult, capabilities, onAction, actionBusy) {
 				}, _('短信发送'));
 			})
 		]));
-		rows.push(actionSection(_('短信管理'), [
-			actionRow(_('消息 ID'), messageId),
-			actionRow(_('删除确认'), [ deleteConfirmation, ' ', _('我确认删除该短信') ]),
-			actionButton(_('标记已读'), actionBusy, function() {
+	}
+	if (capabilities.delete_sms === true || capabilities.mark_sms_read === true) {
+		var messageId = actionInput('sms-message-id', 'text', '');
+		var managementRows = [ actionRow(_('消息 ID'), messageId) ];
+		if (capabilities.mark_sms_read === true)
+			managementRows.push(actionButton(_('标记已读'), actionBusy, function() {
 				return onAction('sms', {
 					action: 'mark_sms_read', message_id: messageId.value
 				}, _('短信标记'));
-			}),
-			actionButton(_('删除短信'), actionBusy, function() {
+			}));
+		if (capabilities.delete_sms === true) {
+			var deleteConfirmation = actionInput('delete-sms', 'checkbox', false);
+			managementRows.push(
+				actionRow(_('删除确认'), [ deleteConfirmation, ' ', _('我确认删除该短信') ]),
+				actionButton(_('删除短信'), actionBusy, function() {
 				return onAction('sms', {
 					action: 'delete_sms', message_id: messageId.value, confirm: true
 				}, _('短信删除'), deleteConfirmation, _('请先确认删除该短信。'));
-			})
-		]));
+			}));
+		}
+		rows.push(actionSection(_('短信管理'), managementRows));
 	}
 	return panelRoot('sms', _('短信'), rows);
 }
@@ -925,13 +932,12 @@ function renderTraffic(status, capabilities, onAction, actionBusy) {
 		row(_('清零日'), plan.clear_day),
 		row(_('到量断网'), enabledLabel(plan.disconnect))
 	];
-	if (capabilities.traffic_write === true) {
+	if (capabilities.set_traffic_plan === true) {
 		var enabled = actionInput('traffic-enabled', 'checkbox', plan.enabled === true);
 		var limit = actionInput('traffic-limit-bytes', 'number', '10737418240');
 		var alertPercent = actionInput('traffic-alert-percent', 'number', plan.alert_percent || 90);
 		var cycleDay = actionInput('traffic-cycle-day', 'number', plan.clear_day || 1);
 		var disconnect = actionInput('traffic-disconnect', 'checkbox', plan.disconnect === true);
-		var resetConfirmation = actionInput('reset-traffic', 'checkbox', false);
 		children.push(actionSection(_('流量套餐'), [
 			actionRow(_('启用'), enabled), actionRow(_('流量上限（字节）'), limit),
 			actionRow(_('提醒阈值（%）'), alertPercent),
@@ -947,6 +953,9 @@ function renderTraffic(status, capabilities, onAction, actionBusy) {
 				return onAction('traffic', request, _('流量套餐设置'));
 			})
 		]));
+	}
+	if (capabilities.reset_traffic === true) {
+		var resetConfirmation = actionInput('reset-traffic', 'checkbox', false);
 		children.push(actionSection(_('流量统计清零'), [
 			actionRow(_('操作确认'), [ resetConfirmation, ' ', _('我确认清零流量统计') ]),
 			actionButton(_('清零流量统计'), actionBusy, function() {
@@ -1074,7 +1083,7 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy,
 		children.push(renderChargingSettings(chargingSettingsResult,
 			onChargingSave, chargingNotice, chargingBusy));
 
-	if (capabilities.power_supply_write === true) {
+	if (capabilities.set_power_supply_mode === true) {
 		children.push(actionSection(_('智能充电与电源直供'), [
 			row(_('当前模式'), powerSupplyModeLabel(powerSupply)),
 			E('div', { 'class': 'cbi-value-description' },
@@ -1092,19 +1101,19 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy,
 		]));
 	}
 
-	if (capabilities.sim_switch === true)
+	if (capabilities.switch_sim === true)
 		children.push(renderSimSwitch(sim, onAction, actionBusy));
 
-	if (capabilities.device_reboot === true || capabilities.device_shutdown === true) {
+	if (capabilities.reboot_device === true || capabilities.shutdown_device === true) {
 		[ {
 			action: 'reboot_device',
-			capability: 'device_reboot',
+			capability: 'reboot_device',
 			purpose: 'device-reboot-confirm',
 			label: _('重启 ') + model,
 			warning: _('我确认重启会暂时中断移动网络连接。')
 		}, {
 			action: 'shutdown_device',
-			capability: 'device_shutdown',
+			capability: 'shutdown_device',
 			purpose: 'device-shutdown-confirm',
 			label: _('关闭 ') + model,
 			warning: _('我确认关机后需要人工恢复设备供电或开机。')
@@ -1169,14 +1178,18 @@ function renderCapabilityMatrix(capabilities) {
 		[ 'traffic_read', _('流量状态') ],
 		[ 'sms_read', _('短信收件箱') ],
 		[ 'device_read', _('设备状态') ],
-		[ 'sim_switch', _('SIM 切换') ],
-		[ 'cellular_write', _('移动网络设置') ],
-		[ 'wifi_write', _('Wi-Fi 设置') ],
-		[ 'traffic_write', _('流量设置') ],
-		[ 'sms_write', _('短信操作') ],
-		[ 'device_restart', _('设备重启') ],
-		[ 'device_shutdown', _('设备关机') ],
-		[ 'power_supply_mode', _('智能充电/电源直供') ],
+		[ 'switch_sim', _('SIM 切换') ],
+		[ 'set_apn', _('APN 设置') ],
+		[ 'set_connection_mode', _('连接模式设置') ],
+		[ 'set_wifi', _('Wi-Fi 设置') ],
+		[ 'set_traffic_plan', _('流量套餐设置') ],
+		[ 'reset_traffic', _('流量统计清零') ],
+		[ 'send_sms', _('发送短信') ],
+		[ 'delete_sms', _('删除短信') ],
+		[ 'mark_sms_read', _('标记短信已读') ],
+		[ 'reboot_device', _('设备重启') ],
+		[ 'shutdown_device', _('设备关机') ],
+		[ 'set_power_supply_mode', _('智能充电/电源直供') ],
 		[ 'firmware_update', _('固件更新') ],
 		[ 'factory_reset', _('恢复出厂设置') ],
 		[ 'backup_restore', _('备份与恢复') ],
@@ -1307,11 +1320,12 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 				'class': 'alert-message ' + actionNotice.level
 			}, actionNotice.message));
 
-		var writesAvailable = capabilities.sim_switch === true ||
-			capabilities.cellular_write === true || capabilities.wifi_write === true ||
-			capabilities.traffic_write === true || capabilities.sms_write === true ||
-			capabilities.device_reboot === true || capabilities.device_shutdown === true ||
-			capabilities.power_supply_write === true;
+		var writesAvailable = [
+			'switch_sim', 'set_apn', 'set_connection_mode', 'set_wifi',
+			'set_traffic_plan', 'reset_traffic', 'send_sms', 'delete_sms',
+			'mark_sms_read', 'reboot_device', 'shutdown_device',
+			'set_power_supply_mode'
+		].some(function(action) { return capabilities[action] === true; });
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('中兴随身 WiFi 管理')),
 			consoleUrl ? E('p', { 'class': 'zte-native-console' }, [

@@ -46,14 +46,18 @@ load_config() {
 	# config_get assigns these global variables by the name in its first argument.
 	enabled=''
 	write_enabled=''
-	sim_switch_enabled=''
-	cellular_write_enabled=''
-	wifi_write_enabled=''
-	traffic_write_enabled=''
-	sms_write_enabled=''
-	device_reboot_enabled=''
-	device_shutdown_enabled=''
-	power_supply_write_enabled=''
+	switch_sim_enabled=''
+	set_apn_enabled=''
+	set_connection_mode_enabled=''
+	set_wifi_enabled=''
+	set_traffic_plan_enabled=''
+	reset_traffic_enabled=''
+	send_sms_enabled=''
+	delete_sms_enabled=''
+	mark_sms_read_enabled=''
+	reboot_device_enabled=''
+	shutdown_device_enabled=''
+	set_power_supply_mode_enabled=''
 	poll_interval=''
 	failure_threshold=''
 	host=''
@@ -79,14 +83,18 @@ load_config() {
 	config_load zte-usb-wifi-manager
 	config_get enabled main enabled 1
 	config_get write_enabled main write_enabled 0
-	config_get sim_switch_enabled writes sim_switch_enabled 0
-	config_get cellular_write_enabled writes cellular_write_enabled 0
-	config_get wifi_write_enabled writes wifi_write_enabled 0
-	config_get traffic_write_enabled writes traffic_write_enabled 0
-	config_get sms_write_enabled writes sms_write_enabled 0
-	config_get device_reboot_enabled writes device_reboot_enabled 0
-	config_get device_shutdown_enabled writes device_shutdown_enabled 0
-	config_get power_supply_write_enabled writes power_supply_write_enabled 0
+	config_get switch_sim_enabled writes switch_sim_enabled 0
+	config_get set_apn_enabled writes set_apn_enabled 0
+	config_get set_connection_mode_enabled writes set_connection_mode_enabled 0
+	config_get set_wifi_enabled writes set_wifi_enabled 0
+	config_get set_traffic_plan_enabled writes set_traffic_plan_enabled 0
+	config_get reset_traffic_enabled writes reset_traffic_enabled 0
+	config_get send_sms_enabled writes send_sms_enabled 0
+	config_get delete_sms_enabled writes delete_sms_enabled 0
+	config_get mark_sms_read_enabled writes mark_sms_read_enabled 0
+	config_get reboot_device_enabled writes reboot_device_enabled 0
+	config_get shutdown_device_enabled writes shutdown_device_enabled 0
+	config_get set_power_supply_mode_enabled writes set_power_supply_mode_enabled 0
 	config_get poll_interval main poll_interval 30
 	config_get failure_threshold main failure_threshold 3
 	config_get host zte host 192.168.0.1
@@ -148,12 +156,13 @@ load_config() {
 		return 1
 	fi
 	SMART_CHARGE_RETRY_SECONDS=$smart_charge_retry_seconds
-	case $enabled:$write_enabled:$sim_switch_enabled:\
-$cellular_write_enabled:$wifi_write_enabled:$traffic_write_enabled:\
-$sms_write_enabled:$device_reboot_enabled:$device_shutdown_enabled:\
-$power_supply_write_enabled:\
+	case $enabled:$write_enabled:$switch_sim_enabled:$set_apn_enabled:\
+$set_connection_mode_enabled:$set_wifi_enabled:$set_traffic_plan_enabled:\
+$reset_traffic_enabled:$send_sms_enabled:$delete_sms_enabled:\
+$mark_sms_read_enabled:$reboot_device_enabled:$shutdown_device_enabled:\
+$set_power_supply_mode_enabled:\
 $battery_enabled:$manual_full:$schedule_enabled in
-		[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]) ;;
+		[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]) ;;
 		*)
 			logger -t zte-usb-wifi-manager 'invalid policy flags'
 			return 1
@@ -226,26 +235,18 @@ configure_device_profile() {
 configured_action_enabled() {
 	_zte_configured_action=$1
 	case $_zte_configured_action in
-		switch_sim) _zte_configured_feature=$sim_switch_enabled ;;
-		set_apn|set_connection_mode)
-			_zte_configured_feature=$cellular_write_enabled
-			;;
-		set_wifi) _zte_configured_feature=$wifi_write_enabled ;;
-		set_traffic_plan|reset_traffic)
-			_zte_configured_feature=$traffic_write_enabled
-			;;
-		send_sms|delete_sms|mark_sms_read)
-			_zte_configured_feature=$sms_write_enabled
-			;;
-		reboot_device)
-			_zte_configured_feature=$device_reboot_enabled
-			;;
-		shutdown_device)
-			_zte_configured_feature=$device_shutdown_enabled
-			;;
-		set_power_supply_mode)
-			_zte_configured_feature=$power_supply_write_enabled
-			;;
+		switch_sim) _zte_configured_feature=$switch_sim_enabled ;;
+		set_apn) _zte_configured_feature=$set_apn_enabled ;;
+		set_connection_mode) _zte_configured_feature=$set_connection_mode_enabled ;;
+		set_wifi) _zte_configured_feature=$set_wifi_enabled ;;
+		set_traffic_plan) _zte_configured_feature=$set_traffic_plan_enabled ;;
+		reset_traffic) _zte_configured_feature=$reset_traffic_enabled ;;
+		send_sms) _zte_configured_feature=$send_sms_enabled ;;
+		delete_sms) _zte_configured_feature=$delete_sms_enabled ;;
+		mark_sms_read) _zte_configured_feature=$mark_sms_read_enabled ;;
+		reboot_device) _zte_configured_feature=$reboot_device_enabled ;;
+		shutdown_device) _zte_configured_feature=$shutdown_device_enabled ;;
+		set_power_supply_mode) _zte_configured_feature=$set_power_supply_mode_enabled ;;
 		*) return 1 ;;
 	esac
 	zte_adapter_action_effectively_enabled \

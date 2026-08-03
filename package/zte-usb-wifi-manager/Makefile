@@ -46,9 +46,18 @@ define Package/zte-usb-wifi-manager/postinst
 	# Conffiles are intentionally preserved by APK/IPK upgrades. Add every new
 	# gate with its fail-closed default so an older config cannot silently omit
 	# controls introduced by a newer package.
-	zte_ensure_config zte-usb-wifi-manager.writes.device_reboot_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.device_shutdown_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.power_supply_write_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.switch_sim_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.set_apn_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.set_connection_mode_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.set_wifi_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.set_traffic_plan_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.reset_traffic_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.send_sms_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.delete_sms_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.mark_sms_read_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.reboot_device_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.shutdown_device_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 0
 	zte_ensure_config zte-usb-wifi-manager.charging smart_charge
 	zte_ensure_config zte-usb-wifi-manager.charging.enabled 0
 	zte_ensure_config zte-usb-wifi-manager.charging.low_percent 30
