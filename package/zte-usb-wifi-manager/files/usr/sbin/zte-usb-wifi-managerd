@@ -1076,6 +1076,10 @@ apply_smart_charge_policy() {
 		smart_charge_persistence_failed=1
 		policy_state=COOLDOWN_PERSIST_FAILED
 		zte_device_action_release "$STATE_DIR" || :
+		logger -t zte-usb-wifi-manager \
+			'smart-charge intent persist failed before device write'
+		record_event error smart_charge \
+			smart_charge_persistence_failed "$_zte_smart_now" || :
 		return 0
 	fi
 	_zte_smart_execute_result=''
@@ -1109,6 +1113,8 @@ apply_smart_charge_policy() {
 	else
 		smart_charge_persistence_failed=1
 		policy_state=COOLDOWN_PERSIST_FAILED
+		record_event error smart_charge \
+			smart_charge_persistence_failed "$_zte_smart_now" || :
 	fi
 	zte_device_action_release "$STATE_DIR" || :
 	power_action=keep

@@ -349,12 +349,24 @@ zte_execute_power_supply_mode() {
     printf '%s\n' write_ambiguous
     return 1
 }
+preflight_event_log=$work/preflight-event
+preflight_logger_log=$work/preflight-logger
+record_event() {
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" \
+        >>"$preflight_event_log"
+}
+logger() { printf '%s\n' "$*" >>"$preflight_logger_log"; }
 smart_charge_retry_after=0
 smart_charge_persistence_failed=0
 assert_success apply_smart_charge_policy
 assert_eq COOLDOWN_PERSIST_FAILED "$policy_state"
 assert_failure test -e "$cooldown_file"
 assert_eq 0 "$(grep -c '^persist-failed$' "$execute_log")"
+assert_eq 'error|smart_charge|smart_charge_persistence_failed|1722345680' \
+    "$(cat "$preflight_event_log")"
+assert_eq \
+    '-t zte-usb-wifi-manager smart-charge intent persist failed before device write' \
+    "$(cat "$preflight_logger_log")"
 load_cooldown "$STATE_DIR" 1722345681
 assert_eq 1 "$cooldown_status"
 smart_charge_retry_after=0
@@ -362,5 +374,36 @@ smart_charge_persistence_failed=0
 assert_success apply_smart_charge_policy
 assert_eq COOLDOWN_PERSIST_FAILED "$policy_state"
 assert_eq 0 "$(grep -c '^persist-failed$' "$execute_log")"
+assert_eq 2 "$(wc -l <"$preflight_event_log" | tr -d ' ')"
+assert_eq 2 "$(wc -l <"$preflight_logger_log" | tr -d ' ')"
+
+# If the preflight marker was published but the final executor error cannot
+# replace it, expose one persistence event and retain the generic write-failed
+# event. The original target-bound marker remains as restart evidence.
+final_write_calls=0
+zte_smart_charge_cooldown_write() {
+    final_write_calls=$((final_write_calls + 1))
+    if [ "$final_write_calls" = 1 ]; then
+        printf '%s %s\n' "$2" "$3" >"$1/smart-charge-cooldown"
+        chmod 600 "$1/smart-charge-cooldown"
+        return 0
+    fi
+    return 1
+}
+final_event_log=$work/final-event
+record_event() {
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" \
+        >>"$final_event_log"
+}
+smart_charge_retry_after=0
+smart_charge_last_error=''
+smart_charge_persistence_failed=0
+assert_success apply_smart_charge_policy
+assert_eq COOLDOWN_PERSIST_FAILED "$policy_state"
+assert_eq write_ambiguous "$smart_charge_last_error"
+assert_eq '1722345980 attempt_direct_supply' "$(cat "$cooldown_file")"
+assert_eq 'error|smart_charge|smart_charge_persistence_failed|1722345680
+error|smart_charge|smart_charge_failed|1722345680' \
+    "$(cat "$final_event_log")"
 
 finish
