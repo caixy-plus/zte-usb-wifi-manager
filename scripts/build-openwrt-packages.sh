@@ -160,8 +160,6 @@ IFS= read -r sdk_dir <"$sdk_list"
     ln -s "$repo_root/luci-app-zte-usb-wifi-manager" \
         package/luci-app-zte-usb-wifi-manager
     [ -f .config ] || : >.config
-    sed '/^CONFIG_PACKAGE_.*=[my]$/d' .config >.config.selected
-    mv .config.selected .config
     for _zte_all_symbol in ALL ALL_KMODS ALL_NONSHARED; do
         sed -e "/^CONFIG_$_zte_all_symbol=/d" \
             -e "/^# CONFIG_$_zte_all_symbol is not set$/d" \
@@ -171,6 +169,21 @@ IFS= read -r sdk_dir <"$sdk_list"
         # CONFIG_FOO=n is ignored by defconfig and may restore SDK defaults.
         printf '# CONFIG_%s is not set\n' "$_zte_all_symbol" >>.config
     done
+    # Official SDKs default most packages and kernel modules to =m.  The first
+    # defconfig materializes those defaults; persistently disable each emitted
+    # package before selecting only this project and resolving its dependencies.
+    make defconfig
+    LC_ALL=C awk '
+        /^CONFIG_PACKAGE_.*=[my]$/ {
+            symbol = $0
+            sub(/^CONFIG_/, "", symbol)
+            sub(/=[my]$/, "", symbol)
+            print "# CONFIG_" symbol " is not set"
+            next
+        }
+        { print }
+    ' .config >.config.selected
+    mv .config.selected .config
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
         'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config

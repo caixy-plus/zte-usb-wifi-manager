@@ -422,10 +422,26 @@ case " $* " in
         grep -Fqx '# CONFIG_ALL is not set' .config
         grep -Fqx '# CONFIG_ALL_KMODS is not set' .config
         grep -Fqx '# CONFIG_ALL_NONSHARED is not set' .config
+        defconfig_count=0
+        [ ! -f .fake-defconfig-count ] ||
+            defconfig_count=$(cat .fake-defconfig-count)
+        defconfig_count=$((defconfig_count + 1))
+        printf '%s\n' "$defconfig_count" >.fake-defconfig-count
+        if [ "$defconfig_count" -eq 1 ]; then
+            printf '%s\n' \
+                'CONFIG_PACKAGE_kmod-sdk-default=m' \
+                'CONFIG_PACKAGE_unrelated-sdk-default=m' >>.config
+        else
+            grep -Fqx '# CONFIG_PACKAGE_kmod-sdk-default is not set' .config
+            grep -Fqx '# CONFIG_PACKAGE_unrelated-sdk-default is not set' .config
+            grep -Fqx 'CONFIG_PACKAGE_zte-usb-wifi-manager=m' .config
+            grep -Fqx 'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' .config
+        fi
         ;;
     *' package/zte-usb-wifi-manager/compile '*)
         [ "${FAKE_BUILD_FAIL:-0}" -eq 0 ] || exit 1
         [ ! -e package/feeds/packages/curl ] || exit 1
+        [ "$(cat .fake-defconfig-count)" -eq 2 ] || exit 1
         printf 'apk-backend\n' \
             >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r23.apk
         printf 'ipk-backend\n' \
