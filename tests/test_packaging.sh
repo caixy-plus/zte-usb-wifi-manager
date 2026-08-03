@@ -247,6 +247,8 @@ for hook_format in apk ipk; do
     hook_lock="$hook_persistent/sim-calibration.lock"
     hook_power_state="$hook_runtime/calibration"
     hook_power_lock="$hook_runtime/power-calibration.lock"
+    hook_u30_state="$hook_persistent/u30-power-calibration"
+    hook_u30_lock="$hook_persistent/u30-power-calibration.lock"
     hook_prerm="$work/$hook_format-prerm"
     hook_postrm="$work/$hook_format-postrm"
     render_package_hook prerm "$hook_prerm" "$hook_runtime" "$hook_persistent"
@@ -273,6 +275,25 @@ for hook_format in apk ipk; do
         sh "$hook_postrm"
     assert_success test -f "$hook_runtime/keep"
     assert_success test -d "$hook_lock"
+
+    rm -rf "$hook_runtime" "$hook_persistent"
+    mkdir -p "$hook_runtime" "$hook_u30_state"
+    printf '%s\n' keep >"$hook_runtime/keep"
+    printf '%s\n' keep >"$hook_u30_state/state.json"
+    assert_failure env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_prerm"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_postrm"
+    assert_success test -f "$hook_u30_state/state.json"
+
+    rm -rf "$hook_runtime" "$hook_persistent"
+    mkdir -p "$hook_runtime" "$hook_persistent" "$hook_u30_lock"
+    printf '%s\n' keep >"$hook_runtime/keep"
+    assert_failure env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_prerm"
+    assert_success env HOOK_LOG="$hook_log" IPKG_INSTROOT= \
+        sh "$hook_postrm"
+    assert_success test -d "$hook_u30_lock"
 
     rm -rf "$hook_runtime" "$hook_persistent"
     mkdir -p "$hook_runtime" "$hook_persistent" "$hook_power_lock"

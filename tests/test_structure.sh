@@ -117,16 +117,22 @@ init_gate_state=$init_gate_root/sim-calibration
 init_gate_lock=$init_gate_root/sim-calibration.lock
 init_power_state=$init_gate_root/power-calibration
 init_power_lock=$init_gate_root/power-calibration.lock
+init_u30_state=$init_gate_root/u30-power-calibration
+init_u30_lock=$init_gate_root/u30-power-calibration.lock
 run_gated_start() {
     (
         ZTE_SIM_CALIBRATION_STATE_DIR=$init_gate_state
         ZTE_SIM_CALIBRATION_LOCK_DIR=$init_gate_lock
         ZTE_POWER_CALIBRATION_STATE_DIR=$init_power_state
         ZTE_POWER_CALIBRATION_LOCK_DIR=$init_power_lock
+        ZTE_U30_CALIBRATION_STATE_DIR=$init_u30_state
+        ZTE_U30_CALIBRATION_LOCK_DIR=$init_u30_lock
         export ZTE_SIM_CALIBRATION_STATE_DIR
         export ZTE_SIM_CALIBRATION_LOCK_DIR
         export ZTE_POWER_CALIBRATION_STATE_DIR
         export ZTE_POWER_CALIBRATION_LOCK_DIR
+        export ZTE_U30_CALIBRATION_STATE_DIR
+        export ZTE_U30_CALIBRATION_LOCK_DIR
         procd_open_instance() {
             printf '%s\n' "$1" >>"$init_gate_log"
         }
@@ -168,6 +174,25 @@ assert_failure run_gated_start
 assert_eq '' "$(cat "$init_gate_log")"
 rm "$init_gate_lock"
 
+mkdir "$init_u30_state"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+ZTE_U30_CALIBRATION_BYPASS_LOCK=1
+export ZTE_U30_CALIBRATION_BYPASS_LOCK
+: >"$init_gate_log"
+assert_success run_gated_start
+assert_eq 'manager
+recovery-coordinator' "$(cat "$init_gate_log")"
+unset ZTE_U30_CALIBRATION_BYPASS_LOCK
+rmdir "$init_u30_state"
+
+mkdir "$init_u30_lock"
+: >"$init_gate_log"
+assert_failure run_gated_start
+assert_eq '' "$(cat "$init_gate_log")"
+rmdir "$init_u30_lock"
+
 mkdir "$init_power_lock"
 : >"$init_gate_log"
 assert_failure run_gated_start
@@ -199,6 +224,13 @@ assert_file_contains "$sim_calibration_tool" \
     'ZTE_SIM_CALIBRATION_LOCK_DIR=.*:-/etc/zte-usb-wifi-manager/sim-calibration\.lock}'
 assert_file_contains "$sim_calibration_tool" \
     'ZTE_SIM_CALIBRATION_SYNC=.*:-/bin/sync}'
+u30_calibration_tool="$backend/files/usr/libexec/zte-u30-power-calibrate"
+assert_success test -x "$u30_calibration_tool"
+assert_file_contains "$u30_calibration_tool" \
+    'ZTE_U30_CALIBRATION_STATE_DIR=.*:-/etc/zte-usb-wifi-manager/u30-power-calibration}'
+assert_file_contains "$u30_calibration_tool" \
+    'ZTE_U30_CALIBRATION_LOCK_DIR=.*:-/etc/zte-usb-wifi-manager/u30-power-calibration\.lock}'
+assert_file_contains "$u30_calibration_tool" 'I_AM_ON_SPARE_U30'
 
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 assert_file_contains "$luci/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
@@ -303,6 +335,10 @@ assert_file_contains README.md 'hardware Power Adapter'
 # shellcheck disable=SC2016
 assert_file_contains README.md '默认仍以 `calibrated=0` 锁定'
 assert_file_contains README.md 'zte-usb-power-calibrate'
+assert_file_contains README.md 'zte-u30-power-calibrate probe'
+assert_file_contains README.md \
+    'zte-u30-power-calibrate execute I_AM_ON_SPARE_U30'
+assert_file_contains README.md 'zte-u30-power-calibrate recover'
 assert_file_contains README.md '^### 备用 U25S SIM 写接口校准$'
 assert_file_contains README.md \
     '/usr/libexec/zte-u25s-sim-calibrate probe'

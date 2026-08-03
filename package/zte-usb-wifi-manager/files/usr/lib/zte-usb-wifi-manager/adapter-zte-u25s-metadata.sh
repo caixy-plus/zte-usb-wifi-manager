@@ -23,6 +23,53 @@ ZTE_CAP_DEVICE_REBOOT=0
 ZTE_CAP_DEVICE_SHUTDOWN=0
 ZTE_CAP_POWER_SUPPLY_WRITE=0
 
+# Keep calibration evidence scoped to an exact device profile. The effective
+# ZTE_CAP_* variables above remain the adapter contract consumed by the daemon
+# and rpcd; this matrix is the only place that may populate them for a model.
+ZTE_U25S_CAP_SIM_SWITCH=$ZTE_CAP_SIM_SWITCH
+ZTE_U25S_CAP_CELLULAR_WRITE=$ZTE_CAP_CELLULAR_WRITE
+ZTE_U25S_CAP_WIFI_WRITE=$ZTE_CAP_WIFI_WRITE
+ZTE_U25S_CAP_TRAFFIC_WRITE=$ZTE_CAP_TRAFFIC_WRITE
+ZTE_U25S_CAP_SMS_WRITE=$ZTE_CAP_SMS_WRITE
+ZTE_U25S_CAP_DEVICE_REBOOT=$ZTE_CAP_DEVICE_REBOOT
+ZTE_U25S_CAP_DEVICE_SHUTDOWN=$ZTE_CAP_DEVICE_SHUTDOWN
+ZTE_U25S_CAP_POWER_SUPPLY_WRITE=$ZTE_CAP_POWER_SUPPLY_WRITE
+
+ZTE_U30_CAP_SIM_SWITCH=0
+ZTE_U30_CAP_CELLULAR_WRITE=0
+ZTE_U30_CAP_WIFI_WRITE=0
+ZTE_U30_CAP_TRAFFIC_WRITE=0
+ZTE_U30_CAP_SMS_WRITE=0
+ZTE_U30_CAP_DEVICE_REBOOT=0
+ZTE_U30_CAP_DEVICE_SHUTDOWN=0
+ZTE_U30_CAP_POWER_SUPPLY_WRITE=0
+
+zte_adapter_apply_profile_capabilities() {
+	case ${1-} in
+		zte_u25s)
+			ZTE_CAP_SIM_SWITCH=$ZTE_U25S_CAP_SIM_SWITCH
+			ZTE_CAP_CELLULAR_WRITE=$ZTE_U25S_CAP_CELLULAR_WRITE
+			ZTE_CAP_WIFI_WRITE=$ZTE_U25S_CAP_WIFI_WRITE
+			ZTE_CAP_TRAFFIC_WRITE=$ZTE_U25S_CAP_TRAFFIC_WRITE
+			ZTE_CAP_SMS_WRITE=$ZTE_U25S_CAP_SMS_WRITE
+			ZTE_CAP_DEVICE_REBOOT=$ZTE_U25S_CAP_DEVICE_REBOOT
+			ZTE_CAP_DEVICE_SHUTDOWN=$ZTE_U25S_CAP_DEVICE_SHUTDOWN
+			ZTE_CAP_POWER_SUPPLY_WRITE=$ZTE_U25S_CAP_POWER_SUPPLY_WRITE
+			;;
+		zte_u30)
+			ZTE_CAP_SIM_SWITCH=$ZTE_U30_CAP_SIM_SWITCH
+			ZTE_CAP_CELLULAR_WRITE=$ZTE_U30_CAP_CELLULAR_WRITE
+			ZTE_CAP_WIFI_WRITE=$ZTE_U30_CAP_WIFI_WRITE
+			ZTE_CAP_TRAFFIC_WRITE=$ZTE_U30_CAP_TRAFFIC_WRITE
+			ZTE_CAP_SMS_WRITE=$ZTE_U30_CAP_SMS_WRITE
+			ZTE_CAP_DEVICE_REBOOT=$ZTE_U30_CAP_DEVICE_REBOOT
+			ZTE_CAP_DEVICE_SHUTDOWN=$ZTE_U30_CAP_DEVICE_SHUTDOWN
+			ZTE_CAP_POWER_SUPPLY_WRITE=$ZTE_U30_CAP_POWER_SUPPLY_WRITE
+			;;
+		*) return 1 ;;
+	esac
+}
+
 # Apply a previously selected, whitelisted device profile without changing any
 # independently calibrated write capability.
 zte_adapter_apply_profile() {
@@ -42,6 +89,7 @@ zte_adapter_apply_profile() {
 	else
 		ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
 	fi
+	zte_adapter_apply_profile_capabilities "$ZTE_DEVICE_PROFILE_ID" || return 1
 	case $ZTE_DEVICE_PROFILE_ID in
 		zte_u25s) ZTE_READ_FIELDS=$ZTE_U25S_READ_FIELDS ;;
 		zte_u30)
@@ -71,6 +119,7 @@ zte_adapter_apply_cached_profile() {
 			ZTE_LOGIN_REQUIRED=1
 			ZTE_ADAPTER_TRANSPORT=http
 			ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
+			zte_adapter_apply_profile_capabilities zte_u25s || return 1
 			;;
 		zte_u30:'U30 Pro')
 			ZTE_ADAPTER_ID=zte_u30
@@ -78,6 +127,7 @@ zte_adapter_apply_cached_profile() {
 			ZTE_LOGIN_REQUIRED=0
 			ZTE_ADAPTER_TRANSPORT=https
 			ZTE_ADAPTER_TLS_VERIFICATION=device_certificate_unverified
+			zte_adapter_apply_profile_capabilities zte_u30 || return 1
 			;;
 		*) return 1 ;;
 	esac

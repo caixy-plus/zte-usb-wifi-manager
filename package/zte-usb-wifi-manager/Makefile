@@ -80,6 +80,10 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 		[ -L /etc/zte-usb-wifi-manager/sim-calibration ] ||
 		[ -e /etc/zte-usb-wifi-manager/sim-calibration.lock ] ||
 		[ -L /etc/zte-usb-wifi-manager/sim-calibration.lock ] ||
+		[ -e /etc/zte-usb-wifi-manager/u30-power-calibration ] ||
+		[ -L /etc/zte-usb-wifi-manager/u30-power-calibration ] ||
+		[ -e /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] ||
+		[ -L /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] ||
 		[ -e /var/lock/zte-usb-power-calibration.lock ] ||
 		[ -L /var/lock/zte-usb-power-calibration.lock ] ||
 		[ -e /var/run/zte-usb-wifi-manager/calibration/inhibit-recovery ] ||
@@ -117,6 +121,10 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 		[ ! -L /etc/zte-usb-wifi-manager/sim-calibration ] &&
 		[ ! -e /etc/zte-usb-wifi-manager/sim-calibration.lock ] &&
 		[ ! -L /etc/zte-usb-wifi-manager/sim-calibration.lock ] &&
+		[ ! -e /etc/zte-usb-wifi-manager/u30-power-calibration ] &&
+		[ ! -L /etc/zte-usb-wifi-manager/u30-power-calibration ] &&
+		[ ! -e /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] &&
+		[ ! -L /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] &&
 		[ ! -e /var/lock/zte-usb-power-calibration.lock ] &&
 		[ ! -L /var/lock/zte-usb-power-calibration.lock ] &&
 		[ ! -e /var/run/zte-usb-wifi-manager/calibration/inhibit-recovery ] &&

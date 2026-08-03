@@ -1,0 +1,908 @@
+#!/bin/sh
+set -eu
+
+if [ "${0##*/}" = zte-u30-power-calibrate ]; then
+	_zte_u30_calibration_cli_uid=$(/usr/bin/id -u 2>/dev/null) || exit 1
+	[ "$_zte_u30_calibration_cli_uid" = 0 ] || exit 1
+fi
+
+ZTE_U30_CALIBRATION_LIB_DIR=${ZTE_U30_CALIBRATION_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
+ZTE_U30_CALIBRATION_HOST=${ZTE_U30_CALIBRATION_HOST:-}
+ZTE_U30_CALIBRATION_NETDEV=${ZTE_U30_CALIBRATION_NETDEV:-}
+ZTE_U30_CALIBRATION_ADAPTER=${ZTE_U30_CALIBRATION_ADAPTER:-}
+ZTE_U30_CALIBRATION_WRITE_ENABLED=${ZTE_U30_CALIBRATION_WRITE_ENABLED:-}
+ZTE_U30_CALIBRATION_POWER_WRITE_ENABLED=${ZTE_U30_CALIBRATION_POWER_WRITE_ENABLED:-}
+ZTE_U30_CALIBRATION_SMART_CHARGE_ENABLED=${ZTE_U30_CALIBRATION_SMART_CHARGE_ENABLED:-}
+ZTE_U30_CALIBRATION_SIM_WRITE_ENABLED=${ZTE_U30_CALIBRATION_SIM_WRITE_ENABLED:-}
+ZTE_U30_CALIBRATION_CELLULAR_WRITE_ENABLED=${ZTE_U30_CALIBRATION_CELLULAR_WRITE_ENABLED:-}
+ZTE_U30_CALIBRATION_WIFI_WRITE_ENABLED=${ZTE_U30_CALIBRATION_WIFI_WRITE_ENABLED:-}
+ZTE_U30_CALIBRATION_TRAFFIC_WRITE_ENABLED=${ZTE_U30_CALIBRATION_TRAFFIC_WRITE_ENABLED:-}
+ZTE_U30_CALIBRATION_SMS_WRITE_ENABLED=${ZTE_U30_CALIBRATION_SMS_WRITE_ENABLED:-}
+ZTE_U30_CALIBRATION_REBOOT_ENABLED=${ZTE_U30_CALIBRATION_REBOOT_ENABLED:-}
+ZTE_U30_CALIBRATION_SHUTDOWN_ENABLED=${ZTE_U30_CALIBRATION_SHUTDOWN_ENABLED:-}
+ZTE_U30_CALIBRATION_CREDENTIAL_FILE=${ZTE_U30_CALIBRATION_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/credentials}
+ZTE_U30_CALIBRATION_COOKIE_FILE=${ZTE_U30_CALIBRATION_COOKIE_FILE:-/var/run/zte-usb-wifi-manager/u30-power-calibration.cookies}
+ZTE_U30_CALIBRATION_STATE_DIR=${ZTE_U30_CALIBRATION_STATE_DIR:-/etc/zte-usb-wifi-manager/u30-power-calibration}
+ZTE_U30_CALIBRATION_LOCK_DIR=${ZTE_U30_CALIBRATION_LOCK_DIR:-/etc/zte-usb-wifi-manager/u30-power-calibration.lock}
+ZTE_U30_CALIBRATION_MANAGER_SERVICE=${ZTE_U30_CALIBRATION_MANAGER_SERVICE:-/etc/init.d/zte-usb-wifi-manager}
+ZTE_U30_CALIBRATION_SYNC=${ZTE_U30_CALIBRATION_SYNC:-/bin/sync}
+ZTE_U30_CALIBRATION_STOP_ATTEMPTS=${ZTE_U30_CALIBRATION_STOP_ATTEMPTS:-10}
+ZTE_U30_CALIBRATION_STOP_INTERVAL=${ZTE_U30_CALIBRATION_STOP_INTERVAL:-1}
+
+. "$ZTE_U30_CALIBRATION_LIB_DIR/validation.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/json.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/credentials.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/http.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/session.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/device-profile.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/adapter-zte-u25s-metadata.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/adapter-zte-u25s.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/action-executor.sh"
+. "$ZTE_U30_CALIBRATION_LIB_DIR/netifd-adapter.sh"
+
+zte_u30_power_calibration_require_root() {
+	_zte_u30_calibration_uid=$(/usr/bin/id -u 2>/dev/null) || return 1
+	[ "$_zte_u30_calibration_uid" = 0 ]
+}
+
+zte_u30_power_calibration_path_root_owned() {
+	[ "$(zte_file_owner_uid "$1")" = 0 ]
+}
+
+zte_u30_power_calibration_profile_ready() {
+	[ "$ZTE_U30_CALIBRATION_ADAPTER" = zte_u30 ] || return 1
+	zte_device_profile_select_named zte_u30 || return 1
+	zte_adapter_apply_profile || return 1
+	[ "$ZTE_ADAPTER_ID" = zte_u30 ]
+}
+
+zte_u30_power_calibration_gates_disabled() {
+	[ "$ZTE_U30_CALIBRATION_WRITE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_POWER_WRITE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_SMART_CHARGE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_SIM_WRITE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_CELLULAR_WRITE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_WIFI_WRITE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_TRAFFIC_WRITE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_SMS_WRITE_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_REBOOT_ENABLED" = 0 ] &&
+		[ "$ZTE_U30_CALIBRATION_SHUTDOWN_ENABLED" = 0 ]
+}
+
+zte_u30_power_calibration_settings_valid() {
+	zte_is_uint "$ZTE_U30_CALIBRATION_STOP_ATTEMPTS" &&
+		[ "$ZTE_U30_CALIBRATION_STOP_ATTEMPTS" -ge 1 ] &&
+		[ "$ZTE_U30_CALIBRATION_STOP_ATTEMPTS" -le 120 ] &&
+		zte_is_uint "$ZTE_U30_CALIBRATION_STOP_INTERVAL" &&
+		[ "$ZTE_U30_CALIBRATION_STOP_INTERVAL" -le 60 ]
+}
+
+zte_u30_power_calibration_probe_fail() {
+	_zte_u30_calibration_code=$1
+	case $_zte_u30_calibration_code in
+		not_root|wrong_profile|write_gates_enabled|invalid_host|invalid_netdev|device_route_mismatch|recovery_required|credentials_unavailable|authentication_failed|read_failed|invalid_mode|manager_service_unavailable|invalid_settings) ;;
+		*) _zte_u30_calibration_code=probe_failed ;;
+	esac
+	printf '{"ok":false,"mode":"probe","code":"%s"}\n' \
+		"$_zte_u30_calibration_code"
+	return 1
+}
+
+zte_u30_power_calibration_password() {
+	if zte_adapter_login_required; then
+		zte_read_password "$ZTE_U30_CALIBRATION_CREDENTIAL_FILE"
+	else
+		printf '\n'
+	fi
+}
+
+zte_u30_power_calibration_read_mode() {
+	_zte_u30_calibration_password=$1
+	if zte_adapter_login_required; then
+		zte_session_login "$ZTE_U30_CALIBRATION_HOST" \
+			"$_zte_u30_calibration_password" \
+			"$ZTE_U30_CALIBRATION_COOKIE_FILE" || return 1
+	fi
+	_zte_u30_calibration_mode=$(zte_adapter_fetch_power_supply_mode \
+		"$ZTE_U30_CALIBRATION_HOST" \
+		"$ZTE_U30_CALIBRATION_COOKIE_FILE") || return 1
+	case $_zte_u30_calibration_mode in
+		charging|direct_supply) printf '%s\n' "$_zte_u30_calibration_mode" ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_u30_power_calibration_state_absent() {
+	[ ! -e "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
+		[ ! -e "$ZTE_U30_CALIBRATION_LOCK_DIR" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_LOCK_DIR" ]
+}
+
+zte_u30_power_calibration_probe() {
+	zte_u30_power_calibration_require_root ||
+		zte_u30_power_calibration_probe_fail not_root
+	zte_u30_power_calibration_profile_ready ||
+		zte_u30_power_calibration_probe_fail wrong_profile
+	zte_u30_power_calibration_gates_disabled ||
+		zte_u30_power_calibration_probe_fail write_gates_enabled
+	zte_validate_host "$ZTE_U30_CALIBRATION_HOST" ||
+		zte_u30_power_calibration_probe_fail invalid_host
+	zte_validate_netdev "$ZTE_U30_CALIBRATION_NETDEV" ||
+		zte_u30_power_calibration_probe_fail invalid_netdev
+	[ -x "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" ] ||
+		zte_u30_power_calibration_probe_fail manager_service_unavailable
+	zte_u30_power_calibration_settings_valid ||
+		zte_u30_power_calibration_probe_fail invalid_settings
+	zte_u30_power_calibration_state_absent ||
+		zte_u30_power_calibration_probe_fail recovery_required
+	zte_netifd_route_uses_device "$ZTE_U30_CALIBRATION_HOST" \
+		"$ZTE_U30_CALIBRATION_NETDEV" ||
+		zte_u30_power_calibration_probe_fail device_route_mismatch
+	_zte_u30_calibration_password=$(zte_u30_power_calibration_password) ||
+		zte_u30_power_calibration_probe_fail credentials_unavailable
+	_zte_u30_calibration_current=$(zte_u30_power_calibration_read_mode \
+		"$_zte_u30_calibration_password") ||
+		zte_u30_power_calibration_probe_fail read_failed
+	printf '%s\n' \
+		"{\"ok\":true,\"mode\":\"probe\",\"adapter\":\"zte_u30\",\"current_mode\":\"$_zte_u30_calibration_current\",\"write_gates_disabled\":true,\"device_route\":true}"
+}
+
+zte_u30_power_calibration_dir_entry_count() {
+	find "$1" -mindepth 1 -maxdepth 1 -print 2>/dev/null |
+		wc -l | tr -d ' '
+}
+
+zte_u30_power_calibration_lock_secure() {
+	[ -d "$ZTE_U30_CALIBRATION_LOCK_DIR" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_LOCK_DIR" ] &&
+		[ "$(zte_file_mode "$ZTE_U30_CALIBRATION_LOCK_DIR")" = 700 ] &&
+		zte_u30_power_calibration_path_root_owned \
+			"$ZTE_U30_CALIBRATION_LOCK_DIR"
+}
+
+zte_u30_power_calibration_owner_file_secure() {
+	_zte_u30_calibration_owner=$ZTE_U30_CALIBRATION_LOCK_DIR/owner
+	[ -f "$_zte_u30_calibration_owner" ] &&
+		[ ! -L "$_zte_u30_calibration_owner" ] &&
+		[ "$(zte_file_mode "$_zte_u30_calibration_owner")" = 600 ] &&
+		zte_u30_power_calibration_path_root_owned \
+			"$_zte_u30_calibration_owner"
+}
+
+zte_u30_power_calibration_write_owner() {
+	_zte_u30_calibration_owner=$ZTE_U30_CALIBRATION_LOCK_DIR/owner
+	[ ! -e "$_zte_u30_calibration_owner" ] &&
+		[ ! -L "$_zte_u30_calibration_owner" ] || return 1
+	umask 077
+	printf 'pid=%s\n' "$$" >"$_zte_u30_calibration_owner" || return 1
+	chmod 600 "$_zte_u30_calibration_owner" || return 1
+	zte_u30_power_calibration_owner_file_secure
+}
+
+zte_u30_power_calibration_owner_pid() {
+	zte_u30_power_calibration_owner_file_secure || return 1
+	IFS= read -r _zte_u30_calibration_owner_line \
+		<"$ZTE_U30_CALIBRATION_LOCK_DIR/owner" || return 1
+	case $_zte_u30_calibration_owner_line in
+		pid=*) _zte_u30_calibration_owner_pid=${_zte_u30_calibration_owner_line#pid=} ;;
+		*) return 1 ;;
+	esac
+	zte_is_uint "$_zte_u30_calibration_owner_pid" &&
+		[ "$_zte_u30_calibration_owner_pid" -ge 1 ] || return 1
+	printf '%s\n' "$_zte_u30_calibration_owner_pid"
+}
+
+zte_u30_power_calibration_relinquish_owner() {
+	_zte_u30_calibration_expected=${1-$$}
+	_zte_u30_calibration_actual=$(zte_u30_power_calibration_owner_pid) || return 1
+	[ "$_zte_u30_calibration_actual" = "$_zte_u30_calibration_expected" ] ||
+		return 1
+	rm -f "$ZTE_U30_CALIBRATION_LOCK_DIR/owner"
+}
+
+zte_u30_power_calibration_claim_pid() {
+	_zte_u30_calibration_claim=$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active
+	[ -f "$_zte_u30_calibration_claim" ] &&
+		[ ! -L "$_zte_u30_calibration_claim" ] &&
+		[ "$(zte_file_mode "$_zte_u30_calibration_claim")" = 600 ] &&
+		zte_u30_power_calibration_path_root_owned \
+			"$_zte_u30_calibration_claim" || return 1
+	IFS= read -r _zte_u30_calibration_claim_pid \
+		<"$_zte_u30_calibration_claim" || return 1
+	zte_is_uint "$_zte_u30_calibration_claim_pid" &&
+		[ "$_zte_u30_calibration_claim_pid" -ge 1 ] || return 1
+	printf '%s\n' "$_zte_u30_calibration_claim_pid"
+}
+
+zte_u30_power_calibration_create_claim() {
+	_zte_u30_calibration_claim=$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active
+	_zte_u30_calibration_claim_tmp=$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active.tmp.$$
+	[ ! -e "$_zte_u30_calibration_claim_tmp" ] &&
+		[ ! -L "$_zte_u30_calibration_claim_tmp" ] || return 1
+	umask 077
+	printf '%s\n' "$$" >"$_zte_u30_calibration_claim_tmp" || return 1
+	chmod 600 "$_zte_u30_calibration_claim_tmp" || return 1
+	if ! ln "$_zte_u30_calibration_claim_tmp" \
+		"$_zte_u30_calibration_claim" 2>/dev/null; then
+		rm -f "$_zte_u30_calibration_claim_tmp"
+		return 1
+	fi
+	rm -f "$_zte_u30_calibration_claim_tmp" || return 1
+	[ "$(zte_u30_power_calibration_claim_pid)" = "$$" ]
+}
+
+zte_u30_power_calibration_write_committed() {
+	_zte_u30_calibration_committed_manager=$1
+	case $_zte_u30_calibration_committed_manager in true|false) ;; *) return 1 ;; esac
+	_zte_u30_calibration_committed=$ZTE_U30_CALIBRATION_LOCK_DIR/committed
+	_zte_u30_calibration_committed_tmp=$ZTE_U30_CALIBRATION_LOCK_DIR/committed.tmp.$$
+	[ ! -e "$_zte_u30_calibration_committed" ] &&
+		[ ! -L "$_zte_u30_calibration_committed" ] || return 1
+	[ ! -e "$_zte_u30_calibration_committed_tmp" ] &&
+		[ ! -L "$_zte_u30_calibration_committed_tmp" ] || return 1
+	umask 077
+	printf 'manager_was_running=%s\n' \
+		"$_zte_u30_calibration_committed_manager" \
+		>"$_zte_u30_calibration_committed_tmp" || return 1
+	chmod 600 "$_zte_u30_calibration_committed_tmp" || return 1
+	mv "$_zte_u30_calibration_committed_tmp" \
+		"$_zte_u30_calibration_committed" || return 1
+}
+
+zte_u30_power_calibration_read_committed() {
+	_zte_u30_calibration_committed=$ZTE_U30_CALIBRATION_LOCK_DIR/committed
+	[ -f "$_zte_u30_calibration_committed" ] &&
+		[ ! -L "$_zte_u30_calibration_committed" ] &&
+		[ "$(zte_file_mode "$_zte_u30_calibration_committed")" = 600 ] &&
+		zte_u30_power_calibration_path_root_owned \
+			"$_zte_u30_calibration_committed" || return 1
+	IFS= read -r _zte_u30_calibration_committed_line \
+		<"$_zte_u30_calibration_committed" || return 1
+	case $_zte_u30_calibration_committed_line in
+		manager_was_running=true) printf '%s\n' true ;;
+		manager_was_running=false) printf '%s\n' false ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_u30_power_calibration_cleanup_stale_temp() {
+	_zte_u30_calibration_found=0
+	for _zte_u30_calibration_temp in \
+		"$ZTE_U30_CALIBRATION_STATE_DIR"/state.json.tmp.*; do
+		[ -e "$_zte_u30_calibration_temp" ] ||
+			[ -L "$_zte_u30_calibration_temp" ] || continue
+		[ "$_zte_u30_calibration_found" = 0 ] || return 1
+		_zte_u30_calibration_suffix=${_zte_u30_calibration_temp##*.}
+		zte_is_uint "$_zte_u30_calibration_suffix" || return 1
+		[ -f "$_zte_u30_calibration_temp" ] &&
+			[ ! -L "$_zte_u30_calibration_temp" ] &&
+			[ "$(zte_file_mode "$_zte_u30_calibration_temp")" = 600 ] &&
+			zte_u30_power_calibration_path_root_owned \
+				"$_zte_u30_calibration_temp" || return 1
+		_zte_u30_calibration_found=1
+	done
+	[ "$_zte_u30_calibration_found" = 0 ] ||
+		rm -f "$_zte_u30_calibration_temp"
+}
+
+zte_u30_power_calibration_cleanup_stale_lock_entries() {
+	for _zte_u30_calibration_lock_temp in \
+		"$ZTE_U30_CALIBRATION_LOCK_DIR"/committed.tmp.*; do
+		[ -e "$_zte_u30_calibration_lock_temp" ] ||
+			[ -L "$_zte_u30_calibration_lock_temp" ] || continue
+		_zte_u30_calibration_suffix=${_zte_u30_calibration_lock_temp##*.}
+		zte_is_uint "$_zte_u30_calibration_suffix" || return 1
+		kill -0 "$_zte_u30_calibration_suffix" 2>/dev/null && return 1
+		[ -f "$_zte_u30_calibration_lock_temp" ] &&
+			[ ! -L "$_zte_u30_calibration_lock_temp" ] &&
+			[ "$(zte_file_mode "$_zte_u30_calibration_lock_temp")" = 600 ] &&
+			zte_u30_power_calibration_path_root_owned \
+				"$_zte_u30_calibration_lock_temp" || return 1
+		rm -f "$_zte_u30_calibration_lock_temp" || return 1
+	done
+	for _zte_u30_calibration_claim_tmp in \
+		"$ZTE_U30_CALIBRATION_LOCK_DIR"/recovery-active.tmp.*; do
+		[ -e "$_zte_u30_calibration_claim_tmp" ] ||
+			[ -L "$_zte_u30_calibration_claim_tmp" ] || continue
+		_zte_u30_calibration_suffix=${_zte_u30_calibration_claim_tmp##*.}
+		zte_is_uint "$_zte_u30_calibration_suffix" || return 1
+		kill -0 "$_zte_u30_calibration_suffix" 2>/dev/null && return 1
+		[ -f "$_zte_u30_calibration_claim_tmp" ] &&
+			[ ! -L "$_zte_u30_calibration_claim_tmp" ] &&
+			[ "$(zte_file_mode "$_zte_u30_calibration_claim_tmp")" = 600 ] &&
+			zte_u30_power_calibration_path_root_owned \
+				"$_zte_u30_calibration_claim_tmp" || return 1
+		rm -f "$_zte_u30_calibration_claim_tmp" || return 1
+	done
+}
+
+zte_u30_power_calibration_state_secure() {
+	_zte_u30_calibration_file=$ZTE_U30_CALIBRATION_STATE_DIR/state.json
+	[ -d "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
+		[ "$(zte_file_mode "$ZTE_U30_CALIBRATION_STATE_DIR")" = 700 ] &&
+		zte_u30_power_calibration_path_root_owned \
+			"$ZTE_U30_CALIBRATION_STATE_DIR" &&
+		[ -f "$_zte_u30_calibration_file" ] &&
+		[ ! -L "$_zte_u30_calibration_file" ] &&
+		[ "$(zte_file_mode "$_zte_u30_calibration_file")" = 600 ] &&
+		zte_u30_power_calibration_path_root_owned \
+			"$_zte_u30_calibration_file" &&
+		[ "$(zte_u30_power_calibration_dir_entry_count \
+			"$ZTE_U30_CALIBRATION_STATE_DIR")" = 1 ]
+}
+
+zte_u30_power_calibration_write_state() {
+	_zte_u30_calibration_state_original=$1
+	_zte_u30_calibration_state_manager=$2
+	case $_zte_u30_calibration_state_original in
+		null) _zte_u30_calibration_state_original_json=null ;;
+		charging|direct_supply)
+			_zte_u30_calibration_state_original_json=\"$_zte_u30_calibration_state_original\"
+			;;
+		*) return 1 ;;
+	esac
+	case $_zte_u30_calibration_state_manager in
+		true|false) ;;
+		*) return 1 ;;
+	esac
+	_zte_u30_calibration_tmp=$ZTE_U30_CALIBRATION_STATE_DIR/state.json.tmp.$$
+	[ ! -e "$_zte_u30_calibration_tmp" ] &&
+		[ ! -L "$_zte_u30_calibration_tmp" ] || return 1
+	umask 077
+	if ! printf \
+		'{"original_mode":%s,"manager_was_running":%s}\n' \
+		"$_zte_u30_calibration_state_original_json" \
+		"$_zte_u30_calibration_state_manager" \
+		>"$_zte_u30_calibration_tmp"; then
+		rm -f "$_zte_u30_calibration_tmp"
+		return 1
+	fi
+	if ! chmod 600 "$_zte_u30_calibration_tmp" ||
+		! mv "$_zte_u30_calibration_tmp" \
+			"$ZTE_U30_CALIBRATION_STATE_DIR/state.json"; then
+		rm -f "$_zte_u30_calibration_tmp"
+		return 1
+	fi
+}
+
+zte_u30_power_calibration_load_state() {
+	zte_u30_power_calibration_lock_secure || return 1
+	zte_u30_power_calibration_state_secure || return 1
+	IFS= read -r _zte_u30_calibration_json \
+		<"$ZTE_U30_CALIBRATION_STATE_DIR/state.json" || return 1
+	case $_zte_u30_calibration_json in
+		'{"original_mode":null,"manager_was_running":true}')
+			_zte_u30_calibration_loaded_original=null
+			_zte_u30_calibration_loaded_manager=true ;;
+		'{"original_mode":null,"manager_was_running":false}')
+			_zte_u30_calibration_loaded_original=null
+			_zte_u30_calibration_loaded_manager=false ;;
+		'{"original_mode":"charging","manager_was_running":true}')
+			_zte_u30_calibration_loaded_original=charging
+			_zte_u30_calibration_loaded_manager=true ;;
+		'{"original_mode":"charging","manager_was_running":false}')
+			_zte_u30_calibration_loaded_original=charging
+			_zte_u30_calibration_loaded_manager=false ;;
+		'{"original_mode":"direct_supply","manager_was_running":true}')
+			_zte_u30_calibration_loaded_original=direct_supply
+			_zte_u30_calibration_loaded_manager=true ;;
+		'{"original_mode":"direct_supply","manager_was_running":false}')
+			_zte_u30_calibration_loaded_original=direct_supply
+			_zte_u30_calibration_loaded_manager=false ;;
+		*) return 1 ;;
+	esac
+}
+
+zte_u30_power_calibration_wait_stopped() {
+	_zte_u30_calibration_attempt=1
+	while [ "$_zte_u30_calibration_attempt" -le \
+		"$ZTE_U30_CALIBRATION_STOP_ATTEMPTS" ]; do
+		if ! "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+			>/dev/null 2>&1; then
+			return 0
+		fi
+		if [ "$_zte_u30_calibration_attempt" -lt \
+			"$ZTE_U30_CALIBRATION_STOP_ATTEMPTS" ]; then
+			sleep "$ZTE_U30_CALIBRATION_STOP_INTERVAL"
+		fi
+		_zte_u30_calibration_attempt=$((_zte_u30_calibration_attempt + 1))
+	done
+	return 1
+}
+
+zte_u30_power_calibration_wait_running() {
+	_zte_u30_calibration_attempt=1
+	while [ "$_zte_u30_calibration_attempt" -le \
+		"$ZTE_U30_CALIBRATION_STOP_ATTEMPTS" ]; do
+		if "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+			>/dev/null 2>&1; then
+			return 0
+		fi
+		if [ "$_zte_u30_calibration_attempt" -lt \
+			"$ZTE_U30_CALIBRATION_STOP_ATTEMPTS" ]; then
+			sleep "$ZTE_U30_CALIBRATION_STOP_INTERVAL"
+		fi
+		_zte_u30_calibration_attempt=$((_zte_u30_calibration_attempt + 1))
+	done
+	return 1
+}
+
+zte_u30_power_calibration_release_transaction() {
+	case $1 in
+		owner) zte_u30_power_calibration_relinquish_owner "$$" ;;
+		recovery-active)
+			_zte_u30_calibration_claim=$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active
+			[ "$(zte_u30_power_calibration_claim_pid)" = "$$" ] &&
+				rm -f "$_zte_u30_calibration_claim"
+			;;
+		*) return 1 ;;
+	esac
+}
+
+zte_u30_power_calibration_restore_transaction_state() {
+	_zte_u30_calibration_restore_state_original=$1
+	_zte_u30_calibration_restore_state_manager=$2
+	_zte_u30_calibration_restore_state_owner=$3
+	if "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+		>/dev/null 2>&1; then
+		"$ZTE_U30_CALIBRATION_MANAGER_SERVICE" stop \
+			>/dev/null 2>&1 || return 1
+		zte_u30_power_calibration_wait_stopped || return 1
+	fi
+	umask 077
+	if [ ! -e "$ZTE_U30_CALIBRATION_LOCK_DIR" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_LOCK_DIR" ]; then
+		mkdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || return 1
+		chmod 700 "$ZTE_U30_CALIBRATION_LOCK_DIR" || return 1
+	fi
+	zte_u30_power_calibration_lock_secure || return 1
+	rm -f "$ZTE_U30_CALIBRATION_LOCK_DIR/committed" 2>/dev/null || return 1
+	if [ ! -e "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_STATE_DIR" ]; then
+		mkdir "$ZTE_U30_CALIBRATION_STATE_DIR" 2>/dev/null || return 1
+		chmod 700 "$ZTE_U30_CALIBRATION_STATE_DIR" || return 1
+	fi
+	zte_u30_power_calibration_write_state \
+		"$_zte_u30_calibration_restore_state_original" \
+		"$_zte_u30_calibration_restore_state_manager" || return 1
+	"$ZTE_U30_CALIBRATION_SYNC" >/dev/null 2>&1 || return 1
+	if [ -e "$ZTE_U30_CALIBRATION_LOCK_DIR/$_zte_u30_calibration_restore_state_owner" ] ||
+		[ -L "$ZTE_U30_CALIBRATION_LOCK_DIR/$_zte_u30_calibration_restore_state_owner" ]; then
+		zte_u30_power_calibration_release_transaction \
+			"$_zte_u30_calibration_restore_state_owner" || return 1
+	fi
+}
+
+zte_u30_power_calibration_finalize() {
+	_zte_u30_calibration_finalize_manager=$1
+	_zte_u30_calibration_finalize_original=$2
+	_zte_u30_calibration_finalize_owner=$3
+	if [ "$_zte_u30_calibration_finalize_manager" = true ]; then
+		if ! env ZTE_U30_CALIBRATION_BYPASS_LOCK=1 \
+			"$ZTE_U30_CALIBRATION_MANAGER_SERVICE" start \
+			>/dev/null 2>&1 ||
+			! zte_u30_power_calibration_wait_running; then
+			zte_u30_power_calibration_restore_transaction_state \
+				"$_zte_u30_calibration_finalize_original" \
+				"$_zte_u30_calibration_finalize_manager" \
+				"$_zte_u30_calibration_finalize_owner" || :
+			return 1
+		fi
+	fi
+	if ! zte_u30_power_calibration_write_state null \
+		"$_zte_u30_calibration_finalize_manager" ||
+		! zte_u30_power_calibration_write_committed \
+			"$_zte_u30_calibration_finalize_manager" ||
+		! "$ZTE_U30_CALIBRATION_SYNC" >/dev/null 2>&1; then
+		zte_u30_power_calibration_restore_transaction_state \
+			"$_zte_u30_calibration_finalize_original" \
+			"$_zte_u30_calibration_finalize_manager" \
+			"$_zte_u30_calibration_finalize_owner" || :
+		return 1
+	fi
+	_zte_u30_calibration_finalize_status=0
+	rm -f "$ZTE_U30_CALIBRATION_STATE_DIR/state.json" 2>/dev/null ||
+		_zte_u30_calibration_finalize_status=1
+	[ "$_zte_u30_calibration_finalize_status" = 0 ] &&
+		rmdir "$ZTE_U30_CALIBRATION_STATE_DIR" 2>/dev/null ||
+		_zte_u30_calibration_finalize_status=1
+	[ "$_zte_u30_calibration_finalize_status" = 0 ] &&
+		"$ZTE_U30_CALIBRATION_SYNC" >/dev/null 2>&1 ||
+		_zte_u30_calibration_finalize_status=1
+	[ "$_zte_u30_calibration_finalize_status" = 0 ] &&
+		zte_u30_power_calibration_release_transaction \
+			"$_zte_u30_calibration_finalize_owner" ||
+		_zte_u30_calibration_finalize_status=1
+	[ "$_zte_u30_calibration_finalize_status" = 0 ] &&
+		rm -f "$ZTE_U30_CALIBRATION_LOCK_DIR/committed" 2>/dev/null ||
+		_zte_u30_calibration_finalize_status=1
+	[ "$_zte_u30_calibration_finalize_status" = 0 ] &&
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null ||
+		_zte_u30_calibration_finalize_status=1
+	[ "$_zte_u30_calibration_finalize_status" = 0 ] &&
+		rm -f "$ZTE_U30_CALIBRATION_COOKIE_FILE" 2>/dev/null ||
+		_zte_u30_calibration_finalize_status=1
+	if [ "$_zte_u30_calibration_finalize_status" != 0 ]; then
+		zte_u30_power_calibration_restore_transaction_state \
+			"$_zte_u30_calibration_finalize_original" \
+			"$_zte_u30_calibration_finalize_manager" \
+			"$_zte_u30_calibration_finalize_owner" || :
+		return 1
+	fi
+}
+
+zte_u30_power_calibration_finish_committed() {
+	_zte_u30_calibration_committed_manager=$1
+	if [ "$_zte_u30_calibration_committed_manager" = true ]; then
+		if ! "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+			>/dev/null 2>&1; then
+			env ZTE_U30_CALIBRATION_BYPASS_LOCK=1 \
+				"$ZTE_U30_CALIBRATION_MANAGER_SERVICE" start \
+				>/dev/null 2>&1 || return 1
+			zte_u30_power_calibration_wait_running || return 1
+		fi
+	elif "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+		>/dev/null 2>&1; then
+		"$ZTE_U30_CALIBRATION_MANAGER_SERVICE" stop \
+			>/dev/null 2>&1 || return 1
+		zte_u30_power_calibration_wait_stopped || return 1
+	fi
+	if [ -d "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_STATE_DIR" ]; then
+		rm -f "$ZTE_U30_CALIBRATION_STATE_DIR/state.json" 2>/dev/null ||
+			return 1
+		[ "$(zte_u30_power_calibration_dir_entry_count \
+			"$ZTE_U30_CALIBRATION_STATE_DIR")" = 0 ] || return 1
+		rmdir "$ZTE_U30_CALIBRATION_STATE_DIR" || return 1
+	elif [ -e "$ZTE_U30_CALIBRATION_STATE_DIR" ] ||
+		[ -L "$ZTE_U30_CALIBRATION_STATE_DIR" ]; then
+		return 1
+	fi
+	[ "$(zte_u30_power_calibration_dir_entry_count \
+		"$ZTE_U30_CALIBRATION_LOCK_DIR")" = 1 ] || return 1
+	rm -f "$ZTE_U30_CALIBRATION_LOCK_DIR/committed" || return 1
+	rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" || return 1
+	rm -f "$ZTE_U30_CALIBRATION_COOKIE_FILE" 2>/dev/null || return 1
+	printf \
+		'{"ok":true,"mode":"recover","original_restored":false,"manager_restored":%s}\n' \
+		"$_zte_u30_calibration_committed_manager"
+}
+
+zte_u30_power_calibration_execute() {
+	_zte_u30_calibration_confirmation=${1-}
+	zte_u30_power_calibration_require_root || return 1
+	[ "$_zte_u30_calibration_confirmation" = I_AM_ON_SPARE_U30 ] || return 2
+	zte_u30_power_calibration_profile_ready || return 1
+	zte_u30_power_calibration_gates_disabled || return 1
+	zte_validate_host "$ZTE_U30_CALIBRATION_HOST" || return 1
+	zte_validate_netdev "$ZTE_U30_CALIBRATION_NETDEV" || return 1
+	zte_netifd_route_uses_device "$ZTE_U30_CALIBRATION_HOST" \
+		"$ZTE_U30_CALIBRATION_NETDEV" || return 1
+	[ -x "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" ] || return 1
+	zte_u30_power_calibration_settings_valid || return 1
+	zte_u30_power_calibration_state_absent || return 1
+	_zte_u30_calibration_password=$(zte_u30_power_calibration_password) || return 1
+
+	umask 077
+	mkdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || return 1
+	chmod 700 "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || {
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	}
+	zte_u30_power_calibration_lock_secure || {
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	}
+	zte_u30_power_calibration_write_owner || {
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	}
+	mkdir "$ZTE_U30_CALIBRATION_STATE_DIR" 2>/dev/null || {
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	}
+	if ! chmod 700 "$ZTE_U30_CALIBRATION_STATE_DIR" 2>/dev/null; then
+		rmdir "$ZTE_U30_CALIBRATION_STATE_DIR" 2>/dev/null || :
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	fi
+
+	_zte_u30_calibration_manager=false
+	if "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+		>/dev/null 2>&1; then
+		_zte_u30_calibration_manager=true
+	fi
+	zte_u30_power_calibration_write_state null \
+		"$_zte_u30_calibration_manager" || {
+		rmdir "$ZTE_U30_CALIBRATION_STATE_DIR" 2>/dev/null || :
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" 2>/dev/null || :
+		return 1
+	}
+
+	if [ "$_zte_u30_calibration_manager" = true ]; then
+		if ! "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" stop \
+			>/dev/null 2>&1 ||
+			! zte_u30_power_calibration_wait_stopped; then
+			zte_u30_power_calibration_finalize \
+				"$_zte_u30_calibration_manager" null owner \
+				>/dev/null 2>&1 || :
+			printf '%s\n' manager_stop_failed
+			return 1
+		fi
+	fi
+
+	_zte_u30_calibration_original=$(zte_u30_power_calibration_read_mode \
+		"$_zte_u30_calibration_password") || {
+		zte_u30_power_calibration_finalize \
+			"$_zte_u30_calibration_manager" null owner \
+			>/dev/null 2>&1 || :
+		printf '%s\n' read_failed
+		return 1
+	}
+	case $_zte_u30_calibration_original in
+		charging) _zte_u30_calibration_target=direct_supply ;;
+		direct_supply) _zte_u30_calibration_target=charging ;;
+		*) return 1 ;;
+	esac
+	zte_u30_power_calibration_write_state \
+		"$_zte_u30_calibration_original" \
+		"$_zte_u30_calibration_manager" || {
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		return 1
+	}
+	if ! "$ZTE_U30_CALIBRATION_SYNC" >/dev/null 2>&1; then
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		return 1
+	fi
+
+	_zte_u30_calibration_target_result=ok
+	if ! _zte_u30_calibration_target_result=$(zte_execute_power_supply_mode \
+		"$ZTE_U30_CALIBRATION_HOST" \
+		"$_zte_u30_calibration_password" \
+		"$ZTE_U30_CALIBRATION_COOKIE_FILE" \
+		"$_zte_u30_calibration_target"); then
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		case $_zte_u30_calibration_target_result in
+			write_ambiguous|readback_failed|readback_mismatch)
+				printf '%s\n' target_uncertain ;;
+			*) printf '%s\n' target_failed ;;
+		esac
+		return 1
+	fi
+	if ! zte_netifd_route_uses_device "$ZTE_U30_CALIBRATION_HOST" \
+		"$ZTE_U30_CALIBRATION_NETDEV"; then
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		printf '%s\n' management_route_lost
+		return 1
+	fi
+	if ! zte_execute_power_supply_mode "$ZTE_U30_CALIBRATION_HOST" \
+		"$_zte_u30_calibration_password" \
+		"$ZTE_U30_CALIBRATION_COOKIE_FILE" \
+		"$_zte_u30_calibration_original" >/dev/null; then
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		printf '%s\n' restore_failed
+		return 1
+	fi
+	if ! zte_netifd_route_uses_device "$ZTE_U30_CALIBRATION_HOST" \
+		"$ZTE_U30_CALIBRATION_NETDEV"; then
+		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		printf '%s\n' restored_route_lost
+		return 1
+	fi
+	zte_u30_power_calibration_finalize \
+		"$_zte_u30_calibration_manager" \
+		"$_zte_u30_calibration_original" owner || {
+		printf '%s\n' cleanup_failed
+		return 1
+	}
+	printf '%s\n' \
+		"{\"ok\":true,\"mode\":\"execute\",\"tested\":\"$_zte_u30_calibration_target\",\"target_verified\":true,\"original\":\"$_zte_u30_calibration_original\",\"original_restored\":true,\"management_route_preserved\":true}"
+}
+
+zte_u30_power_calibration_recover() {
+	zte_u30_power_calibration_require_root || return 1
+	zte_u30_power_calibration_profile_ready || return 1
+	zte_u30_power_calibration_gates_disabled || return 1
+	zte_validate_host "$ZTE_U30_CALIBRATION_HOST" || return 1
+	zte_validate_netdev "$ZTE_U30_CALIBRATION_NETDEV" || return 1
+	[ -x "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" ] || return 1
+	zte_u30_power_calibration_settings_valid || return 1
+	zte_u30_power_calibration_lock_secure || {
+		printf '%s\n' invalid_state
+		return 1
+	}
+	if [ -e "$ZTE_U30_CALIBRATION_LOCK_DIR/owner" ] ||
+		[ -L "$ZTE_U30_CALIBRATION_LOCK_DIR/owner" ]; then
+		_zte_u30_calibration_owner=$(zte_u30_power_calibration_owner_pid) || {
+			printf '%s\n' invalid_state
+			return 1
+		}
+		if kill -0 "$_zte_u30_calibration_owner" 2>/dev/null; then
+			printf '%s\n' recovery_busy
+			return 1
+		fi
+		rm -f "$ZTE_U30_CALIBRATION_LOCK_DIR/owner" || return 1
+	fi
+	if [ -e "$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active" ] ||
+		[ -L "$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active" ]; then
+		_zte_u30_calibration_claim_owner=$(
+			zte_u30_power_calibration_claim_pid
+		) || {
+			printf '%s\n' invalid_state
+			return 1
+		}
+		if kill -0 "$_zte_u30_calibration_claim_owner" 2>/dev/null; then
+			printf '%s\n' recovery_busy
+			return 1
+		fi
+		rm -f "$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active" || return 1
+	fi
+	zte_u30_power_calibration_cleanup_stale_lock_entries || {
+		printf '%s\n' invalid_state
+		return 1
+	}
+	zte_u30_power_calibration_cleanup_stale_temp || {
+		printf '%s\n' invalid_state
+		return 1
+	}
+	if [ -e "$ZTE_U30_CALIBRATION_LOCK_DIR/committed" ] ||
+		[ -L "$ZTE_U30_CALIBRATION_LOCK_DIR/committed" ]; then
+		_zte_u30_calibration_committed_manager=$(
+			zte_u30_power_calibration_read_committed
+		) || {
+			printf '%s\n' invalid_state
+			return 1
+		}
+		zte_u30_power_calibration_finish_committed \
+			"$_zte_u30_calibration_committed_manager"
+		return $?
+	fi
+	if [ "$(zte_u30_power_calibration_dir_entry_count \
+		"$ZTE_U30_CALIBRATION_LOCK_DIR")" = 0 ] &&
+		[ ! -e "$ZTE_U30_CALIBRATION_STATE_DIR/state.json" ] &&
+		[ ! -L "$ZTE_U30_CALIBRATION_STATE_DIR/state.json" ]; then
+		if [ -d "$ZTE_U30_CALIBRATION_STATE_DIR" ] &&
+			[ ! -L "$ZTE_U30_CALIBRATION_STATE_DIR" ]; then
+			[ "$(zte_u30_power_calibration_dir_entry_count \
+				"$ZTE_U30_CALIBRATION_STATE_DIR")" = 0 ] || return 1
+			rmdir "$ZTE_U30_CALIBRATION_STATE_DIR" || return 1
+		elif [ -e "$ZTE_U30_CALIBRATION_STATE_DIR" ] ||
+			[ -L "$ZTE_U30_CALIBRATION_STATE_DIR" ]; then
+			return 1
+		fi
+		rmdir "$ZTE_U30_CALIBRATION_LOCK_DIR" || return 1
+		rm -f "$ZTE_U30_CALIBRATION_COOKIE_FILE" 2>/dev/null || return 1
+		_zte_u30_calibration_manager_restored=false
+		if "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+			>/dev/null 2>&1; then
+			_zte_u30_calibration_manager_restored=true
+		fi
+		printf \
+			'{"ok":true,"mode":"recover","original_restored":false,"manager_restored":%s}\n' \
+			"$_zte_u30_calibration_manager_restored"
+		return 0
+	fi
+	zte_u30_power_calibration_load_state || {
+		printf '%s\n' invalid_state
+		return 1
+	}
+	_zte_u30_calibration_original=$_zte_u30_calibration_loaded_original
+	_zte_u30_calibration_manager=$_zte_u30_calibration_loaded_manager
+	_zte_u30_calibration_claim=$ZTE_U30_CALIBRATION_LOCK_DIR/recovery-active
+	[ "$(zte_u30_power_calibration_dir_entry_count \
+		"$ZTE_U30_CALIBRATION_LOCK_DIR")" = 0 ] || {
+		printf '%s\n' recovery_busy
+		return 1
+	}
+	zte_u30_power_calibration_create_claim || return 1
+	if "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" running \
+		>/dev/null 2>&1; then
+		if ! "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" stop \
+			>/dev/null 2>&1 ||
+			! zte_u30_power_calibration_wait_stopped; then
+			zte_u30_power_calibration_release_transaction \
+				recovery-active 2>/dev/null || :
+			printf '%s\n' recovery_stop_failed
+			return 1
+		fi
+	fi
+	_zte_u30_calibration_restored=false
+	if [ "$_zte_u30_calibration_original" != null ]; then
+		_zte_u30_calibration_password=$(zte_u30_power_calibration_password) || {
+			zte_u30_power_calibration_release_transaction \
+				recovery-active 2>/dev/null || :
+			return 1
+		}
+		zte_execute_power_supply_mode "$ZTE_U30_CALIBRATION_HOST" \
+			"$_zte_u30_calibration_password" \
+			"$ZTE_U30_CALIBRATION_COOKIE_FILE" \
+			"$_zte_u30_calibration_original" >/dev/null || {
+			zte_u30_power_calibration_release_transaction \
+				recovery-active 2>/dev/null || :
+			printf '%s\n' recovery_restore_failed
+			return 1
+		}
+		zte_netifd_route_uses_device "$ZTE_U30_CALIBRATION_HOST" \
+			"$ZTE_U30_CALIBRATION_NETDEV" || {
+			zte_u30_power_calibration_release_transaction \
+				recovery-active 2>/dev/null || :
+			printf '%s\n' recovery_route_failed
+			return 1
+		}
+		_zte_u30_calibration_restored=true
+	fi
+	zte_u30_power_calibration_finalize \
+		"$_zte_u30_calibration_manager" \
+		"$_zte_u30_calibration_original" recovery-active || return 1
+	printf \
+		'{"ok":true,"mode":"recover","original_restored":%s,"manager_restored":%s}\n' \
+		"$_zte_u30_calibration_restored" \
+		"$_zte_u30_calibration_manager"
+}
+
+zte_u30_power_calibration_load_config() {
+	[ -n "$ZTE_U30_CALIBRATION_HOST" ] || ZTE_U30_CALIBRATION_HOST=$(
+		uci -q get zte-usb-wifi-manager.zte.host 2>/dev/null ||
+			printf '%s\n' 192.168.0.1)
+	[ -n "$ZTE_U30_CALIBRATION_NETDEV" ] || ZTE_U30_CALIBRATION_NETDEV=$(
+		uci -q get zte-usb-wifi-manager.zte.netdev 2>/dev/null ||
+			printf '%s\n' eth2)
+	[ -n "$ZTE_U30_CALIBRATION_ADAPTER" ] || ZTE_U30_CALIBRATION_ADAPTER=$(
+		uci -q get zte-usb-wifi-manager.zte.adapter 2>/dev/null ||
+			printf '%s\n' auto)
+	[ -n "$ZTE_U30_CALIBRATION_WRITE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_WRITE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.main.write_enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_POWER_WRITE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_POWER_WRITE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.power_supply_write_enabled \
+			2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_SMART_CHARGE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_SMART_CHARGE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.charging.enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_SIM_WRITE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_SIM_WRITE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.sim_switch_enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_CELLULAR_WRITE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_CELLULAR_WRITE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.cellular_write_enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_WIFI_WRITE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_WIFI_WRITE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.wifi_write_enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_TRAFFIC_WRITE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_TRAFFIC_WRITE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.traffic_write_enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_SMS_WRITE_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_SMS_WRITE_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.sms_write_enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_REBOOT_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_REBOOT_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.device_reboot_enabled 2>/dev/null || printf '0\n')
+	[ -n "$ZTE_U30_CALIBRATION_SHUTDOWN_ENABLED" ] ||
+		ZTE_U30_CALIBRATION_SHUTDOWN_ENABLED=$(uci -q get \
+			zte-usb-wifi-manager.writes.device_shutdown_enabled 2>/dev/null || printf '0\n')
+	ZTE_HTTP_INTERFACE=$ZTE_U30_CALIBRATION_NETDEV
+	export ZTE_HTTP_INTERFACE
+}
+
+zte_u30_power_calibration_main() {
+	zte_u30_power_calibration_load_config
+	case ${1-} in
+		probe) [ "$#" -eq 1 ] || return 2; zte_u30_power_calibration_probe ;;
+		execute)
+			[ "$#" -eq 2 ] || return 2
+			zte_u30_power_calibration_execute "$2"
+			;;
+		recover) [ "$#" -eq 1 ] || return 2; zte_u30_power_calibration_recover ;;
+		*) return 2 ;;
+	esac
+}
+
+if [ "${0##*/}" = zte-u30-power-calibrate ]; then
+	zte_u30_power_calibration_main "$@"
+fi

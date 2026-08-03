@@ -67,8 +67,9 @@ DHCP 超时、U25S 无公网和代理故障等更高层场景仍是后续覆盖�
 
 ## L5：备用硬件台架
 
-USB 真实断电、USB 控制器重新枚举、`zte-usb-recover` 协调这三项无法靠虚拟机证明，
-必须用备用 TR3000（或其他测试路由器）+ 备用 U25S 做硬件在环测试。
+USB 真实断电、USB 控制器重新枚举、`zte-usb-recover` 协调以及 U30 Pro 原生
+`power_supply_mode` 的电池行为和 USB 数据连续性无法靠虚拟机证明，必须用备用
+TR3000（或其他测试路由器）+ 备用中兴设备做硬件在环测试。
 
 包内提供两个只供备用台架使用的工具：
 
@@ -77,6 +78,9 @@ USB 真实断电、USB 控制器重新枚举、`zte-usb-recover` 协调这三项
   消失/恢复和 U25S 管理接口。
 - `/usr/libexec/zte-usb-soak`：以有界 JSONL 采集 72 小时运行指标；电脑端用
   `scripts/verify-router-soak.js` 验证时长、状态新鲜度、RSS、文件句柄和恢复互锁。
+- `/usr/libexec/zte-u30-power-calibrate`：默认只读探测；只有精确 U30 配置档、所有生产
+  写门关闭并输入备用机确认词后，才切到相反的设备原生供电模式并自动恢复原模式；
+  每次写入都强制读回和检查管理路由，失败时持久保留可恢复状态并阻止 manager 启动。
 
 官方 OpenWrt 的 TR3000 v1 DTS 把 GPIO 9 定义为 `usb-vbus` fixed regulator，
 由 xHCI 控制器消费；官方 profile 使用固定 bind/unbind 入口并同时核对 regulator
@@ -84,21 +88,21 @@ USB 真实断电、USB 控制器重新枚举、`zte-usb-recover` 协调这三项
 主路由器只读证据只能确定候选控制路径，不能替代备用实机校准：
 <https://github.com/openwrt/openwrt/blob/main/target/linux/mediatek/dts/mt7981b-cudy-tr3000-v1.dtsi>。
 
-## 电池策略：影子执行
+## 电池策略：设备原生供电模式
 
-Power Adapter 三种后端：
+U30 Pro 使用设备原生 `power_supply_mode`，不会关闭 USB VBUS：
 
-- `mock`：只记录动作，用于自动化测试。
-- `dry-run`：读真实状态，绝不执行 USB 开关。
-- `hardware`：最终验证通过后才允许控制硬件。
+- `charging`：允许电池充电。
+- `direct_supply`：停止给电池充电，但预期保持 USB 数据连接。
+- 未经备用设备双向校准时，生产静态 capability 和全部 UCI 写门保持关闭。
 
-影子模式只记录决策不执行：
+离线测试和未解锁阶段只记录策略决策不执行：
 
 ```text
-decision=POWER_OFF
+decision=SET_DIRECT_SUPPLY
 executed=false
 reason=battery_reached_high
-backend=dry-run
+backend=device_power_supply
 ```
 
 连续运行数天观察决策，无误判后才允许真实执行。
@@ -118,7 +122,7 @@ backend=dry-run
 - OpenClash、LED 服务重启
 - 有线 WAN 与 usbwan 同时在线
 
-任何无法确认的状态都必须落到"保持现状"或 `FAIL_SAFE_ON`，不能主动断电。
+任何无法确认的状态都必须保持现状，不能主动切换供电模式或断电。
 
 ## 主路由器最终上线流程（L6）
 

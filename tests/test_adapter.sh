@@ -54,6 +54,32 @@ assert_eq U30ProV1.0.0B23 "$(printf '%s' "$u30_normalized" | node -e 'let s="";p
 assert_success zte_device_profile_select_named zte_u25s
 assert_success zte_adapter_apply_profile
 
+# Compile-time write evidence is model-specific. Unlocking a verified U30
+# contract must never make the same operation available on an uncalibrated
+# U25S, including the metadata-only profile path used by rpcd.
+ZTE_U30_CAP_POWER_SUPPLY_WRITE=1
+ZTE_U30_CAP_CELLULAR_WRITE=1
+assert_success zte_device_profile_select_named zte_u30
+assert_success zte_adapter_apply_profile
+assert_eq 1 "$ZTE_CAP_POWER_SUPPLY_WRITE"
+assert_eq 1 "$ZTE_CAP_CELLULAR_WRITE"
+assert_success zte_adapter_action_supported set_power_supply_mode
+assert_success zte_adapter_action_supported set_apn
+assert_success zte_device_profile_select_named zte_u25s
+assert_success zte_adapter_apply_profile
+assert_eq 0 "$ZTE_CAP_POWER_SUPPLY_WRITE"
+assert_eq 0 "$ZTE_CAP_CELLULAR_WRITE"
+assert_failure zte_adapter_action_supported set_power_supply_mode
+assert_failure zte_adapter_action_supported set_apn
+assert_success zte_adapter_apply_cached_profile zte_u30 'U30 Pro'
+assert_eq 1 "$ZTE_CAP_POWER_SUPPLY_WRITE"
+assert_eq 1 "$ZTE_CAP_CELLULAR_WRITE"
+assert_success zte_adapter_apply_cached_profile zte_u25s U25S
+assert_eq 0 "$ZTE_CAP_POWER_SUPPLY_WRITE"
+assert_eq 0 "$ZTE_CAP_CELLULAR_WRITE"
+ZTE_U30_CAP_POWER_SUPPLY_WRITE=0
+ZTE_U30_CAP_CELLULAR_WRITE=0
+
 case $ZTE_READ_FIELDS in
     *Password*|*WPAPSK*|*passwd*|*sim_iccid*|*imei*|*imsi*)
         fail 'read field allowlist contains a credential or unique identifier'

@@ -389,6 +389,41 @@ cat /var/run/zte-usb-wifi-manager/status.json
 开发者只能在备用 TR3000 v1 与备用 U25S 台架上使用其 `probe`、`execute` 和
 `recover` 子命令研究显式故障恢复。正式 LuCI 页面目前不提供 USB 断电按钮。
 
+### 备用 U30 Pro 智能充电校准
+
+`zte-u30-power-calibrate` 验证的是设备原生 `power_supply_mode`，不会关闭 USB
+VBUS。它默认只读，并强制要求选择精确的 `zte_u30` 配置档、设备管理路由正确，且
+全局写门、供电模式写门和自动智能充电门全部关闭：
+
+```sh
+/usr/libexec/zte-u30-power-calibrate probe
+```
+
+只有确认路由器和 U30 Pro 均为备用台架、当前不承担上网任务后，才可执行双向测试：
+
+```sh
+/usr/libexec/zte-u30-power-calibrate execute I_AM_ON_SPARE_U30
+```
+
+工具会先持久记录原模式并停止 manager，再切换到相反模式，强制读回并检查管理路由，
+随后切回原模式并再次验证。厂商写请求不会因超时自动重发。任何无法确认的恢复结果
+都会让 manager 保持停止，并在以下 root-owned 路径保留 `0700` 锁和 `0600` 状态：
+
+```text
+/etc/zte-usb-wifi-manager/u30-power-calibration
+/etc/zte-usb-wifi-manager/u30-power-calibration.lock
+```
+
+排除外部故障后恢复原模式和 manager：
+
+```sh
+/usr/libexec/zte-u30-power-calibrate recover
+```
+
+只要恢复状态或锁仍存在，服务启动和包卸载都会 fail-closed。校准工具不会自行修改
+生产 capability；只有最后真机阶段的双向切换、USB 数据连续性与恢复证据全部通过，
+才会在独立变更中仅开放 U30 Pro 的对应能力。
+
 ### 备用 U25S SIM 写接口校准
 
 以下命令只能在备用 U25S 上执行，不能用于主路由器或任何正在承担上网任务的设备。
@@ -485,9 +520,10 @@ OpenWrt 24.10.7 生成 `.ipk`。编译环境路径中不要包含空格，也不
 
 ### 卸载
 
-包管理器会先检查 SIM 校准恢复状态；如果
+包管理器会先检查 SIM 和 U30 供电模式校准恢复状态；如果
 `/etc/zte-usb-wifi-manager/sim-calibration` 或
-`/etc/zte-usb-wifi-manager/sim-calibration.lock` 仍存在，升级或卸载会 fail-closed，
+`/etc/zte-usb-wifi-manager/sim-calibration.lock`、
+`/etc/zte-usb-wifi-manager/u30-power-calibration` 或其 `.lock` 仍存在，升级或卸载会 fail-closed，
 且不会自动调用真实 SIM `recover`。请先按“备用 U25S SIM 写接口校准”完成有界
 恢复。没有 SIM 恢复状态时，包管理器才会停止管理器并运行
 `/usr/libexec/zte-usb-power-restore`。如果无法确认 USB 已恢复上电或恢复服务
