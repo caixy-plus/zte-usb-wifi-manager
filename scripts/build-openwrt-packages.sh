@@ -145,7 +145,8 @@ IFS= read -r sdk_dir <"$sdk_list"
 (
     cd "$sdk_dir"
     cp "$work_dir/feeds.buildinfo" feeds.conf
-    ./scripts/feeds update -a
+    ./scripts/feeds update packages
+    ./scripts/feeds update luci
     [ -f feeds/luci/luci.mk ] ||
         die 'pinned LuCI feed does not contain luci.mk'
     # Install only LuCI's build helper. Runtime dependencies such as curl are
@@ -159,6 +160,8 @@ IFS= read -r sdk_dir <"$sdk_list"
     ln -s "$repo_root/luci-app-zte-usb-wifi-manager" \
         package/luci-app-zte-usb-wifi-manager
     [ -f .config ] || : >.config
+    sed '/^CONFIG_PACKAGE_.*=[my]$/d' .config >.config.selected
+    mv .config.selected .config
     for _zte_all_symbol in ALL ALL_KMODS ALL_NONSHARED; do
         if grep -q "^CONFIG_$_zte_all_symbol=" .config; then
             sed "s/^CONFIG_$_zte_all_symbol=.*/CONFIG_$_zte_all_symbol=n/" \
@@ -172,6 +175,11 @@ IFS= read -r sdk_dir <"$sdk_list"
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
         'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
     make defconfig
+    ! grep -Eq '^CONFIG_ALL(_KMODS|_NONSHARED)?=y$' .config ||
+        die 'SDK retained a full package selection'
+    _zte_selected_kmods=$(grep -c '^CONFIG_PACKAGE_kmod-.*=m$' .config || :)
+    [ "$_zte_selected_kmods" -le 32 ] ||
+        die "SDK selected too many kernel packages: $_zte_selected_kmods"
     grep -Fqx 'CONFIG_PACKAGE_zte-usb-wifi-manager=m' .config ||
         die 'SDK configuration did not select the backend package'
     grep -Fqx 'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' .config ||
