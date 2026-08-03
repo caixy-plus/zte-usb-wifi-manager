@@ -14,10 +14,10 @@
 
 ## 当前状态
 
-仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r29 / LuCI r12
-已完成本地离线自动化验证、OpenWrt 25.12.5 / 24.10.7 官方双 SDK 构建，以及两套
-隔离 QEMU 中从 backend r15 / LuCI r4 原位升级的完整生命周期验证。最近完成路由器
-只读验证的版本为 backend r26 / LuCI r12；设备写能力和 72 小时稳定性仍待备用硬件
+仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r30 / LuCI r12
+已完成本地离线自动化验证；最近完成官方双 SDK、双版本隔离 QEMU 和路由器只读
+验证的版本为 backend r29 / LuCI r12。r30 的正式构建与部署证据将在本次安全门禁
+复核通过后重新生成；设备写能力和 72 小时稳定性仍待备用硬件
 验收：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
@@ -98,6 +98,11 @@
   Cudy TR3000 v1 + U30 Pro 上完成只读验收。完整 U30 状态恢复为 `ok`；不支持的
   客户端明细端点只降级该子功能，不再使主快照失败。详见
   [r26/r12 最终验证](docs/validation/2026-08-03-r26-r12-final.md)。
+- 当前 r29/r12 已通过两套官方 SDK 构建、r28→r29 双版本隔离 QEMU 升级、卸装
+  和配置保留验证，并正式升级到 Cudy TR3000 v1。U30 只读状态、写校准 `probe`
+  与修复后的脱敏 soak 单次采样均通过；因 U30 是当前默认出口，真实模式切换和
+  72 小时采样仍等待备用链路。详见
+  [r29/r12 最终验证](docs/validation/2026-08-03-r29-r12-final.md)。
 
 当前状态不代表设备写接口或 72 小时稳定性已经完成人工上机验收。
 
@@ -119,16 +124,16 @@
 
 当前构建与验证证据：
 
-| OpenWrt | 包格式 | 当前 r26 / LuCI r12 | 验证结果 |
+| OpenWrt | 包格式 | 当前 r29 / LuCI r12 | 验证结果 |
 |---|---|---|---|
-| OpenWrt 25.12.5 | `.apk` | 官方 SDK 构建通过 | r25→r26 QEMU 升级及 Cudy/U30 只读验收通过 |
-| OpenWrt 24.10.7 | `.ipk` | 官方 SDK 构建通过 | r25→r26 QEMU 升级、配置、服务和 ubus 通过 |
+| OpenWrt 25.12.5 | `.apk` | 官方 SDK 构建通过 | r28→r29 QEMU 升级及 Cudy/U30 只读验收通过 |
+| OpenWrt 24.10.7 | `.ipk` | 官方 SDK 构建通过 | r28→r29 QEMU 升级、配置、服务、ubus 和卸装通过 |
 
-当前 backend r26 / LuCI r12 已完成本地检查、官方双版本 SDK 构建、隔离 QEMU
-升级验证和 Cudy/U30 只读验收。升级保留自定义轮询值、已选 `zte_u30` 适配器和所有
-关闭状态的写门控。记录见
-[r26/r12 最终验证](docs/validation/2026-08-03-r26-r12-final.md)。设备写 capability
-仍保持关闭。
+当前 backend r29 / LuCI r12 已完成本地检查、官方双版本 SDK 构建、隔离 QEMU
+升级/卸装验证和 Cudy/U30 只读验收。升级保留自定义轮询值、已选 `zte_u30` 适配器
+和所有关闭状态的写门控。记录见
+[r29/r12 最终验证](docs/validation/2026-08-03-r29-r12-final.md)。设备写 capability
+仍保持关闭；U30 是当前默认上网出口，只有迁移到备用链路后才能执行真实模式切换。
 
 从只支持 U25S 的旧版本升级时会保留 `zte.adapter=zte_u25s`，避免未经校准的自动
 识别让现有 U25S 离线。更换为 U30 Pro 的升级设备需在最后的真机调试中显式改为
@@ -217,7 +222,7 @@ r13 已纳入实机 modem 状态并通过主路由器唯一一次只读 probe。
 后端现会把登录被拒绝单独报告为 `authentication_failed`，LuCI 显示“设备认证
 失败”，并继续使用失败退避，避免把错误密码伪装成普通离线或在锁定期频繁重试。
 
-当前源码对应的下一预发布标签为 `v0.1.0-rc1-r29`，尚未发布；只有维护者显式创建并推送与包元数据
+当前源码对应的下一预发布标签为 `v0.1.0-rc1-r30`，尚未发布；只有维护者显式创建并推送与包元数据
 匹配的 tag 才会发布。带 `-rc` 的 tag 自动创建 prerelease，稳定版 tag 创建普通
 Release。已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验，但不包含本次
 产品边界重置，也不代表真实设备写接口或 72 小时稳定性验收已经完成。
@@ -535,8 +540,10 @@ OpenWrt 24.10.7 生成 `.ipk`。编译环境路径中不要包含空格，也不
 `/etc/zte-usb-wifi-manager/sim-calibration` 或
 `/etc/zte-usb-wifi-manager/sim-calibration.lock`、
 `/etc/zte-usb-wifi-manager/u30-power-calibration` 或其 `.lock` 仍存在，升级或卸载会 fail-closed，
-且不会自动调用真实 SIM `recover`。请先按“备用 U25S SIM 写接口校准”完成有界
-恢复。没有 SIM 恢复状态时，包管理器才会停止管理器并运行
+且不会自动调用真实设备写恢复。SIM 校准残留需执行
+`/usr/libexec/zte-u25s-sim-calibrate recover`，U30 供电模式校准残留需执行
+`/usr/libexec/zte-u30-power-calibrate recover`；两者都必须先确认设备与管理链路可达。
+没有语义写恢复状态时，包管理器才会停止管理器并运行
 `/usr/libexec/zte-usb-power-restore`。如果无法确认 USB 已恢复上电或恢复服务
 状态已处理，卸载仍会失败并保留运行时安全标记，避免把设备留在无协调状态。
 
@@ -579,6 +586,7 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 - [r24/r12 官方 SDK 构建验证](docs/validation/2026-08-03-r24-r12-sdk.md)
 - [r15/r4 到 r24/r12 隔离 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)
 - [r26/r12 双 SDK、QEMU 与 U30 真机只读验证](docs/validation/2026-08-03-r26-r12-final.md)
+- [r29/r12 双 SDK、QEMU 与 U30 真机安全验证](docs/validation/2026-08-03-r29-r12-final.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
 - [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 

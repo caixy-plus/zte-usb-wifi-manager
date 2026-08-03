@@ -53,8 +53,24 @@ ip() {
         ipv4:'route show default dev eth0.1')
             printf '%s\n' 'default via 192.0.2.1 dev eth0.1'
             ;;
+        ipv4:'-6 route show default dev eth0.1')
+            return 0
+            ;;
+        ipv6:'route show default dev eth0.1')
+            return 0
+            ;;
         ipv6:'-6 route show default dev eth0.1')
             printf '%s\n' 'default via 2001:db8::1 dev eth0.1'
+            ;;
+        none:'route show default dev eth0.1'|\
+        none:'-6 route show default dev eth0.1'|\
+        none:'route show default dev eth2'|\
+        none:'-6 route show default dev eth2'|\
+        none:'route show default dev eth9'|\
+        none:'-6 route show default dev eth9'|\
+        regex_neighbor:'route show default dev eth0.1'|\
+        regex_neighbor:'-6 route show default dev eth0.1')
+            return 0
             ;;
         regex_neighbor:'route show default')
             printf '%s\n' 'default via 192.0.2.1 dev eth0x1 proto static'
@@ -83,6 +99,17 @@ assert_success zte_netifd_route_uses_device 192.168.0.1:8080 eth2
 _zte_test_ip_mode=route_wrong
 assert_failure zte_netifd_route_uses_device 192.168.0.1 eth2
 assert_failure zte_netifd_route_uses_device zte.local eth2
+_zte_test_ip_mode=ipv4
+assert_success zte_netifd_device_is_default_route eth0.1
+_zte_test_ip_mode=ipv6
+assert_success zte_netifd_device_is_default_route eth0.1
+_zte_test_ip_mode=none
+assert_failure zte_netifd_device_is_default_route eth0.1
+_zte_test_ip_mode=route_check_error
+default_route_status=0
+zte_netifd_device_is_default_route eth0.1 || default_route_status=$?
+assert_eq 2 "$default_route_status" \
+    'routing-table inspection errors must be distinguishable from no route'
 _zte_test_ip_mode=none
 actual=$(zte_netifd_collect wwan eth9)
 assert_eq \
@@ -113,6 +140,13 @@ assert_eq \
 
 _zte_test_ubus_mode=status
 _zte_test_l3_device=eth0.1
+
+_zte_test_ip_mode=route_check_error
+actual=$(zte_netifd_collect wwan eth9)
+assert_eq \
+    '{"up":true,"l3_device":"eth0.1","ipv4":"","gateway":"","is_default_route":true}' \
+    "$actual" \
+    'routing-table inspection errors conservatively block power-off actions'
 
 _zte_test_ip_mode=regex_neighbor
 : >"$_zte_test_ip_calls"

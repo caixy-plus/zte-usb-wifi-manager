@@ -18,6 +18,7 @@ mkdir -p "$state"
 manager=$state/manager
 manager_state=$state/manager-state
 events=$state/events
+default_route_checks=$state/default-route-checks
 sync_tool=$state/sync
 
 cat >"$manager" <<'EOF'
@@ -117,6 +118,13 @@ zte_netifd_route_uses_device() {
 	[ "${ZTE_TEST_ROUTE_OK:-1}" = 1 ] &&
 		[ "$1" = 192.168.0.1 ] && [ "$2" = eth2 ]
 }
+zte_netifd_device_is_default_route() {
+	[ "${ZTE_TEST_DEFAULT_ROUTE_CHECK_FAIL:-0}" = 0 ] || return 2
+	_zte_test_default_check_count=$(wc -l <"$default_route_checks" | tr -d ' ')
+	_zte_test_default_check_count=$((_zte_test_default_check_count + 1))
+	printf '%s\n' "$_zte_test_default_check_count" >>"$default_route_checks"
+	[ "${ZTE_TEST_DEFAULT_ROUTE_ON_CHECK:-0}" = "$_zte_test_default_check_count" ]
+}
 zte_adapter_fetch_power_supply_mode() {
 	printf '%s\n' "${ZTE_TEST_CURRENT_MODE:-charging}"
 }
@@ -144,15 +152,20 @@ reset_case() {
 		"$ZTE_U30_CALIBRATION_LOCK_DIR"
 	rm -f "$ZTE_U30_CALIBRATION_COOKIE_FILE"
 	: >"$events"
+	: >"$default_route_checks"
 	printf '%s\n' running >"$manager_state"
 	ZTE_TEST_CURRENT_MODE=charging
 	ZTE_TEST_ROUTE_OK=1
+	ZTE_TEST_DEFAULT_ROUTE_ON_CHECK=0
+	ZTE_TEST_DEFAULT_ROUTE_CHECK_FAIL=0
 	ZTE_TEST_FAIL_WRITE=
 	ZTE_TEST_MANAGER_START_FAIL=0
 	ZTE_TEST_REENTER_RECOVER=0
 	ZTE_TEST_SYNC_FAIL_WHILE_RUNNING=0
 	ZTE_TEST_FINALIZE_RMDIR_FAIL=0
-	export ZTE_TEST_CURRENT_MODE ZTE_TEST_ROUTE_OK ZTE_TEST_FAIL_WRITE
+	export ZTE_TEST_CURRENT_MODE ZTE_TEST_ROUTE_OK
+	export ZTE_TEST_DEFAULT_ROUTE_ON_CHECK ZTE_TEST_DEFAULT_ROUTE_CHECK_FAIL
+	export ZTE_TEST_FAIL_WRITE
 	export ZTE_TEST_MANAGER_START_FAIL
 	export ZTE_TEST_REENTER_RECOVER
 	export ZTE_TEST_SYNC_FAIL_WHILE_RUNNING ZTE_TEST_FINALIZE_RMDIR_FAIL
@@ -163,6 +176,37 @@ probe=$(zte_u30_power_calibration_probe)
 assert_eq \
 	'{"ok":true,"mode":"probe","adapter":"zte_u30","current_mode":"charging","write_gates_disabled":true,"device_route":true}' \
 	"$probe"
+assert_eq '' "$(cat "$events")"
+
+reset_case
+ZTE_TEST_DEFAULT_ROUTE_CHECK_FAIL=1
+export ZTE_TEST_DEFAULT_ROUTE_CHECK_FAIL
+probe_status=0
+probe=$(zte_u30_power_calibration_probe) || probe_status=$?
+assert_eq 1 "$probe_status"
+assert_eq \
+	'{"ok":false,"mode":"probe","code":"default_route_check_failed"}' \
+	"$probe"
+assert_eq '' "$(cat "$events")"
+
+reset_case
+ZTE_TEST_DEFAULT_ROUTE_ON_CHECK=1
+export ZTE_TEST_DEFAULT_ROUTE_ON_CHECK
+probe_status=0
+probe=$(zte_u30_power_calibration_probe) || probe_status=$?
+assert_eq 1 "$probe_status"
+assert_eq \
+	'{"ok":false,"mode":"probe","code":"device_is_default_route"}' \
+	"$probe"
+assert_eq '' "$(cat "$events")"
+
+reset_case
+ZTE_TEST_DEFAULT_ROUTE_ON_CHECK=1
+export ZTE_TEST_DEFAULT_ROUTE_ON_CHECK
+execute_status=0
+zte_u30_power_calibration_execute I_AM_ON_SPARE_U30 >/dev/null ||
+	execute_status=$?
+assert_eq 1 "$execute_status"
 assert_eq '' "$(cat "$events")"
 
 ZTE_U30_CALIBRATION_ADAPTER=auto
@@ -216,6 +260,24 @@ assert_eq 'manager-stop
 sync
 write:direct_supply
 write:charging
+manager-start
+sync
+sync' "$(cat "$events")"
+assert_eq running "$(cat "$manager_state")"
+assert_failure test -e "$ZTE_U30_CALIBRATION_STATE_DIR"
+assert_failure test -e "$ZTE_U30_CALIBRATION_LOCK_DIR"
+assert_failure test -e "$ZTE_U30_CALIBRATION_COOKIE_FILE"
+
+reset_case
+ZTE_TEST_DEFAULT_ROUTE_ON_CHECK=2
+export ZTE_TEST_DEFAULT_ROUTE_ON_CHECK
+execute_status=0
+execute_output=$(zte_u30_power_calibration_execute I_AM_ON_SPARE_U30) ||
+	execute_status=$?
+assert_eq 1 "$execute_status"
+assert_eq device_became_default_route "$execute_output"
+assert_eq 'manager-stop
+sync
 manager-start
 sync
 sync' "$(cat "$events")"

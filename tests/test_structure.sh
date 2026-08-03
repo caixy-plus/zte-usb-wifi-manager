@@ -52,7 +52,7 @@ esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=29$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=30$'
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/device-profile.sh" \
     '^zte_device_profile_select\(\)'
@@ -296,11 +296,12 @@ assert_file_contains README.md 'OpenWrt 25\.12\.5'
 assert_file_contains README.md 'OpenWrt 24\.10\.7'
 assert_file_contains README.md 'OpenWrt 25\.12\.5.*官方 SDK 构建通过'
 assert_file_contains README.md 'OpenWrt 24\.10\.7.*官方 SDK 构建通过'
-assert_file_contains README.md 'r25→r26 QEMU 升级及 Cudy/U30 只读验收通过'
+assert_file_contains README.md 'r28→r29 QEMU 升级及 Cudy/U30 只读验收通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '源码 backend r29 / LuCI r12'
+assert_file_contains README.md '源码 backend r30 / LuCI r12'
 assert_file_contains README.md 'r26/r12 最终验证'
+assert_file_contains README.md 'r29/r12 最终验证'
 assert_file_contains README.md '九类语义写请求契约'
 assert_file_contains README.md '生产写 capability 仍全部保持 0'
 assert_file_contains README.md 'docs/superpowers/plans/2026-08-01-write-request-contracts\.md'

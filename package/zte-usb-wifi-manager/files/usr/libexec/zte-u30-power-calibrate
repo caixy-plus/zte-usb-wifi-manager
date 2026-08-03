@@ -83,7 +83,7 @@ zte_u30_power_calibration_settings_valid() {
 zte_u30_power_calibration_probe_fail() {
 	_zte_u30_calibration_code=$1
 	case $_zte_u30_calibration_code in
-		not_root|wrong_profile|write_gates_enabled|invalid_host|invalid_netdev|device_route_mismatch|recovery_required|credentials_unavailable|authentication_failed|read_failed|invalid_mode|manager_service_unavailable|invalid_settings) ;;
+		not_root|wrong_profile|write_gates_enabled|invalid_host|invalid_netdev|device_route_mismatch|device_is_default_route|default_route_check_failed|recovery_required|credentials_unavailable|authentication_failed|read_failed|invalid_mode|manager_service_unavailable|invalid_settings) ;;
 		*) _zte_u30_calibration_code=probe_failed ;;
 	esac
 	printf '{"ok":false,"mode":"probe","code":"%s"}\n' \
@@ -142,6 +142,14 @@ zte_u30_power_calibration_probe() {
 	zte_netifd_route_uses_device "$ZTE_U30_CALIBRATION_HOST" \
 		"$ZTE_U30_CALIBRATION_NETDEV" ||
 		zte_u30_power_calibration_probe_fail device_route_mismatch
+	_zte_u30_calibration_default_route_status=0
+	zte_netifd_device_is_default_route "$ZTE_U30_CALIBRATION_NETDEV" ||
+		_zte_u30_calibration_default_route_status=$?
+	case $_zte_u30_calibration_default_route_status in
+		0) zte_u30_power_calibration_probe_fail device_is_default_route ;;
+		1) ;;
+		*) zte_u30_power_calibration_probe_fail default_route_check_failed ;;
+	esac
 	_zte_u30_calibration_password=$(zte_u30_power_calibration_password) ||
 		zte_u30_power_calibration_probe_fail credentials_unavailable
 	_zte_u30_calibration_current=$(zte_u30_power_calibration_read_mode \
@@ -583,6 +591,10 @@ zte_u30_power_calibration_execute() {
 	zte_validate_netdev "$ZTE_U30_CALIBRATION_NETDEV" || return 1
 	zte_netifd_route_uses_device "$ZTE_U30_CALIBRATION_HOST" \
 		"$ZTE_U30_CALIBRATION_NETDEV" || return 1
+	_zte_u30_calibration_default_route_status=0
+	zte_netifd_device_is_default_route "$ZTE_U30_CALIBRATION_NETDEV" ||
+		_zte_u30_calibration_default_route_status=$?
+	[ "$_zte_u30_calibration_default_route_status" = 1 ] || return 1
 	[ -x "$ZTE_U30_CALIBRATION_MANAGER_SERVICE" ] || return 1
 	zte_u30_power_calibration_settings_valid || return 1
 	zte_u30_power_calibration_state_absent || return 1
@@ -660,6 +672,22 @@ zte_u30_power_calibration_execute() {
 	}
 	if ! "$ZTE_U30_CALIBRATION_SYNC" >/dev/null 2>&1; then
 		zte_u30_power_calibration_relinquish_owner "$$" 2>/dev/null || :
+		return 1
+	fi
+	_zte_u30_calibration_default_route_status=0
+	zte_netifd_device_is_default_route "$ZTE_U30_CALIBRATION_NETDEV" ||
+		_zte_u30_calibration_default_route_status=$?
+	if [ "$_zte_u30_calibration_default_route_status" != 1 ]; then
+		if ! zte_u30_power_calibration_finalize \
+			"$_zte_u30_calibration_manager" \
+			"$_zte_u30_calibration_original" owner; then
+			printf '%s\n' cleanup_failed
+		else
+			case $_zte_u30_calibration_default_route_status in
+				0) printf '%s\n' device_became_default_route ;;
+				*) printf '%s\n' default_route_check_failed ;;
+			esac
+		fi
 		return 1
 	fi
 

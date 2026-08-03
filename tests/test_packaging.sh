@@ -12,7 +12,7 @@ expected_2512='25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_
 expected_2410='24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f|fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148'
 
 release_metadata=scripts/project-release-metadata.js
-assert_eq '0.1.0_rc1|29|12|v0.1.0-rc1-r29|prerelease' \
+assert_eq '0.1.0_rc1|30|12|v0.1.0-rc1-r30|prerelease' \
     "$(node "$release_metadata")"
 stable_root=$work/stable-release-root
 mkdir -p "$stable_root/package/zte-usb-wifi-manager" \
@@ -454,7 +454,7 @@ case $(basename "$package_file") in
         ;;
     *)
         package_name=zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r29
+        package_version=0.1.0_rc1-r30
         ;;
 esac
 [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] || package_name=wrong-package
@@ -477,7 +477,7 @@ SCRIPT
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r29
+                package_version=0.1.0_rc1-r30
                 ;;
         esac
         [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] ||
@@ -538,9 +538,9 @@ case " $* " in
         [ ! -e package/feeds/packages/curl ] || exit 1
         [ "$(cat .fake-defconfig-count)" -eq 2 ] || exit 1
         printf 'apk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r29.apk
+            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r30.apk
         printf 'ipk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r29_all.ipk
+            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r30_all.ipk
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
@@ -593,9 +593,9 @@ assert_failure env PATH="$fake_bin:$PATH" \
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
-printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r29.apk"
+printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r30.apk"
 printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r12.apk"
-printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r29_all.ipk"
+printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r30_all.ipk"
 printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r12_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
@@ -669,12 +669,12 @@ if (manifest.project_ref !== "main" || manifest.project_tag !== null ||
 ' "$work/dist" "$source_sha"
 
 assert_success node scripts/assemble-openwrt-packages.js \
-    "$work/incoming" "$work/dist-r24-tag" "$source_sha" v0.1.0-rc1-r29
+    "$work/incoming" "$work/dist-r24-tag" "$source_sha" v0.1.0-rc1-r30
 assert_success node -e '
 const fs = require("fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1]));
-if (manifest.project_ref !== "v0.1.0-rc1-r29" ||
-    manifest.project_tag !== "v0.1.0-rc1-r29")
+if (manifest.project_ref !== "v0.1.0-rc1-r30" ||
+    manifest.project_tag !== "v0.1.0-rc1-r30")
     process.exit(1);
 ' "$work/dist-r24-tag/build-manifest.json"
 assert_failure node scripts/assemble-openwrt-packages.js \
@@ -688,7 +688,7 @@ assert_failure node scripts/assemble-openwrt-packages.js \
 
 rm "$work/incoming/packages-25.12.5/unexpected.txt"
 cp -R "$work/incoming" "$work/wrong-version-incoming"
-mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r29.apk" \
+mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r30.apk" \
     "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-9.9.9-r1.apk"
 node - "$work/wrong-version-incoming/packages-25.12.5/build-manifest.json" <<'NODE'
 const fs = require('fs');

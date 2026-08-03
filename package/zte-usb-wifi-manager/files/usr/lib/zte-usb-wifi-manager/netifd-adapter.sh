@@ -16,6 +16,18 @@ zte_netifd_route_uses_device() {
     return 1
 }
 
+# Return 0 when either an IPv4 or IPv6 default route uses the exact device,
+# 1 when neither does, and 2 when the routing table cannot be inspected.
+zte_netifd_device_is_default_route() {
+    _zte_default_route_device=$1
+    [ -n "$_zte_default_route_device" ] || return 2
+    _zte_default_route_ipv4=$(ip route show default dev \
+        "$_zte_default_route_device" 2>/dev/null) || return 2
+    _zte_default_route_ipv6=$(ip -6 route show default dev \
+        "$_zte_default_route_device" 2>/dev/null) || return 2
+    [ -n "$_zte_default_route_ipv4$_zte_default_route_ipv6" ]
+}
+
 zte_netifd_json() {
     case ${1:-0} in
         1) _zte_up=true ;;
@@ -58,12 +70,14 @@ zte_netifd_collect() {
         _zte_gateway=''
 
     _zte_is_default_route=0
-    if [ -n "$_zte_l3_device" ] &&
-        { ip route show default dev "$_zte_l3_device" 2>/dev/null |
-            grep -q . ||
-          ip -6 route show default dev "$_zte_l3_device" 2>/dev/null |
-            grep -q .; }; then
-        _zte_is_default_route=1
+    if [ -n "$_zte_l3_device" ]; then
+        _zte_default_route_status=0
+        zte_netifd_device_is_default_route "$_zte_l3_device" ||
+            _zte_default_route_status=$?
+        case $_zte_default_route_status in
+            1) ;;
+            *) _zte_is_default_route=1 ;;
+        esac
     fi
 
     zte_netifd_json \
