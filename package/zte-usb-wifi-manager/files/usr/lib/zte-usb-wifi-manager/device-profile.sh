@@ -44,6 +44,32 @@ zte_device_profile_select() {
 	esac
 }
 
+# Select a profile from an exact USB sysfs identity. Unknown or incomplete
+# devices are never guessed from a product-name substring.
+zte_device_profile_detect() {
+	_zte_profile_sysfs=${1-/sys/bus/usb/devices}
+	zte_device_profile_clear
+	[ -d "$_zte_profile_sysfs" ] || return 1
+	for _zte_profile_device in "$_zte_profile_sysfs"/*; do
+		[ -f "$_zte_profile_device/idVendor" ] || continue
+		[ -f "$_zte_profile_device/idProduct" ] || continue
+		[ -f "$_zte_profile_device/product" ] || continue
+		_zte_profile_vendor=$(cat "$_zte_profile_device/idVendor" 2>/dev/null) ||
+			continue
+		_zte_profile_product_id=$(cat \
+			"$_zte_profile_device/idProduct" 2>/dev/null) || continue
+		_zte_profile_product=$(cat "$_zte_profile_device/product" 2>/dev/null) ||
+			continue
+		if zte_device_profile_select \
+			"$_zte_profile_vendor" "$_zte_profile_product_id" \
+			"$_zte_profile_product"; then
+			return 0
+		fi
+	done
+	zte_device_profile_clear
+	return 1
+}
+
 zte_device_profile_id() { printf '%s\n' "$ZTE_DEVICE_PROFILE_ID"; }
 zte_device_profile_model() { printf '%s\n' "$ZTE_DEVICE_PROFILE_MODEL"; }
 zte_device_profile_scheme() { printf '%s\n' "$ZTE_DEVICE_PROFILE_SCHEME"; }

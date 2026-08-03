@@ -17,6 +17,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/action-executor.sh
 . /usr/lib/zte-usb-wifi-manager/snapshot.sh
 . /usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
+. /usr/lib/zte-usb-wifi-manager/device-profile.sh
 . /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
 . /usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh
 
@@ -53,6 +54,7 @@ load_config() {
 	poll_interval=''
 	failure_threshold=''
 	host=''
+	adapter=''
 	interface=''
 	netdev=''
 	credential_file=''
@@ -83,6 +85,7 @@ load_config() {
 	config_get poll_interval main poll_interval 30
 	config_get failure_threshold main failure_threshold 3
 	config_get host zte host 192.168.0.1
+	config_get adapter zte adapter auto
 	config_get interface zte interface usbwan
 	config_get netdev zte netdev eth2
 	config_get credential_file zte credential_file \
@@ -182,6 +185,28 @@ $battery_enabled:$manual_full:$schedule_enabled in
 		logger -t zte-usb-wifi-manager 'invalid power probe settle time'
 		return 1
 	fi
+}
+
+configure_device_profile() {
+	profile_error=unsupported_device
+	case $adapter in
+		auto)
+			zte_device_profile_detect \
+				"${ZTE_USB_SYSFS_ROOT:-/sys/bus/usb/devices}" || return 1
+			;;
+		zte_u25s|zte_u30)
+			zte_device_profile_select_named "$adapter" || return 1
+			;;
+		*) return 1 ;;
+	esac
+	zte_adapter_apply_profile || return 1
+	ZTE_DEVICE_ORIGIN=$(printf '%s://%s' \
+		"$ZTE_DEVICE_PROFILE_SCHEME" "$host")
+	zte_http_origin_valid "$ZTE_DEVICE_ORIGIN" || return 1
+	ZTE_DEVICE_TLS_INSECURE=$ZTE_DEVICE_PROFILE_TLS_INSECURE
+	ZTE_LOGIN_REQUIRED=$ZTE_DEVICE_PROFILE_LOGIN_REQUIRED
+	export ZTE_DEVICE_ORIGIN ZTE_DEVICE_TLS_INSECURE ZTE_LOGIN_REQUIRED
+	profile_error=''
 }
 
 configured_action_enabled() {
@@ -916,7 +941,8 @@ write_power_status() {
 		"$_zte_power_status_state" "$_zte_power_status_reason" \
 		"$device_json" "$network_json" "$_zte_power_status_policy" \
 		"$_zte_power_status_action" "$failures" \
-		"$_zte_power_status_updated" "$power_json")
+		"$_zte_power_status_updated" "$power_json" \
+		"${ZTE_ADAPTER_MODEL:-U25S}")
 	write_status "$_zte_power_status_json"
 	record_state_change \
 		"$_zte_power_status_state" "$_zte_power_status_updated"
@@ -982,7 +1008,7 @@ collect_private_clients() {
 	_zte_private_password=$2
 	clients_json=$(zte_adapter_clients_unavailable_json not_loaded) || return 1
 
-	if [ -z "$_zte_private_password" ]; then
+	if [ -z "$_zte_private_password" ] && zte_adapter_login_required; then
 		clients_json=$(zte_adapter_clients_unavailable_json \
 			credentials_missing) || return 1
 		return 0
@@ -1018,7 +1044,7 @@ collect_private_sms() {
 	_zte_sms_now=$1
 	_zte_sms_password=$2
 
-	if [ -z "$_zte_sms_password" ]; then
+	if [ -z "$_zte_sms_password" ] && zte_adapter_login_required; then
 		sms_json=$(zte_adapter_sms_unavailable_json credentials_missing) ||
 			return 1
 		return 0
@@ -1150,7 +1176,7 @@ poll_once() {
 	status_json=$(zte_snapshot_compose \
 		"$state" "$reason" "$device_json" "$network_json" \
 		"$policy_state" "$power_action" "$failures" "$updated" \
-		"$power_json")
+		"$power_json" "${ZTE_ADAPTER_MODEL:-U25S}")
 	write_status "$status_json"
 	record_state_change "$state" "$updated"
 }
@@ -1163,6 +1189,16 @@ main() {
 	}
 	load_config
 	init_state
+	if ! configure_device_profile; then
+		_zte_profile_updated=$(date +%s)
+		_zte_profile_status=$(zte_snapshot_compose \
+			unsupported_device "${profile_error:-unsupported_device}" \
+			'' '' unavailable none 0 "$_zte_profile_updated" '' \
+			'Unknown ZTE')
+		write_status "$_zte_profile_status"
+		logger -t zte-usb-wifi-manager 'unsupported USB device profile'
+		return 1
+	fi
 	failures=0
 	last_device_json=''
 	last_power_action=''

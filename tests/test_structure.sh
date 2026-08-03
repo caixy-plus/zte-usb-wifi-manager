@@ -572,6 +572,7 @@ lib="$backend/files/usr/lib/zte-usb-wifi-manager"
 . "$lib/json.sh"
 . "$lib/power-adapter.sh"
 . "$lib/snapshot.sh"
+. "$lib/adapter-zte-u25s-metadata.sh"
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
@@ -729,6 +730,7 @@ PRIVATE_AUTH_BACKOFF_SECONDS=900
 SMS_POLL_INTERVAL_SECONDS=300
 private_auth_retry_after=0
 next_sms_poll_at=0
+zte_adapter_login_required() { return 0; }
 client_fetch_count=$work/client-fetch-count
 printf 0 >"$client_fetch_count"
 zte_adapter_clients_unavailable_json() {
@@ -1475,6 +1477,7 @@ early_safety_restore() {
     printf '%s\n' safety >>"$startup_order"
 }
 init_state() { :; }
+configure_device_profile() { ZTE_ADAPTER_MODEL=U25S; }
 main_poll_count=0
 # Assignments are read by the eval-defined production main function.
 # shellcheck disable=SC2034

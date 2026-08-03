@@ -47,4 +47,6 @@ assert_eq '{"online":false,"model":"U25S","state":"fail_safe","reason":"device_r
     "$(zte_snapshot_compose fail_safe device_read_threshold_reached '' '' unavailable none 3 1722345679)"
 assert_eq '{"online":true,"model":"U25S","state":"ok","reason":"","device":'"$dev"',"network":'"$net"',"policy":{"state":"retired","power_action":"none"},"power":null,"failures":0,"updated":1722345680}' \
     "$(zte_snapshot_compose ok '' "$dev" "$net" retired none 0 1722345680 '')"
+assert_eq '{"online":false,"model":"U30 Pro","state":"degraded","reason":"device_read_failed","device":null,"network":null,"policy":{"state":"unavailable","power_action":"none"},"power":null,"failures":1,"updated":1722345681}' \
+    "$(zte_snapshot_compose degraded device_read_failed '' '' unavailable none 1 1722345681 '' 'U30 Pro')"
 finish

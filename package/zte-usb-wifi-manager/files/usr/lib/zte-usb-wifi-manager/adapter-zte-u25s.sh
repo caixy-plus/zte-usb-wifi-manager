@@ -1,6 +1,28 @@
 #!/bin/sh
 
 # Map a device flag string to JSON true/false/null.
+zte_adapter_origin() {
+	_zte_adapter_origin_input=$1
+	_zte_adapter_scheme=${ZTE_DEVICE_PROFILE_SCHEME:-http}
+	case $_zte_adapter_scheme in
+		http|https) ;;
+		*) return 1 ;;
+	esac
+	case $_zte_adapter_origin_input in
+		http://*|https://*) _zte_adapter_origin=$_zte_adapter_origin_input ;;
+		*)
+			zte_validate_host "$_zte_adapter_origin_input" || return 1
+			_zte_adapter_origin=$_zte_adapter_scheme://$_zte_adapter_origin_input
+			;;
+	esac
+	zte_http_origin_valid "$_zte_adapter_origin" || return 1
+	case $_zte_adapter_origin in
+		"$_zte_adapter_scheme"://*) ;;
+		*) return 1 ;;
+	esac
+	printf '%s\n' "$_zte_adapter_origin"
+}
+
 zte_adapter_bool() {
 	case ${1-} in
 		1|true|yes) printf 'true' ;;
@@ -112,7 +134,8 @@ zte_adapter_has_any_field() {
 # password is available, otherwise log in and retry exactly once.
 zte_adapter_fetch() {
 	_zte_host=$1 _zte_password=$2 _zte_jar=$3
-	_zte_url="http://$_zte_host/goform/goform_get_cmd_process?cmd=$ZTE_READ_FIELDS&multi_data=1&isTest=false"
+	_zte_origin=$(zte_adapter_origin "$_zte_host") || return 1
+	_zte_url="$_zte_origin/goform/goform_get_cmd_process?cmd=$ZTE_READ_FIELDS&multi_data=1&isTest=false"
 
 	_zte_resp=$(zte_http_get "$_zte_url" "$_zte_jar") || return 1
 	zte_json_is_flat_object "$_zte_resp" || return 1
@@ -123,11 +146,11 @@ zte_adapter_fetch() {
 
 	zte_adapter_login_required || return 1
 	[ -n "$_zte_password" ] || return 2
-	zte_session_login "$_zte_host" "$_zte_password" "$_zte_jar" || return 3
+	zte_session_login "$_zte_origin" "$_zte_password" "$_zte_jar" || return 3
 	_zte_resp=$(zte_http_get "$_zte_url" "$_zte_jar") || return 1
 	zte_json_is_flat_object "$_zte_resp" || return 1
 	if ! zte_adapter_has_any_field "$_zte_resp"; then
-		zte_session_login "$_zte_host" "$_zte_password" "$_zte_jar" ||
+		zte_session_login "$_zte_origin" "$_zte_password" "$_zte_jar" ||
 			return 3
 		_zte_resp=$(zte_http_get "$_zte_url" "$_zte_jar") || return 1
 		zte_json_is_flat_object "$_zte_resp" || return 1
@@ -139,7 +162,8 @@ zte_adapter_fetch() {
 zte_adapter_fetch_clients_once() {
 	_zte_clients_host=$1
 	_zte_clients_jar=$2
-	_zte_clients_url="http://$_zte_clients_host/goform/goform_get_cmd_process?cmd=station_list&isTest=false"
+	_zte_clients_origin=$(zte_adapter_origin "$_zte_clients_host") || return 1
+	_zte_clients_url="$_zte_clients_origin/goform/goform_get_cmd_process?cmd=station_list&isTest=false"
 	_zte_clients_response=$(zte_http_get \
 		"$_zte_clients_url" "$_zte_clients_jar") || return 1
 	zte_json_normalize_station_list "$_zte_clients_response"
@@ -199,7 +223,8 @@ zte_adapter_clients_json() {
 zte_adapter_fetch_sms_once() {
 	_zte_sms_host=$1
 	_zte_sms_jar=$2
-	_zte_sms_url="http://$_zte_sms_host/goform/goform_get_cmd_process?cmd=sms_data_total&page=0&data_per_page=50&mem_store=1&tags=10&order_by=order%20by%20id%20desc&isTest=false"
+	_zte_sms_origin=$(zte_adapter_origin "$_zte_sms_host") || return 1
+	_zte_sms_url="$_zte_sms_origin/goform/goform_get_cmd_process?cmd=sms_data_total&page=0&data_per_page=50&mem_store=1&tags=10&order_by=order%20by%20id%20desc&isTest=false"
 	_zte_sms_response=$(zte_http_get "$_zte_sms_url" "$_zte_sms_jar") ||
 		return 1
 	zte_json_normalize_sms_messages "$_zte_sms_response"
@@ -259,7 +284,8 @@ zte_adapter_switch_sim() {
 	_zte_switch_index=$(
 		zte_adapter_sim_card_index "$_zte_switch_target"
 	) || return 1
-	_zte_switch_url="http://$_zte_switch_host/goform/goform_set_cmd_process"
+	_zte_switch_origin=$(zte_adapter_origin "$_zte_switch_host") || return 1
+	_zte_switch_url="$_zte_switch_origin/goform/goform_set_cmd_process"
 	_zte_switch_response=$(
 		zte_http_post "$_zte_switch_url" \
 			"isTest=false&goformId=SIM_SWITCH_SIMCARD&card_index=$_zte_switch_index" \

@@ -154,6 +154,7 @@ zte_snapshot_compose() {
     _zte_state=$1 _zte_reason=$2 _zte_device=$3 _zte_network=$4
     _zte_pstate=$5 _zte_paction=$6 _zte_failures=$7 _zte_updated=$8
     _zte_power=${9-}
+	_zte_fallback_model=${10-U25S}
 
     if [ -n "$_zte_device" ]; then
         if [ "$_zte_state" = ok ]; then
@@ -165,7 +166,7 @@ zte_snapshot_compose() {
         _zte_device_json=$_zte_device
     else
         _zte_online=false
-        _zte_model=U25S
+		_zte_model=$_zte_fallback_model
         _zte_device_json=null
     fi
     if [ -n "$_zte_network" ]; then
@@ -180,7 +181,7 @@ zte_snapshot_compose() {
 	fi
 
     printf '{"online":%s,"model":"%s","state":"%s","reason":"%s","device":%s,"network":%s,"policy":{"state":"%s","power_action":"%s"},"power":%s,"failures":%s,"updated":%s}\n' \
-        "${_zte_online:-false}" "$(zte_json_escape "${_zte_model:-U25S}")" \
+		"${_zte_online:-false}" "$(zte_json_escape "${_zte_model:-$_zte_fallback_model}")" \
         "$(zte_json_escape "$_zte_state")" "$(zte_json_escape "$_zte_reason")" \
         "$_zte_device_json" "$_zte_network_json" \
         "$(zte_json_escape "$_zte_pstate")" "$(zte_json_escape "$_zte_paction")" \

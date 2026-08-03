@@ -20,6 +20,20 @@ ZTE_CAP_SMS_WRITE=0
 ZTE_CAP_DEVICE_REBOOT=0
 ZTE_CAP_DEVICE_SHUTDOWN=0
 
+# Apply a previously selected, whitelisted device profile without changing any
+# independently calibrated write capability.
+zte_adapter_apply_profile() {
+	[ -n "${ZTE_DEVICE_PROFILE_ID:-}" ] || return 1
+	[ -n "${ZTE_DEVICE_PROFILE_MODEL:-}" ] || return 1
+	case ${ZTE_DEVICE_PROFILE_LOGIN_REQUIRED:-} in
+		0|1) ;;
+		*) return 1 ;;
+	esac
+	ZTE_ADAPTER_ID=$ZTE_DEVICE_PROFILE_ID
+	ZTE_ADAPTER_MODEL=$ZTE_DEVICE_PROFILE_MODEL
+	ZTE_LOGIN_REQUIRED=$ZTE_DEVICE_PROFILE_LOGIN_REQUIRED
+}
+
 ZTE_READ_FIELDS='mc_modem_main_state,network_type,network_signalbar,network_provider_fullname,Z5g_rsrp,ppp_status,simcard_active_slot_temp,usim_esim_type,battery_exist,battery_vol_percent,battery_charging,battery_value,battery_pers,battery_temperature_level,sms_data_total'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',network_lte_rsrp,network_rscp,lte_rssi,network_simcard_roam,dial_mode,opms_wan_mode,network_rmcc,network_rmnc'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',wifi_onoff_state,guest_switch,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode,wifi_chip1_ssid1_access_sta_num'
@@ -128,7 +142,8 @@ zte_adapter_effective_capabilities_json() {
 	else
 		_zte_metadata_login_required=false
 	fi
-	printf '{"adapter":"zte_u25s","model":"U25S","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s,"device_reboot":%s,"device_shutdown":%s,"feature_status":%s}\n' \
+	printf '{"adapter":"%s","model":"%s","login_required":%s,"read_status":true,"sim_switch":%s,"cellular_write":%s,"wifi_write":%s,"traffic_write":%s,"sms_write":%s,"device_reboot":%s,"device_shutdown":%s,"feature_status":%s}\n' \
+		"$ZTE_ADAPTER_ID" "$ZTE_ADAPTER_MODEL" \
 		"$_zte_metadata_login_required" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_SIM_SWITCH" "$_zte_metadata_write_enabled" "$_zte_metadata_sim_enabled")" \
 		"$(zte_adapter_effective_capability_bool "$ZTE_CAP_CELLULAR_WRITE" "$_zte_metadata_write_enabled" "$_zte_metadata_cellular_enabled")" \

@@ -13,6 +13,7 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/adapter-zte-u25s-metadata.sh"
 . "$lib/adapter-zte-u25s.sh"
 . "$lib/snapshot.sh"
+. "$lib/device-profile.sh"
 
 # The current target firmware advertises HAS_LOGIN:true. Writes must therefore
 # authenticate, while read paths may still accept a valid anonymous probe.
@@ -29,6 +30,19 @@ assert_eq false "$(
         node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).login_required)))'
 )"
 ZTE_LOGIN_REQUIRED=1
+
+assert_success zte_device_profile_select_named zte_u30
+assert_success zte_adapter_apply_profile
+assert_eq zte_u30 "$ZTE_ADAPTER_ID"
+assert_eq 'U30 Pro' "$ZTE_ADAPTER_MODEL"
+assert_failure zte_adapter_login_required
+assert_eq 'https://192.168.0.1' "$(zte_adapter_origin 192.168.0.1)"
+assert_eq 'https://192.168.0.1' "$(zte_adapter_origin https://192.168.0.1)"
+assert_failure zte_adapter_origin 'http://192.168.0.1/path'
+u30_normalized=$(zte_adapter_normalize "$(cat tests/fixtures/u30/status.json)")
+assert_eq 'U30 Pro' "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).model))')"
+assert_success zte_device_profile_select_named zte_u25s
+assert_success zte_adapter_apply_profile
 
 case $ZTE_READ_FIELDS in
     *Password*|*WPAPSK*|*passwd*|*sim_iccid*|*imei*|*imsi*)
@@ -178,6 +192,24 @@ printf x >"$jar"
 jsonfilter() {
     node ./tests/jsonfilter_stub.js "$@"
 }
+
+u30_url_log=$work/u30-url
+assert_success zte_device_profile_select_named zte_u30
+assert_success zte_adapter_apply_profile
+u30_raw=$(
+    zte_http_get() {
+        printf '%s\n' "$1" >"$u30_url_log"
+        cat tests/fixtures/u30/status.json
+    }
+    zte_adapter_fetch 192.168.0.1 '' "$jar"
+)
+assert_eq "$(cat tests/fixtures/u30/status.json)" "$u30_raw"
+case $(cat "$u30_url_log") in
+    https://192.168.0.1/goform/goform_get_cmd_process\?cmd=*'&multi_data=1&isTest=false') pass ;;
+    *) fail 'U30 adapter read must use the selected HTTPS origin' ;;
+esac
+assert_success zte_device_profile_select_named zte_u25s
+assert_success zte_adapter_apply_profile
 
 # device flag mapping
 assert_eq true "$(zte_adapter_bool 1)"

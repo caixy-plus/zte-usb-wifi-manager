@@ -17,7 +17,7 @@ config device 'zte'
 	option host '192.168.0.1'
 	option interface 'usbwan'
 	option netdev 'eth2'
-	option adapter 'zte_u25s'
+	option adapter 'auto'
 	option credential_file '/etc/zte-usb-wifi-manager/credentials'
 
 # USB control is retained only for fail-safe restoration and a future,

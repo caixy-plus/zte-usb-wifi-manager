@@ -13,12 +13,18 @@ lib=$backend/files/usr/lib/zte-usb-wifi-manager
 . "$lib/validation.sh"
 . "$lib/json.sh"
 . "$lib/actions.sh"
+. "$lib/http.sh"
+. "$lib/device-profile.sh"
+. "$lib/adapter-zte-u25s-metadata.sh"
 
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
 eval "$(extract_daemon_function process_actions)"
 eval "$(extract_daemon_function configured_action_enabled)"
+eval "$(extract_daemon_function configure_device_profile)"
+eval "$(extract_daemon_function collect_private_clients)"
+eval "$(extract_daemon_function collect_private_sms)"
 
 work=$(mktemp -d /tmp/zte-test-daemon-actions.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
@@ -31,6 +37,58 @@ event_log=$work/events
 execute_log=$work/execute
 : >"$event_log"
 : >"$execute_log"
+
+mkdir -p "$work/sys/1-1"
+printf '%s\n' 19d2 >"$work/sys/1-1/idVendor"
+printf '%s\n' 1354 >"$work/sys/1-1/idProduct"
+printf '%s\n' 'U30 Pro' >"$work/sys/1-1/product"
+adapter=auto
+host=192.168.0.1
+ZTE_USB_SYSFS_ROOT=$work/sys
+profile_error=''
+clients_json=''
+sms_json=''
+assert_success configure_device_profile
+assert_eq zte_u30 "$ZTE_ADAPTER_ID"
+assert_eq 'U30 Pro' "$ZTE_ADAPTER_MODEL"
+assert_eq 'https://192.168.0.1' "$ZTE_DEVICE_ORIGIN"
+assert_eq 1 "$ZTE_DEVICE_TLS_INSECURE"
+assert_eq 0 "$ZTE_LOGIN_REQUIRED"
+adapter=unknown
+assert_failure configure_device_profile
+assert_eq unsupported_device "$profile_error"
+adapter=zte_u25s
+assert_success configure_device_profile
+assert_eq 'http://192.168.0.1' "$ZTE_DEVICE_ORIGIN"
+
+private_auth_retry_after=0
+next_sms_poll_at=0
+PRIVATE_AUTH_BACKOFF_SECONDS=900
+SMS_POLL_INTERVAL_SECONDS=300
+COOKIE_FILE=$work/profile-cookies
+zte_adapter_clients_unavailable_json() {
+    printf '{"available":false,"reason":"%s","items":[]}\n' "$1"
+}
+zte_adapter_sms_unavailable_json() {
+    printf '{"available":false,"reason":"%s","items":[]}\n' "$1"
+}
+zte_adapter_login_required() { return 1; }
+zte_adapter_fetch_clients() {
+    [ -z "$2" ] || return 1
+    printf '%s\n' '{"available":true,"items":[]}'
+}
+zte_adapter_fetch_sms() {
+    [ -z "$2" ] || return 1
+    printf '%s\n' '{"available":true,"items":[]}'
+}
+assert_success collect_private_clients 100 ''
+assert_eq '{"available":true,"items":[]}' "$clients_json"
+assert_success collect_private_sms 100 ''
+assert_eq '{"available":true,"items":[]}' "$sms_json"
+
+zte_adapter_login_required() { return 0; }
+assert_success collect_private_clients 101 ''
+assert_eq '{"available":false,"reason":"credentials_missing","items":[]}' "$clients_json"
 
 date() { printf '%s\n' 1722345680; }
 logger() { :; }

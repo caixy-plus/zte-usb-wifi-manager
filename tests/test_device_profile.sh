@@ -32,4 +32,18 @@ assert_failure zte_device_profile_select 1234 1354 'U30 Pro'
 assert_failure zte_device_profile_select 19d2 1354 'Unknown Product'
 assert_failure zte_device_profile_select '19d2;touch /tmp/x' 1354 'U30 Pro'
 
+work=$(mktemp -d /tmp/zte-test-device-profile.XXXXXX)
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+mkdir -p "$work/sys/1-1" "$work/sys/2-1"
+printf '%s\n' 1234 >"$work/sys/1-1/idVendor"
+printf '%s\n' 5678 >"$work/sys/1-1/idProduct"
+printf '%s\n' 'Unrelated USB device' >"$work/sys/1-1/product"
+printf '%s\n' 19d2 >"$work/sys/2-1/idVendor"
+printf '%s\n' 1354 >"$work/sys/2-1/idProduct"
+printf '%s\n' 'U30 Pro' >"$work/sys/2-1/product"
+assert_success zte_device_profile_detect "$work/sys"
+assert_eq zte_u30 "$(zte_device_profile_id)"
+rm -f "$work/sys/2-1/product"
+assert_failure zte_device_profile_detect "$work/sys"
+
 finish
