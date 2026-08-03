@@ -159,12 +159,15 @@ IFS= read -r sdk_dir <"$sdk_list"
     ln -s "$repo_root/luci-app-zte-usb-wifi-manager" \
         package/luci-app-zte-usb-wifi-manager
     [ -f .config ] || : >.config
-    sed \
-        -e 's/^CONFIG_ALL=y$/# CONFIG_ALL is not set/' \
-        -e 's/^CONFIG_ALL_KMODS=y$/# CONFIG_ALL_KMODS is not set/' \
-        -e 's/^CONFIG_ALL_NONSHARED=y$/# CONFIG_ALL_NONSHARED is not set/' \
-        .config >.config.minimal
-    mv .config.minimal .config
+    for _zte_all_symbol in ALL ALL_KMODS ALL_NONSHARED; do
+        if grep -q "^CONFIG_$_zte_all_symbol=" .config; then
+            sed "s/^CONFIG_$_zte_all_symbol=.*/CONFIG_$_zte_all_symbol=n/" \
+                .config >.config.minimal
+            mv .config.minimal .config
+        else
+            printf 'CONFIG_%s=n\n' "$_zte_all_symbol" >>.config
+        fi
+    done
     printf '%s\n' \
         'CONFIG_PACKAGE_zte-usb-wifi-manager=m' \
         'CONFIG_PACKAGE_luci-app-zte-usb-wifi-manager=m' >>.config
