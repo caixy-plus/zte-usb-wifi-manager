@@ -405,20 +405,20 @@ zte_action_claim() {
 	cat "$_zte_action_running"
 }
 
-zte_action_finish() {
+_zte_action_finish_locked() {
 	_zte_action_root=$1
 	_zte_operation_id=$2
 	_zte_action_state=$3
 	_zte_action_code=$4
 	_zte_action_updated=$5
 
-	zte_operation_id_valid "$_zte_operation_id" || return 1
-	zte_action_result_state_valid "$_zte_action_state" || return 1
-	zte_action_code_valid "$_zte_action_code" || return 1
-	zte_is_uint "$_zte_action_updated" || return 1
 	_zte_action_running=$_zte_action_root/actions/running/$_zte_operation_id.json
 	[ -s "$_zte_action_running" ] || return 1
-	_zte_action_type=$(zte_json_top_get "$(cat "$_zte_action_running")" type)
+	_zte_action_running_record=$(cat "$_zte_action_running") || return 1
+	[ "$(zte_json_top_get \
+		"$_zte_action_running_record" operation_id)" = "$_zte_operation_id" ] ||
+		return 1
+	_zte_action_type=$(zte_json_top_get "$_zte_action_running_record" type)
 	zte_action_type_valid "$_zte_action_type" || return 1
 
 	_zte_action_result=$_zte_action_root/actions/results/$_zte_operation_id.json
@@ -430,13 +430,27 @@ zte_action_finish() {
 		return 1
 	chmod 600 "$_zte_action_tmp" || return 1
 	mv "$_zte_action_tmp" "$_zte_action_result" || return 1
+	rm "$_zte_action_running" || return 1
+	_zte_action_slot_remove_locked "$_zte_action_root"
+}
+
+zte_action_finish() {
+	_zte_action_root=$1
+	_zte_operation_id=$2
+	_zte_action_state=$3
+	_zte_action_code=$4
+	_zte_action_updated=$5
+
+	zte_operation_id_valid "$_zte_operation_id" || return 1
+	zte_action_result_state_valid "$_zte_action_state" || return 1
+	zte_action_code_valid "$_zte_action_code" || return 1
+	zte_is_uint "$_zte_action_updated" || return 1
 	zte_action_guard_claim "$_zte_action_root" || return 1
 	_zte_action_finish_status=0
-	rm -f "$_zte_action_running" || _zte_action_finish_status=$?
-	if [ "$_zte_action_finish_status" = 0 ]; then
-		_zte_action_slot_remove_locked "$_zte_action_root" ||
-			_zte_action_finish_status=$?
-	fi
+	_zte_action_finish_locked \
+		"$_zte_action_root" "$_zte_operation_id" "$_zte_action_state" \
+		"$_zte_action_code" "$_zte_action_updated" ||
+		_zte_action_finish_status=$?
 	zte_action_guard_release "$_zte_action_root" || return 1
 	[ "$_zte_action_finish_status" = 0 ]
 }

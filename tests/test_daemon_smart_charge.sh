@@ -18,6 +18,7 @@ lib=$backend/files/usr/lib/zte-usb-wifi-manager
 assert_success zte_smart_charge_epoch_valid 2147483647
 assert_failure zte_smart_charge_epoch_valid 2147483648
 assert_failure zte_smart_charge_epoch_valid 9999999999
+assert_success zte_smart_charge_error_valid attempt_in_progress
 
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
@@ -142,7 +143,11 @@ direct_supply' "$(cat "$execute_log")"
 
 # A failed/ambiguous POST enters a bounded cooldown, preventing a write storm.
 zte_adapter_action_supported() { [ "$1" = set_power_supply_mode ]; }
+preflight_record=$work/preflight-record
 zte_execute_power_supply_mode() {
+    if [ -f "$STATE_DIR/smart-charge-cooldown" ]; then
+        cat "$STATE_DIR/smart-charge-cooldown" >"$preflight_record"
+    fi
     printf '%s\n' failed >>"$execute_log"
     printf '%s\n' write_ambiguous
     return 1
@@ -157,6 +162,7 @@ assert_failure test -e "$STATE_DIR/actions/active"
 cooldown_file=$STATE_DIR/smart-charge-cooldown
 assert_eq 600 "$(test_file_mode "$cooldown_file")"
 assert_eq '1722345980 write_ambiguous' "$(cat "$cooldown_file")"
+assert_eq '1722345980 attempt_in_progress' "$(cat "$preflight_record")"
 
 # A daemon restart reloads an unexpired cooldown from tmpfs, and expiration,
 # malformed data, unsafe modes, or symlinks are never trusted.
@@ -177,6 +183,30 @@ assert_eq 'charging
 direct_supply
 direct_supply
 failed' "$(cat "$execute_log")"
+
+# An intent left by a crash is loaded as cooldown before any new POST. A fresh
+# snapshot that confirms the target clears it read-only; a mismatch waits.
+assert_success zte_smart_charge_cooldown_write \
+    "$STATE_DIR" 1722345980 attempt_in_progress
+loaded_cooldown=$(zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681)
+assert_eq '1722345980:attempt_in_progress' "$loaded_cooldown"
+smart_charge_retry_after=${loaded_cooldown%%:*}
+smart_charge_last_error=${loaded_cooldown#*:}
+crash_restart_post_log=$work/crash-restart-post
+: >"$crash_restart_post_log"
+zte_execute_power_supply_mode() {
+    printf '%s\n' "$4" >>"$crash_restart_post_log"
+    printf '%s\n' ok
+}
+assert_success apply_smart_charge_policy
+assert_eq COOLDOWN "$policy_state"
+assert_eq '' "$(cat "$crash_restart_post_log")"
+device_json='{"battery":{"percent":85},"power_supply":{"mode_raw":"1","direct_supply":true}}'
+assert_success apply_smart_charge_policy
+assert_eq 0 "$smart_charge_retry_after"
+assert_failure test -e "$cooldown_file"
+assert_eq '' "$(cat "$crash_restart_post_log")"
+device_json='{"battery":{"percent":85},"power_supply":{"mode_raw":"0","direct_supply":false}}'
 
 printf '%s\n' malformed >"$cooldown_file"
 chmod 600 "$cooldown_file"
@@ -225,7 +255,11 @@ rm -f "$cooldown_file"
 
 # A successful action must not silently remove an unsafe cooldown object.
 # Clear fails closed, latches persistence failure, and retains the evidence.
-ln -s "$victim" "$cooldown_file"
+zte_execute_power_supply_mode() {
+    rm -f "$STATE_DIR/smart-charge-cooldown"
+    ln -s "$victim" "$STATE_DIR/smart-charge-cooldown"
+    printf '%s\n' ok
+}
 smart_charge_retry_after=0
 smart_charge_persistence_failed=0
 assert_success apply_smart_charge_policy
@@ -260,8 +294,8 @@ assert_eq 2 "$cooldown_status"
 assert_success test -f "$cooldown_file"
 rm -f "$cooldown_file"
 
-# Persistence failure leaves an independent fail-safe latch, preventing a
-# write storm even if the ordinary in-process retry timestamp is reset.
+# Preflight persistence failure occurs before POST. Even with an absent final
+# file and a simulated restart, every attempt fails safe without device I/O.
 zte_smart_charge_cooldown_write() { return 1; }
 zte_execute_power_supply_mode() {
     printf '%s\n' persist-failed >>"$execute_log"
@@ -272,9 +306,14 @@ smart_charge_retry_after=0
 smart_charge_persistence_failed=0
 assert_success apply_smart_charge_policy
 assert_eq COOLDOWN_PERSIST_FAILED "$policy_state"
+assert_failure test -e "$cooldown_file"
+assert_eq 0 "$(grep -c '^persist-failed$' "$execute_log")"
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 1 "$cooldown_status"
 smart_charge_retry_after=0
+smart_charge_persistence_failed=0
 assert_success apply_smart_charge_policy
 assert_eq COOLDOWN_PERSIST_FAILED "$policy_state"
-assert_eq 1 "$(grep -c '^persist-failed$' "$execute_log")"
+assert_eq 0 "$(grep -c '^persist-failed$' "$execute_log")"
 
 finish

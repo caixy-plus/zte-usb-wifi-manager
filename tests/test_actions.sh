@@ -346,4 +346,43 @@ assert_success test -f "$cleanup_state/actions/active"
 assert_eq called "$(cat "$cleanup_log")"
 assert_success zte_device_action_release "$cleanup_state"
 
+# Two recoverers may validate the same running record. Pause the first at its
+# guard boundary, let the second finish and a successor claim, then resume the
+# first. It must fail on the missing running record without touching successor.
+dual_state=$work/dual-recoverer
+dual_id=op-1722353000-7200
+successor_id=op-1722353001-7201
+assert_success zte_action_enqueue \
+    "$dual_state" "$dual_id" set_wifi '{"enabled":true}' 1722353000
+zte_action_claim "$dual_state" >/dev/null
+dual_injected=0
+zte_action_guard_claim() {
+    _test_guard_root=$1
+    if [ "$_test_guard_root" = "$dual_state" ] &&
+        [ "$dual_injected" = 0 ]; then
+        dual_injected=1
+        zte_action_finish \
+            "$dual_state" "$dual_id" failed daemon_restarted \
+            1722353001 || return 1
+        zte_action_enqueue \
+            "$dual_state" "$successor_id" set_wifi \
+            '{"enabled":false}' 1722353001 || return 1
+    fi
+    mkdir "$_test_guard_root/actions/active.guard" 2>/dev/null || return 1
+    chmod 700 "$_test_guard_root/actions/active.guard"
+}
+if zte_action_finish \
+    "$dual_state" "$dual_id" failed daemon_restarted 1722353002; then
+    dual_first_status=0
+else
+    dual_first_status=$?
+fi
+assert_eq 1 "$dual_first_status"
+assert_success test -f \
+    "$dual_state/actions/pending/$successor_id.json"
+assert_success test -f "$dual_state/actions/active"
+zte_action_claim "$dual_state" >/dev/null
+assert_success zte_action_finish \
+    "$dual_state" "$successor_id" failed unsupported 1722353003
+
 finish

@@ -984,7 +984,6 @@ process_actions() {
 apply_smart_charge_policy() {
 	policy_state=STATE_UNKNOWN
 	power_action=keep
-	smart_charge_last_error=''
 
 	if [ "${ZTE_ADAPTER_ID:-}" != zte_u30 ]; then
 		policy_state=UNSUPPORTED_DEVICE
@@ -1014,6 +1013,20 @@ apply_smart_charge_policy() {
 		*) policy_state=STATE_UNKNOWN; return 0 ;;
 	esac
 	if [ "$_zte_smart_target" = "$_zte_smart_current" ]; then
+		if [ "${smart_charge_persistence_failed:-0}" = 1 ]; then
+			policy_state=COOLDOWN_PERSIST_FAILED
+			return 0
+		fi
+		if [ "${smart_charge_retry_after:-0}" != 0 ] ||
+			[ -n "${smart_charge_last_error:-}" ]; then
+			if zte_smart_charge_cooldown_clear "$STATE_DIR"; then
+				smart_charge_retry_after=0
+				smart_charge_last_error=''
+			else
+				smart_charge_persistence_failed=1
+				policy_state=COOLDOWN_PERSIST_FAILED
+			fi
+		fi
 		return 0
 	fi
 	if ! zte_adapter_action_supported set_power_supply_mode; then
@@ -1038,6 +1051,15 @@ apply_smart_charge_policy() {
 		policy_state=ACTION_BUSY
 		return 0
 	fi
+	smart_charge_retry_after=$((_zte_smart_now + SMART_CHARGE_RETRY_SECONDS))
+	smart_charge_last_error=attempt_in_progress
+	if ! zte_smart_charge_cooldown_write "$STATE_DIR" \
+		"$smart_charge_retry_after" "$smart_charge_last_error"; then
+		smart_charge_persistence_failed=1
+		policy_state=COOLDOWN_PERSIST_FAILED
+		zte_device_action_release "$STATE_DIR" || :
+		return 0
+	fi
 	_zte_smart_execute_result=''
 	if _zte_smart_execute_result=$(zte_execute_power_supply_mode \
 		"$host" '' "$COOKIE_FILE" "$_zte_smart_target"); then
@@ -1057,7 +1079,6 @@ apply_smart_charge_policy() {
 	else
 		smart_charge_last_error=executor_failed
 	fi
-	smart_charge_retry_after=$((_zte_smart_now + SMART_CHARGE_RETRY_SECONDS))
 	if zte_smart_charge_cooldown_write "$STATE_DIR" \
 		"$smart_charge_retry_after" "$smart_charge_last_error"; then
 		policy_state=WRITE_FAILED

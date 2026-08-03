@@ -3,7 +3,7 @@
 zte_smart_charge_error_valid() {
 	case ${1-} in
 		write_ambiguous|readback_failed|readback_mismatch|\
-authentication_failed|credentials_missing|executor_failed)
+authentication_failed|credentials_missing|executor_failed|attempt_in_progress)
 			return 0
 			;;
 		*) return 1 ;;
