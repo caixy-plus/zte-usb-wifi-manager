@@ -30,11 +30,8 @@ endef
 
 define Package/zte-usb-wifi-manager/postinst
 #!/bin/sh
-if [ -z "$${IPKG_INSTROOT}" ]; then
+	if [ -z "$${IPKG_INSTROOT}" ]; then
 	zte_config_changed=0
-	zte_legacy_config=0
-	uci -q get zte-usb-wifi-manager.writes.power_supply_write_enabled \
-		>/dev/null 2>&1 || zte_legacy_config=1
 
 	zte_ensure_config() {
 		zte_config_key=$$1
@@ -57,16 +54,6 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	zte_ensure_config zte-usb-wifi-manager.charging.low_percent 30
 	zte_ensure_config zte-usb-wifi-manager.charging.high_percent 80
 	zte_ensure_config zte-usb-wifi-manager.charging.retry_seconds 300
-
-	# Pre-U30 configs shipped zte_u25s as the fixed default and had no power
-	# supply gate. Only migrate that generation; a later explicit selection is
-	# retained.
-	if [ "$$zte_legacy_config" = 1 ] &&
-		[ "$$(uci -q get zte-usb-wifi-manager.zte.adapter 2>/dev/null)" = \
-		zte_u25s ]; then
-		uci set zte-usb-wifi-manager.zte.adapter=auto || exit 1
-		zte_config_changed=1
-	fi
 
 	if [ "$$(cat /tmp/sysinfo/board_name 2>/dev/null)" = \
 		cudy,tr3000-v1-ubootmod ] &&

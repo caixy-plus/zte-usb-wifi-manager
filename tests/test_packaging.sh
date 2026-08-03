@@ -164,7 +164,7 @@ for hook_format in apk ipk; do
     assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
         PATH="$postinst_bin:$PATH" sh "$hook_postinst"
     assert_eq auto "$(cat "$postinst_uci/zte-usb-wifi-manager_usb_control_path")"
-    assert_eq auto "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
+    assert_eq zte_u25s "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
     assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_device_reboot_enabled")"
     assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_device_shutdown_enabled")"
     assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_power_supply_write_enabled")"
@@ -176,14 +176,14 @@ for hook_format in apk ipk; do
     assert_eq commit "$(cat "$postinst_uci/commits")"
 
     # The final pre-U30 config generation already had independent lifecycle
-    # gates but no power-supply gate. It must still migrate from the historical
-    # fixed adapter default to auto detection.
+    # gates but no power-supply gate. Its explicit U25S profile must remain
+    # selected because auto detection has no calibrated U25S USB identity.
     reset_postinst_fixture
     printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_reboot_enabled"
     printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_shutdown_enabled"
     assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
         PATH="$postinst_bin:$PATH" sh "$hook_postinst"
-    assert_eq auto "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
+    assert_eq zte_u25s "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
     assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_power_supply_write_enabled")"
     assert_eq commit "$(cat "$postinst_uci/commits")"
 
