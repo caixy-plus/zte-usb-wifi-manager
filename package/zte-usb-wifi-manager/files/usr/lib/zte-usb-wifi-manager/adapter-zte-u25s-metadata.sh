@@ -41,6 +41,23 @@ zte_adapter_apply_profile() {
 	else
 		ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
 	fi
+	case $ZTE_DEVICE_PROFILE_ID in
+		zte_u25s) ZTE_READ_FIELDS=$ZTE_U25S_READ_FIELDS ;;
+		zte_u30)
+			ZTE_READ_FIELDS=''
+			_zte_profile_old_ifs=$IFS
+			IFS=,
+			for _zte_profile_field in $ZTE_U25S_READ_FIELDS; do
+				IFS=$_zte_profile_old_ifs
+				[ "$_zte_profile_field" = sms_data_total ] ||
+					ZTE_READ_FIELDS=${ZTE_READ_FIELDS:+$ZTE_READ_FIELDS,}$_zte_profile_field
+				IFS=,
+			done
+			IFS=$_zte_profile_old_ifs
+			ZTE_READ_FIELDS=$ZTE_READ_FIELDS',connectionMode,power_supply_mode'
+			;;
+		*) return 1 ;;
+	esac
 }
 
 # rpcd may apply only an exact identity already written by the polling daemon.
@@ -78,6 +95,7 @@ ZTE_READ_FIELDS=$ZTE_READ_FIELDS',RadioOff,SSID1,AuthMode,HideSSID,MAX_Access_nu
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',WirelessMode,CountryCode,Channel,wifi_11n_cap,wifi_coverage,SleepStatusForSingleChipCpe'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',Z5g_snr,Z5g_SINR,wan_lte_ca,network_lte_ca_pcell_band,bandwidth,network_lte_ca_scell_band,network_lte_ca_scell_bandwidth'
 ZTE_READ_FIELDS=$ZTE_READ_FIELDS',network_lte_ca_pcell_arfcn,lte_ca_scell_arfcn,wan_active_band,apn_pdp_type,apn_ipv6_pdp_type'
+ZTE_U25S_READ_FIELDS=$ZTE_READ_FIELDS
 
 # These variables are the sourced adapter contract and are consumed by other
 # library files after this metadata file returns.

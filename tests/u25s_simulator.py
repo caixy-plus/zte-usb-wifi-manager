@@ -129,6 +129,8 @@ READ_FIELDS = {
 	"wan_active_band",
 	"apn_pdp_type",
 	"apn_ipv6_pdp_type",
+	"connectionMode",
+	"power_supply_mode",
 }
 
 

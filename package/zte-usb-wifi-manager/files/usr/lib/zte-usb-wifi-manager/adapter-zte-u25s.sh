@@ -324,6 +324,10 @@ zte_adapter_normalize() {
 	_zte_wan_mode=$(zte_adapter_json_nonempty_field "$_zte_raw" opms_wan_mode)
 	_zte_connection_mode=$(zte_adapter_json_nonempty_field \
 		"$_zte_raw" ConnectionMode)
+	if [ "$_zte_connection_mode" = null ]; then
+		_zte_connection_mode=$(zte_adapter_json_nonempty_field \
+			"$_zte_raw" connectionMode)
+	fi
 	_zte_auto_roaming=$(zte_adapter_json_nonempty_field \
 		"$_zte_raw" autoConnectWhenRoaming)
 	_zte_network_mode=$(zte_adapter_json_nonempty_field \
@@ -446,9 +450,19 @@ zte_adapter_normalize() {
 		_zte_present_raw=$(zte_json_flat_get "$_zte_raw" battery_exist)
 		case $_zte_present_raw in
 			1|true|yes|0|false|no) ;;
+			'')
+				if [ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] &&
+					zte_json_flat_has "$_zte_raw" battery_vol_percent; then
+					_zte_present=true
+				else
+					return 1
+				fi
+				;;
 			*) return 1 ;;
 		esac
-		_zte_present=$(zte_adapter_bool "$_zte_present_raw")
+		if [ "$_zte_present_raw" != '' ]; then
+			_zte_present=$(zte_adapter_bool "$_zte_present_raw")
+		fi
 	else
 		_zte_present=null
 	fi

@@ -184,9 +184,10 @@ u30_raw=$(curl -sS --max-time 2 \
 assert_eq "$(cat tests/fixtures/u30/status.json)" "$u30_raw" \
     'U30 profile must serve its sanitized status fixture without a login session'
 for observed_field in \
-    '"device_market_name":"U30 Pro"' \
+	'"hardware_version":"U30ProHW1.0"' \
     '"network_type":"5G"' \
-    '"battery_vol_percent":"100"'
+	'"battery_vol_percent":"51"' \
+	'"power_supply_mode":"0"'
 do
     case $u30_raw in
         *"$observed_field"*) pass ;;
