@@ -25,5 +25,5 @@ tests/test_action_executor.sh:286:SECRET_ASSIGNMENT
 tests/test_action_executor.sh:321:SECRET_ASSIGNMENT
 tests/test_json.sh:75:MAC_ADDRESS
 tests/test_json.sh:76:MAC_ADDRESS
-tests/test_luci.js:1185:MAC_ADDRESS
-tests/test_luci.js:1362:MAC_ADDRESS
+tests/test_luci.js:1193:MAC_ADDRESS
+tests/test_luci.js:1370:MAC_ADDRESS

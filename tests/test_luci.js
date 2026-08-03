@@ -587,6 +587,14 @@ test('keeps U30 Wi-Fi writes fixed to 2.4 GHz and automatic channel', async func
 		[ 'set_wifi', true, '2g', 'U30 Fixture', 'wpa2_psk', 'fixture-pass', 'auto' ]);
 });
 
+test('shows U30 Wi-Fi constraints while writes remain disabled', function() {
+	const tree = renderPanel({
+		device: { adapter: 'zte_u30', model: 'U30 Pro', wifi: { enabled: true } }
+	}, 'wifi', null, { adapter: 'zte_u30', wifi_write: false });
+	assert.ok(text(tree).indexOf('U30 仅支持 2.4 GHz，信道固定为自动') !== -1);
+	assert.strictEqual(text(tree).indexOf('保存 Wi-Fi 设置'), -1);
+});
+
 test('renders a write-only U25S password entry and credential state', function() {
 	const tree = render({ state: 'ok' });
 	const passwordInput = nodesByTag(tree, 'input').find(function(input) {
@@ -1362,6 +1370,16 @@ test('renders aggregate counts and authenticated client details', function() {
 	assert.ok(panelText.indexOf('02:00:00:00:00:01') !== -1);
 	assert.ok(panelText.indexOf('192.0.2.10') !== -1);
 	assert.ok(panelText.indexOf('wlan0') !== -1);
+});
+
+test('keeps U30 client totals scoped to the supported 2.4 GHz radio', function() {
+	const status = JSON.parse(JSON.stringify(completeStatus));
+	status.device.adapter = 'zte_u30';
+	status.device.model = 'U30 Pro';
+	const tree = renderPanel(status, 'clients', null, { adapter: 'zte_u30' });
+	assert.strictEqual(rowValue(tree, '接入设备总数'), '2');
+	assert.strictEqual(rowValue(tree, '2.4 GHz 客户端'), '2');
+	assert.strictEqual(text(tree).indexOf('5 GHz 客户端'), -1);
 });
 
 test('explains why authenticated client details are unavailable', function() {

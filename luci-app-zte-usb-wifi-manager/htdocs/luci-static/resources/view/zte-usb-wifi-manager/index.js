@@ -683,6 +683,9 @@ function renderWifi(status, capabilities, onAction, actionBusy) {
 		row(_('覆盖范围原始值'), advanced.coverage_raw),
 		row(_('休眠状态原始值'), wifi.sleep_status_raw)
 	]);
+	if (isU30)
+		children.push(row(_('U30 Wi-Fi 约束'),
+			_('U30 仅支持 2.4 GHz，信道固定为自动')));
 	if (capabilities.wifi_write === true) {
 		var enabled = actionInput('wifi-enabled', 'checkbox', wifi.enabled !== false);
 		var band = isU30 ? null : actionSelect('wifi-band',
@@ -695,12 +698,8 @@ function renderWifi(status, capabilities, onAction, actionBusy) {
 		var wifiPassword = actionInput('wifi-password', 'password', '');
 		var channel = isU30 ? null : actionInput('wifi-channel', 'text', 'auto');
 		var wifiRows = [ actionRow(_('启用'), enabled) ];
-		if (isU30) {
-			wifiRows.push(actionRow(_('U30 Wi-Fi 约束'),
-				_('U30 仅支持 2.4 GHz，信道固定为自动')));
-		} else {
+		if (!isU30)
 			wifiRows.push(actionRow(_('频段'), band));
-		}
 		wifiRows.push(actionRow(_('SSID'), ssid), actionRow(_('安全模式'), security),
 			actionRow(_('密码'), wifiPassword));
 		if (!isU30)
@@ -761,7 +760,7 @@ function clientDetailLabel(client) {
 	return fields.length ? fields.join(' · ') : null;
 }
 
-function renderClients(status) {
+function renderClients(status, capabilities) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var wifi = device.wifi && typeof device.wifi === 'object' ? device.wifi : {};
 	var bands = wifi.bands && typeof wifi.bands === 'object' ? wifi.bands : {};
@@ -771,20 +770,24 @@ function renderClients(status) {
 		? bands.wifi_5 : {};
 	var clients = device.clients && typeof device.clients === 'object'
 		? device.clients : {};
+	var isU30 = capabilities.adapter === 'zte_u30';
 	var items = clients.available === true && Array.isArray(clients.items)
 		? clients.items.slice(0, 64) : [];
 	var total = null;
 
-	if (typeof wifi24.clients === 'number' && wifi24.clients >= 0 &&
+	if (isU30 && typeof wifi24.clients === 'number' && wifi24.clients >= 0)
+		total = wifi24.clients;
+	else if (!isU30 && typeof wifi24.clients === 'number' && wifi24.clients >= 0 &&
 		typeof wifi5.clients === 'number' && wifi5.clients >= 0)
 		total = wifi24.clients + wifi5.clients;
 
 	var rows = [
 		row(_('接入设备总数'), total),
-		row(_('2.4 GHz 客户端'), wifi24.clients),
-		row(_('5 GHz 客户端'), wifi5.clients),
-		row(_('明细状态'), clientCollectionLabel(clients, items.length))
+		row(_('2.4 GHz 客户端'), wifi24.clients)
 	];
+	if (!isU30)
+		rows.push(row(_('5 GHz 客户端'), wifi5.clients));
+	rows.push(row(_('明细状态'), clientCollectionLabel(clients, items.length)));
 	items.forEach(function(client, index) {
 		if (client && typeof client === 'object')
 			rows.push(row(_('客户端 ') + (index + 1), clientDetailLabel(client)));
@@ -1243,7 +1246,7 @@ function renderPanel(tabId, status, capabilities, logsResult, smsResult, onActio
 	case 'wifi':
 		return renderWifi(status, capabilities, onAction, actionBusy);
 	case 'clients':
-		return renderClients(status);
+		return renderClients(status, capabilities);
 	case 'traffic':
 		return renderTraffic(status, capabilities, onAction, actionBusy);
 	case 'sms':
