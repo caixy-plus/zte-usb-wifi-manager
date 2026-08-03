@@ -15,9 +15,9 @@
 ## 当前状态
 
 仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r30 / LuCI r12
-已完成本地离线自动化验证；最近完成官方双 SDK、双版本隔离 QEMU 和路由器只读
-验证的版本为 backend r29 / LuCI r12。r30 的正式构建与部署证据将在本次安全门禁
-复核通过后重新生成；设备写能力和 72 小时稳定性仍待备用硬件
+已完成本地离线自动化验证、官方双 SDK、双版本隔离 QEMU 和路由器只读验证。
+r30 在校准入口和首次 POST 前强制拒绝 U30 作为 IPv4/IPv6 默认出口，并在路由表
+检查失败时 fail-closed；设备写能力和 72 小时稳定性仍待备用硬件
 验收：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
@@ -103,6 +103,10 @@
   与修复后的脱敏 soak 单次采样均通过；因 U30 是当前默认出口，真实模式切换和
   72 小时采样仍等待备用链路。详见
   [r29/r12 最终验证](docs/validation/2026-08-03-r29-r12-final.md)。
+- 当前 r30/r12 已通过 GitHub Actions 双 SDK 构建、r29→r30 双版本隔离 QEMU
+  升级/卸装和 Cudy/U30 只读验收。真机确认 U30 是默认出口时，新校准门禁按设计
+  拒绝执行；没有发生设备写入。详见
+  [r30/r12 最终验证](docs/validation/2026-08-03-r30-r12-final.md)。
 
 当前状态不代表设备写接口或 72 小时稳定性已经完成人工上机验收。
 
@@ -124,15 +128,15 @@
 
 当前构建与验证证据：
 
-| OpenWrt | 包格式 | 当前 r29 / LuCI r12 | 验证结果 |
+| OpenWrt | 包格式 | 当前 r30 / LuCI r12 | 验证结果 |
 |---|---|---|---|
-| OpenWrt 25.12.5 | `.apk` | 官方 SDK 构建通过 | r28→r29 QEMU 升级及 Cudy/U30 只读验收通过 |
-| OpenWrt 24.10.7 | `.ipk` | 官方 SDK 构建通过 | r28→r29 QEMU 升级、配置、服务、ubus 和卸装通过 |
+| OpenWrt 25.12.5 | `.apk` | 官方 SDK 构建通过 | r29→r30 QEMU 升级及 Cudy/U30 默认出口门禁验收通过 |
+| OpenWrt 24.10.7 | `.ipk` | 官方 SDK 构建通过 | r29→r30 QEMU 升级、配置、服务、ubus 和卸装通过 |
 
-当前 backend r29 / LuCI r12 已完成本地检查、官方双版本 SDK 构建、隔离 QEMU
+当前 backend r30 / LuCI r12 已完成本地检查、官方双版本 SDK 构建、隔离 QEMU
 升级/卸装验证和 Cudy/U30 只读验收。升级保留自定义轮询值、已选 `zte_u30` 适配器
 和所有关闭状态的写门控。记录见
-[r29/r12 最终验证](docs/validation/2026-08-03-r29-r12-final.md)。设备写 capability
+[r30/r12 最终验证](docs/validation/2026-08-03-r30-r12-final.md)。设备写 capability
 仍保持关闭；U30 是当前默认上网出口，只有迁移到备用链路后才能执行真实模式切换。
 
 从只支持 U25S 的旧版本升级时会保留 `zte.adapter=zte_u25s`，避免未经校准的自动
@@ -587,6 +591,7 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 - [r15/r4 到 r24/r12 隔离 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)
 - [r26/r12 双 SDK、QEMU 与 U30 真机只读验证](docs/validation/2026-08-03-r26-r12-final.md)
 - [r29/r12 双 SDK、QEMU 与 U30 真机安全验证](docs/validation/2026-08-03-r29-r12-final.md)
+- [r30/r12 默认出口门禁与最终安全验证](docs/validation/2026-08-03-r30-r12-final.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
 - [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 
