@@ -34,10 +34,10 @@ zte_execute_power_supply_mode() {
 			return 1
 		}
 	fi
+	_zte_power_execute_post_ok=1
 	if ! zte_adapter_set_power_supply_mode "$_zte_power_execute_host" \
 		"$_zte_power_execute_target" "$_zte_power_execute_jar"; then
-		printf '%s\n' write_ambiguous
-		return 1
+		_zte_power_execute_post_ok=0
 	fi
 	_zte_power_execute_attempts=$ZTE_POWER_SUPPLY_READBACK_ATTEMPTS
 	_zte_power_execute_interval=$ZTE_POWER_SUPPLY_READBACK_INTERVAL
@@ -67,6 +67,10 @@ zte_execute_power_supply_mode() {
 		fi
 		_zte_power_execute_attempt=$((_zte_power_execute_attempt + 1))
 	done
+	if [ "$_zte_power_execute_post_ok" = 0 ]; then
+		printf '%s\n' write_ambiguous
+		return 1
+	fi
 	printf '%s\n' "$_zte_power_execute_failure"
 	return 1
 }

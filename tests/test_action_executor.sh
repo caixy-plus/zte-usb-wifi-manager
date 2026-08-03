@@ -242,9 +242,40 @@ zte_adapter_set_power_supply_mode() {
     return 1
 }
 : >"$power_write_log"
+zte_adapter_fetch_power_supply_mode() {
+    printf '%s\n' read >>"$power_read_log"
+    printf '%s\n' charging
+}
+: >"$power_read_log"
+assert_eq ok "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" charging)"
+assert_eq 1 "$(wc -l <"$power_write_log" | tr -d ' ')"
+assert_eq 1 "$(wc -l <"$power_read_log" | tr -d ' ')"
+
+# A failed/malformed/timeout POST is ambiguous, so it is never repeated. The
+# bounded GET can resolve success, but mismatch or read failure stays
+# write_ambiguous rather than inviting another POST.
+: >"$power_write_log"
+zte_adapter_fetch_power_supply_mode() {
+    printf '%s\n' read >>"$power_read_log"
+    printf '%s\n' direct_supply
+}
+: >"$power_read_log"
 assert_eq write_ambiguous "$(zte_execute_power_supply_mode \
     192.168.0.1 '' "$work/cookies" charging)"
 assert_eq 1 "$(wc -l <"$power_write_log" | tr -d ' ')"
+assert_eq 2 "$(wc -l <"$power_read_log" | tr -d ' ')"
+
+: >"$power_write_log"
+zte_adapter_fetch_power_supply_mode() {
+    printf '%s\n' read >>"$power_read_log"
+    return 1
+}
+: >"$power_read_log"
+assert_eq write_ambiguous "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" charging)"
+assert_eq 1 "$(wc -l <"$power_write_log" | tr -d ' ')"
+assert_eq 2 "$(wc -l <"$power_read_log" | tr -d ' ')"
 
 zte_adapter_set_power_supply_mode() { return 0; }
 zte_adapter_fetch_power_supply_mode() { printf '%s\n' charging; }

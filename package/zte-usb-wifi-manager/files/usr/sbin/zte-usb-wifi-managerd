@@ -9,6 +9,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/session.sh
 . /usr/lib/zte-usb-wifi-manager/policy.sh
 . /usr/lib/zte-usb-wifi-manager/smart-charge-policy.sh
+. /usr/lib/zte-usb-wifi-manager/smart-charge-state.sh
 . /usr/lib/zte-usb-wifi-manager/schedule.sh
 . /usr/lib/zte-usb-wifi-manager/power-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
@@ -1023,9 +1024,18 @@ apply_smart_charge_policy() {
 		policy_state=WRITE_DISABLED
 		return 0
 	fi
+	if [ "${smart_charge_persistence_failed:-0}" = 1 ]; then
+		policy_state=COOLDOWN_PERSIST_FAILED
+		return 0
+	fi
 	_zte_smart_now=$(date +%s)
-	if [ "${smart_charge_retry_after:-0}" -gt "$_zte_smart_now" ]; then
+	if zte_is_uint "${smart_charge_retry_after:-0}" &&
+		[ "${smart_charge_retry_after:-0}" -gt "$_zte_smart_now" ]; then
 		policy_state=COOLDOWN
+		return 0
+	fi
+	if ! zte_device_action_claim "$STATE_DIR"; then
+		policy_state=ACTION_BUSY
 		return 0
 	fi
 	_zte_smart_execute_result=''
@@ -1033,13 +1043,29 @@ apply_smart_charge_policy() {
 		"$host" '' "$COOKIE_FILE" "$_zte_smart_target"); then
 		power_action=$_zte_smart_target
 		smart_charge_retry_after=0
+		smart_charge_last_error=''
+		if ! zte_smart_charge_cooldown_clear "$STATE_DIR"; then
+			smart_charge_persistence_failed=1
+		fi
+		zte_device_action_release "$STATE_DIR" || :
 		record_event info smart_charge smart_charge_applied \
 			"$_zte_smart_now" || :
 		return 0
 	fi
-	smart_charge_last_error=$_zte_smart_execute_result
+	if zte_smart_charge_error_valid "$_zte_smart_execute_result"; then
+		smart_charge_last_error=$_zte_smart_execute_result
+	else
+		smart_charge_last_error=executor_failed
+	fi
 	smart_charge_retry_after=$((_zte_smart_now + SMART_CHARGE_RETRY_SECONDS))
-	policy_state=WRITE_FAILED
+	if zte_smart_charge_cooldown_write "$STATE_DIR" \
+		"$smart_charge_retry_after" "$smart_charge_last_error"; then
+		policy_state=WRITE_FAILED
+	else
+		smart_charge_persistence_failed=1
+		policy_state=COOLDOWN_PERSIST_FAILED
+	fi
+	zte_device_action_release "$STATE_DIR" || :
 	power_action=keep
 	logger -t zte-usb-wifi-manager \
 		"smart-charge write failed: $smart_charge_last_error"
@@ -1395,6 +1421,14 @@ main() {
 	private_auth_retry_after=0
 	next_sms_poll_at=0
 	smart_charge_retry_after=0
+	smart_charge_last_error=''
+	smart_charge_persistence_failed=0
+	_zte_smart_startup_now=$(date +%s)
+	if _zte_smart_startup_cooldown=$(zte_smart_charge_cooldown_load \
+		"$STATE_DIR" "$_zte_smart_startup_now"); then
+		smart_charge_retry_after=${_zte_smart_startup_cooldown%%:*}
+		smart_charge_last_error=${_zte_smart_startup_cooldown#*:}
+	fi
 	credential_revision=$(
 		zte_credential_revision "$credential_file" 2>/dev/null
 	) || credential_revision=invalid

@@ -44,9 +44,8 @@ zte_action_init() {
 		"$_zte_action_root/actions/results"
 }
 
-zte_action_has_active() {
+zte_action_has_records() {
 	_zte_action_root=$1
-	[ -d "$_zte_action_root/actions/active" ] && return 0
 	for _zte_action_file in \
 		"$_zte_action_root"/actions/pending/*.json \
 		"$_zte_action_root"/actions/running/*.json
@@ -54,6 +53,128 @@ zte_action_has_active() {
 		[ -f "$_zte_action_file" ] && return 0
 	done
 	return 1
+}
+
+zte_action_has_active() {
+	_zte_action_root=$1
+	[ -e "$_zte_action_root/actions/active" ] ||
+		[ -L "$_zte_action_root/actions/active" ] ||
+		zte_action_has_records "$_zte_action_root"
+}
+
+zte_action_process_start_id() {
+	_zte_action_process_pid=$1
+	zte_is_uint "$_zte_action_process_pid" || return 1
+	if [ ! -d /proc ]; then
+		printf '%s\n' portable
+		return 0
+	fi
+	_zte_action_process_stat=/proc/$_zte_action_process_pid/stat
+	[ -r "$_zte_action_process_stat" ] || return 1
+	_zte_action_process_record=$(cat "$_zte_action_process_stat" 2>/dev/null) ||
+		return 1
+	case $_zte_action_process_record in
+		*') '*) ;;
+		*) return 1 ;;
+	esac
+	_zte_action_process_fields=${_zte_action_process_record##*) }
+	_zte_action_process_start=$(printf '%s\n' \
+		"$_zte_action_process_fields" | awk '{print $20}') || return 1
+	zte_is_uint "$_zte_action_process_start" || return 1
+	printf '%s\n' "$_zte_action_process_start"
+}
+
+zte_action_slot_create() {
+	_zte_action_root=$1
+	_zte_action_owner=$2
+	_zte_action_nonce=${3-$$}
+	case $_zte_action_owner in
+		queue|automatic|reconcile) ;;
+		*) return 1 ;;
+	esac
+	case $_zte_action_nonce in
+		''|*[!A-Za-z0-9_-]*) return 1 ;;
+	esac
+	_zte_action_slot=$_zte_action_root/actions/active
+	if [ -e "$_zte_action_slot" ] || [ -L "$_zte_action_slot" ]; then
+		return 1
+	fi
+	_zte_action_owner_start=$(zte_action_process_start_id "$$") || return 1
+	_zte_action_slot_tmp=$_zte_action_root/actions/.active.$$.\
+$_zte_action_nonce.tmp
+	umask 077
+	rm -f "$_zte_action_slot_tmp" || return 1
+	printf '%s %s %s\n' "$_zte_action_owner" "$$" \
+		"$_zte_action_owner_start" >"$_zte_action_slot_tmp" ||
+		return 1
+	chmod 600 "$_zte_action_slot_tmp" || {
+		rm -f "$_zte_action_slot_tmp"
+		return 1
+	}
+	if ! ln "$_zte_action_slot_tmp" "$_zte_action_slot" 2>/dev/null; then
+		rm -f "$_zte_action_slot_tmp"
+		return 1
+	fi
+	rm -f "$_zte_action_slot_tmp"
+}
+
+zte_action_slot_remove() {
+	_zte_action_root=$1
+	_zte_action_slot=$_zte_action_root/actions/active
+	if [ -d "$_zte_action_slot" ] && [ ! -L "$_zte_action_slot" ]; then
+		rmdir "$_zte_action_slot" 2>/dev/null
+	elif [ -e "$_zte_action_slot" ] || [ -L "$_zte_action_slot" ]; then
+		rm -f "$_zte_action_slot"
+	fi
+}
+
+zte_action_slot_owner_live() {
+	_zte_action_root=$1
+	_zte_action_slot=$_zte_action_root/actions/active
+	[ -f "$_zte_action_slot" ] && [ ! -L "$_zte_action_slot" ] || return 1
+	_zte_action_owner_record=$(cat "$_zte_action_slot" 2>/dev/null) || return 1
+	_zte_action_owner=${_zte_action_owner_record%% *}
+	_zte_action_owner_rest=${_zte_action_owner_record#* }
+	_zte_action_owner_pid=${_zte_action_owner_rest%% *}
+	_zte_action_owner_start=${_zte_action_owner_rest#* }
+	[ "$_zte_action_owner_record" = \
+		"$_zte_action_owner $_zte_action_owner_pid $_zte_action_owner_start" ] ||
+		return 1
+	case $_zte_action_owner in
+		queue|automatic|reconcile) ;;
+		*) return 1 ;;
+	esac
+	zte_is_uint "$_zte_action_owner_pid" &&
+		[ "$_zte_action_owner_pid" -ge 2 ] || return 1
+	case $_zte_action_owner_start in
+		''|*[!A-Za-z0-9_-]*) return 1 ;;
+	esac
+	kill -0 "$_zte_action_owner_pid" 2>/dev/null || return 1
+	_zte_action_owner_observed=$(zte_action_process_start_id \
+		"$_zte_action_owner_pid") || return 2
+	[ "$_zte_action_owner_observed" = "$_zte_action_owner_start" ]
+}
+
+# Claim the exclusive slot shared by queued rpcd actions and daemon-owned
+# automatic device writes. This is intentionally separate from the legacy USB
+# power-transition marker, whose recovery semantics do not apply here.
+zte_device_action_claim() {
+	_zte_action_root=$1
+	zte_action_init "$_zte_action_root" || return 1
+	zte_action_has_records "$_zte_action_root" && return 1
+	zte_action_slot_create "$_zte_action_root" automatic || return 1
+	if zte_action_has_records "$_zte_action_root" ||
+		zte_power_transition_active "$_zte_action_root"; then
+		zte_action_slot_remove "$_zte_action_root" || :
+		return 1
+	fi
+}
+
+zte_device_action_release() {
+	_zte_action_root=$1
+	[ -n "$_zte_action_root" ] && [ "$_zte_action_root" != / ] || return 1
+	zte_action_has_records "$_zte_action_root" && return 1
+	zte_action_slot_remove "$_zte_action_root"
 }
 
 zte_power_transition_active() {
@@ -111,19 +232,15 @@ zte_action_enqueue() {
 	zte_is_uint "$_zte_action_created" || return 1
 	zte_action_init "$_zte_action_root" || return 1
 	zte_action_has_active "$_zte_action_root" && return 1
-	_zte_action_slot=$_zte_action_root/actions/active
-	mkdir "$_zte_action_slot" 2>/dev/null || return 1
-	chmod 700 "$_zte_action_slot" || {
-		rmdir "$_zte_action_slot" 2>/dev/null || :
-		return 1
-	}
+	zte_action_slot_create \
+		"$_zte_action_root" queue "$_zte_operation_id" || return 1
 	if zte_power_transition_active "$_zte_action_root"; then
-		rmdir "$_zte_action_slot" 2>/dev/null || :
+		zte_action_slot_remove "$_zte_action_root" || :
 		return 1
 	fi
 	zte_action_get "$_zte_action_root" "$_zte_operation_id" >/dev/null 2>&1 &&
 		{
-			rmdir "$_zte_action_slot" 2>/dev/null || :
+			zte_action_slot_remove "$_zte_action_root" || :
 			return 1
 		}
 
@@ -136,17 +253,17 @@ zte_action_enqueue() {
 		"$_zte_operation_id" "$_zte_action_type" \
 		"$_zte_action_payload" "$_zte_action_created" >"$_zte_action_tmp" ||
 		{
-			rmdir "$_zte_action_slot" 2>/dev/null || :
+			zte_action_slot_remove "$_zte_action_root" || :
 			return 1
 		}
 	chmod 600 "$_zte_action_tmp" || {
 		rm -f "$_zte_action_tmp"
-		rmdir "$_zte_action_slot" 2>/dev/null || :
+		zte_action_slot_remove "$_zte_action_root" || :
 		return 1
 	}
 	mv "$_zte_action_tmp" "$_zte_action_target" || {
 		rm -f "$_zte_action_tmp"
-		rmdir "$_zte_action_slot" 2>/dev/null || :
+		zte_action_slot_remove "$_zte_action_root" || :
 		return 1
 	}
 }
@@ -218,7 +335,7 @@ zte_action_finish() {
 	chmod 600 "$_zte_action_tmp" || return 1
 	mv "$_zte_action_tmp" "$_zte_action_result" || return 1
 	rm -f "$_zte_action_running" || return 1
-	rmdir "$_zte_action_root/actions/active" 2>/dev/null || :
+	zte_action_slot_remove "$_zte_action_root" || :
 }
 
 zte_action_recover_running() {
@@ -253,12 +370,17 @@ zte_action_reconcile_active() {
 
 	_zte_action_slot=$_zte_action_root/actions/active
 	if [ "$_zte_action_record_found" = 1 ]; then
-		if [ ! -d "$_zte_action_slot" ]; then
-			mkdir "$_zte_action_slot" || return 1
-			chmod 700 "$_zte_action_slot" || return 1
+		if [ ! -e "$_zte_action_slot" ] && [ ! -L "$_zte_action_slot" ]; then
+			zte_action_slot_create "$_zte_action_root" reconcile || return 1
 		fi
 	else
-		rmdir "$_zte_action_slot" 2>/dev/null || :
+		if zte_action_slot_owner_live "$_zte_action_root"; then
+			return 0
+		else
+			_zte_action_owner_status=$?
+			[ "$_zte_action_owner_status" = 2 ] && return 0
+			zte_action_slot_remove "$_zte_action_root" || :
+		fi
 	fi
 }
 

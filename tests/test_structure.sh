@@ -589,7 +589,8 @@ assert_file_contains "$daemon" '^set -e$'
 for library in \
     json.sh credentials.sh session.sh snapshot.sh netifd-adapter.sh \
     power-adapter.sh event-log.sh \
-    actions.sh recovery-inhibit.sh recovery-adapter.sh schedule.sh
+    actions.sh recovery-inhibit.sh recovery-adapter.sh schedule.sh \
+    smart-charge-state.sh
 do
     assert_file_contains "$daemon" "$library"
 done
@@ -671,6 +672,7 @@ assert_file_contains docs/design/testing-strategy.md '^## L2：U25S API 模拟�
 lib="$backend/files/usr/lib/zte-usb-wifi-manager"
 . "$lib/validation.sh"
 . "$lib/json.sh"
+. "$lib/smart-charge-state.sh"
 . "$lib/power-adapter.sh"
 . "$lib/snapshot.sh"
 . "$lib/adapter-zte-u25s-metadata.sh"

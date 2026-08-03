@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC2329
 set -eu
 
 TEST_NAME=test_actions
@@ -133,7 +134,7 @@ assert_eq 1 "$(
     find "$concurrent_state/actions/pending" -type f -name '*.json' |
         wc -l | tr -d ' '
 )"
-assert_success test -d "$concurrent_state/actions/active"
+assert_success test -e "$concurrent_state/actions/active"
 concurrent_record=$(zte_action_claim "$concurrent_state")
 concurrent_id=$(zte_json_top_get "$concurrent_record" operation_id)
 assert_success zte_action_finish \
@@ -148,9 +149,13 @@ assert_failure test -e "$reconcile_state/actions/active"
 assert_success zte_action_enqueue \
     "$reconcile_state" op-1722350000-6000 set_wifi \
     '{"enabled":true}' 1722350000
-assert_success rmdir "$reconcile_state/actions/active"
+if [ -d "$reconcile_state/actions/active" ]; then
+    assert_success rmdir "$reconcile_state/actions/active"
+else
+    assert_success rm -f "$reconcile_state/actions/active"
+fi
 assert_success zte_action_reconcile_active "$reconcile_state"
-assert_success test -d "$reconcile_state/actions/active"
+assert_success test -e "$reconcile_state/actions/active"
 
 transition_state=$work/power-transition
 assert_success zte_power_transition_claim "$transition_state"
@@ -169,5 +174,69 @@ assert_success zte_action_finish \
     "$transition_state" op-1722351000-7000 failed unsupported 1722351001
 assert_success zte_power_transition_claim "$transition_state"
 assert_success zte_power_transition_release "$transition_state"
+
+# Automatic device writes share the same atomic slot as queued rpcd actions,
+# without borrowing the legacy USB power-transition marker.
+exclusive_state=$work/device-action-exclusive
+assert_success zte_device_action_claim "$exclusive_state"
+assert_eq 600 "$(test_file_mode "$exclusive_state/actions/active")"
+exclusive_owner=$(cat "$exclusive_state/actions/active")
+assert_eq automatic "${exclusive_owner%% *}"
+# Reconciliation can run while an owner has atomically claimed the slot but
+# has not yet published its pending record. A live owner must never be cleared.
+assert_success zte_action_reconcile_active "$exclusive_state"
+assert_success test -e "$exclusive_state/actions/active"
+assert_failure zte_action_enqueue \
+    "$exclusive_state" op-1722352000-7100 set_power_supply_mode \
+    '{"mode":"charging"}' 1722352000
+assert_failure zte_power_transition_claim "$exclusive_state"
+assert_success zte_device_action_release "$exclusive_state"
+assert_failure test -e "$exclusive_state/actions/active"
+assert_success zte_action_enqueue \
+    "$exclusive_state" op-1722352000-7100 set_power_supply_mode \
+    '{"mode":"charging"}' 1722352000
+assert_failure zte_device_action_claim "$exclusive_state"
+assert_success test -f \
+    "$exclusive_state/actions/pending/op-1722352000-7100.json"
+
+# Startup reconciliation clears an abandoned recordless automatic slot, but
+# it must retain the slot while a queued/running manual record still exists.
+assert_success zte_action_reconcile_active "$exclusive_state"
+assert_success test -e "$exclusive_state/actions/active"
+zte_action_claim "$exclusive_state" >/dev/null
+assert_success zte_action_reconcile_active "$exclusive_state"
+assert_success test -e "$exclusive_state/actions/active"
+assert_success zte_action_finish \
+    "$exclusive_state" op-1722352000-7100 failed unsupported 1722352001
+assert_success mkdir "$exclusive_state/actions/active"
+assert_success zte_action_reconcile_active "$exclusive_state"
+assert_failure test -e "$exclusive_state/actions/active"
+
+# A daemon-owned slot whose PID no longer exists is abandoned and may be
+# removed, unlike the live claim-before-record window above.
+printf '%s\n' 'automatic 999999' >"$exclusive_state/actions/active"
+chmod 600 "$exclusive_state/actions/active"
+assert_success zte_action_reconcile_active "$exclusive_state"
+assert_failure test -e "$exclusive_state/actions/active"
+
+# PID liveness alone is insufficient after reuse. Reconciliation also compares
+# the process start identity, while an unreadable identity stays fail-closed.
+reuse_state=$work/pid-reuse
+test_start_id=111
+zte_action_process_start_id() { printf '%s\n' "$test_start_id"; }
+assert_success zte_device_action_claim "$reuse_state"
+test_start_id=222
+assert_success zte_action_reconcile_active "$reuse_state"
+assert_failure test -e "$reuse_state/actions/active"
+test_start_id=333
+assert_success zte_device_action_claim "$reuse_state"
+zte_action_process_start_id() { return 1; }
+assert_success zte_action_reconcile_active "$reuse_state"
+assert_success test -e "$reuse_state/actions/active"
+assert_success zte_device_action_release "$reuse_state"
+
+assert_success zte_power_transition_claim "$exclusive_state"
+assert_failure zte_device_action_claim "$exclusive_state"
+assert_success zte_power_transition_release "$exclusive_state"
 
 finish
