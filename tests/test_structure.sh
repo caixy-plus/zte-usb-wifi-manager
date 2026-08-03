@@ -1623,6 +1623,10 @@ zte_recovery_reconcile() { :; }
 # Read by the eval-defined production main function.
 # shellcheck disable=SC2034
 power_backend=unconfigured
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+printf '%s\n' malformed >"$STATE_DIR/smart-charge-cooldown"
+chmod 600 "$STATE_DIR/smart-charge-cooldown"
 main
 assert_eq \
     "safety
@@ -1633,6 +1637,8 @@ assert_eq \
     "$work/real-state|info|service|service_started|1722345678|524288" \
     "$(sed -n '1p' "$event_call_log")"
 assert_eq "$work/real-state|50" "$(cat "$prune_call_log")"
+assert_eq 1 "$smart_charge_persistence_failed"
+assert_success test -f "$STATE_DIR/smart-charge-cooldown"
 assert_eq '60
 120
 30' "$(cat "$sleep_log")"

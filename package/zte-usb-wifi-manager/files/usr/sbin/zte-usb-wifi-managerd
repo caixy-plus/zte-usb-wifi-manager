@@ -1428,6 +1428,11 @@ main() {
 		"$STATE_DIR" "$_zte_smart_startup_now"); then
 		smart_charge_retry_after=${_zte_smart_startup_cooldown%%:*}
 		smart_charge_last_error=${_zte_smart_startup_cooldown#*:}
+	else
+		_zte_smart_startup_status=$?
+		if [ "$_zte_smart_startup_status" = 2 ]; then
+			smart_charge_persistence_failed=1
+		fi
 	fi
 	credential_revision=$(
 		zte_credential_revision "$credential_file" 2>/dev/null

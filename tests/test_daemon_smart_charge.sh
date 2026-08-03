@@ -15,6 +15,10 @@ lib=$backend/files/usr/lib/zte-usb-wifi-manager
 # shellcheck source=../package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/smart-charge-state.sh
 . "$lib/smart-charge-state.sh"
 
+assert_success zte_smart_charge_epoch_valid 2147483647
+assert_failure zte_smart_charge_epoch_valid 2147483648
+assert_failure zte_smart_charge_epoch_valid 9999999999
+
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
@@ -40,6 +44,15 @@ execute_log=$work/execute
 : >"$execute_log"
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 assert_success zte_action_init "$STATE_DIR"
+
+load_cooldown() {
+    cooldown_output=''
+    if cooldown_output=$(zte_smart_charge_cooldown_load "$1" "$2"); then
+        cooldown_status=0
+    else
+        cooldown_status=$?
+    fi
+}
 
 date() { printf '%s\n' 1722345680; }
 logger() { :; }
@@ -167,37 +180,85 @@ failed' "$(cat "$execute_log")"
 
 printf '%s\n' malformed >"$cooldown_file"
 chmod 600 "$cooldown_file"
-assert_failure zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681
-assert_failure test -e "$cooldown_file"
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 2 "$cooldown_status"
+assert_success test -f "$cooldown_file"
+rm -f "$cooldown_file"
 printf '%s\n' '1722345980 write_ambiguous' >"$cooldown_file"
 chmod 644 "$cooldown_file"
-assert_failure zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681
-assert_failure test -e "$cooldown_file"
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 2 "$cooldown_status"
+assert_success test -f "$cooldown_file"
+rm -f "$cooldown_file"
+printf '%s\n' '1722345980 write_ambiguous' >"$cooldown_file"
+chmod 000 "$cooldown_file"
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 2 "$cooldown_status"
+assert_success test -f "$cooldown_file"
+rm -f "$cooldown_file"
 printf '%s\n' '999999999999999999999 write_ambiguous' >"$cooldown_file"
 chmod 600 "$cooldown_file"
-assert_failure zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681
-assert_failure test -e "$cooldown_file"
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 2 "$cooldown_status"
+assert_success test -f "$cooldown_file"
+rm -f "$cooldown_file"
 printf '%s\n' '1722345680 write_ambiguous' >"$cooldown_file"
 chmod 600 "$cooldown_file"
-assert_failure zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 1 "$cooldown_status"
 assert_failure test -e "$cooldown_file"
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 1 "$cooldown_status"
+assert_eq '' "$cooldown_output"
 victim=$work/victim
 printf '%s\n' untouched >"$victim"
 ln -s "$victim" "$cooldown_file"
-assert_failure zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 2 "$cooldown_status"
 assert_eq untouched "$(cat "$victim")"
-assert_failure test -e "$cooldown_file"
-ln -s "$victim" "$cooldown_file"
+assert_success test -L "$cooldown_file"
 assert_failure zte_smart_charge_cooldown_write \
     "$STATE_DIR" 1722345980 write_ambiguous
 assert_eq untouched "$(cat "$victim")"
 assert_success test -L "$cooldown_file"
 rm -f "$cooldown_file"
+
+# A successful action must not silently remove an unsafe cooldown object.
+# Clear fails closed, latches persistence failure, and retains the evidence.
+ln -s "$victim" "$cooldown_file"
+smart_charge_retry_after=0
+smart_charge_persistence_failed=0
+assert_success apply_smart_charge_policy
+assert_eq 1 "$smart_charge_persistence_failed"
+assert_success test -L "$cooldown_file"
+rm -f "$cooldown_file"
+smart_charge_persistence_failed=0
+
+mkdir "$cooldown_file"
+assert_failure zte_smart_charge_cooldown_clear "$STATE_DIR"
+assert_success test -d "$cooldown_file"
+rmdir "$cooldown_file"
+mkfifo "$cooldown_file"
+assert_failure zte_smart_charge_cooldown_clear "$STATE_DIR"
+assert_success test -p "$cooldown_file"
+rm -f "$cooldown_file"
+
 mkdir "$cooldown_file"
 assert_failure zte_smart_charge_cooldown_write \
     "$STATE_DIR" 1722345980 write_ambiguous
 assert_success test -d "$cooldown_file"
 rmdir "$cooldown_file"
+
+# An expired record is cleanly absent only after successful removal. If the
+# unlink cannot be confirmed, load reports unsafe and leaves evidence so every
+# restart continues to fail closed.
+printf '%s\n' '1722345680 write_ambiguous' >"$cooldown_file"
+chmod 600 "$cooldown_file"
+zte_smart_charge_state_remove() { return 1; }
+load_cooldown "$STATE_DIR" 1722345681
+assert_eq 2 "$cooldown_status"
+assert_success test -f "$cooldown_file"
+rm -f "$cooldown_file"
 
 # Persistence failure leaves an independent fail-safe latch, preventing a
 # write storm even if the ordinary in-process retry timestamp is reset.

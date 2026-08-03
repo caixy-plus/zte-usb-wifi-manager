@@ -44,6 +44,25 @@ zte_action_init() {
 		"$_zte_action_root/actions/results"
 }
 
+# Short-lived serialization for every actions/active mutation. An existing or
+# untrusted guard is never reclaimed: a crashed owner therefore blocks writes
+# fail-closed until an operator resolves it.
+zte_action_guard_claim() {
+	_zte_action_root=$1
+	zte_action_init "$_zte_action_root" || return 1
+	_zte_action_guard=$_zte_action_root/actions/active.guard
+	mkdir "$_zte_action_guard" 2>/dev/null || return 1
+	chmod 700 "$_zte_action_guard" || return 1
+}
+
+zte_action_guard_release() {
+	_zte_action_root=$1
+	[ -n "$_zte_action_root" ] && [ "$_zte_action_root" != / ] || return 1
+	_zte_action_guard=$_zte_action_root/actions/active.guard
+	[ -d "$_zte_action_guard" ] && [ ! -L "$_zte_action_guard" ] || return 1
+	rmdir "$_zte_action_guard" 2>/dev/null
+}
+
 zte_action_has_records() {
 	_zte_action_root=$1
 	for _zte_action_file in \
@@ -96,7 +115,11 @@ zte_action_process_liveness() {
 	return 1
 }
 
-zte_action_slot_create() {
+zte_action_slot_tmp_cleanup() {
+	rm -f "$1"
+}
+
+_zte_action_slot_create_locked() {
 	_zte_action_root=$1
 	_zte_action_owner=$2
 	_zte_action_nonce=${3-$$}
@@ -120,17 +143,31 @@ $_zte_action_nonce.tmp
 		"$_zte_action_owner_start" >"$_zte_action_slot_tmp" ||
 		return 1
 	chmod 600 "$_zte_action_slot_tmp" || {
-		rm -f "$_zte_action_slot_tmp"
+		zte_action_slot_tmp_cleanup "$_zte_action_slot_tmp" || :
 		return 1
 	}
 	if ! ln "$_zte_action_slot_tmp" "$_zte_action_slot" 2>/dev/null; then
-		rm -f "$_zte_action_slot_tmp"
+		zte_action_slot_tmp_cleanup "$_zte_action_slot_tmp" || :
 		return 1
 	fi
-	rm -f "$_zte_action_slot_tmp"
+	zte_action_slot_tmp_cleanup "$_zte_action_slot_tmp" || :
+	return 0
 }
 
-zte_action_slot_remove() {
+zte_action_slot_create() {
+	_zte_action_root=$1
+	zte_action_guard_claim "$_zte_action_root" || return 1
+	_zte_action_slot_status=0
+	_zte_action_slot_create_owner=$2
+	_zte_action_slot_create_nonce=${3-$$}
+	_zte_action_slot_create_locked \
+		"$_zte_action_root" "$_zte_action_slot_create_owner" \
+		"$_zte_action_slot_create_nonce" || _zte_action_slot_status=$?
+	zte_action_guard_release "$_zte_action_root" || return 1
+	return "$_zte_action_slot_status"
+}
+
+_zte_action_slot_remove_locked() {
 	_zte_action_root=$1
 	_zte_action_slot=$_zte_action_root/actions/active
 	if [ -d "$_zte_action_slot" ] && [ ! -L "$_zte_action_slot" ]; then
@@ -138,6 +175,16 @@ zte_action_slot_remove() {
 	elif [ -e "$_zte_action_slot" ] || [ -L "$_zte_action_slot" ]; then
 		rm -f "$_zte_action_slot"
 	fi
+}
+
+zte_action_slot_remove() {
+	_zte_action_root=$1
+	zte_action_guard_claim "$_zte_action_root" || return 1
+	_zte_action_slot_status=0
+	_zte_action_slot_remove_locked "$_zte_action_root" ||
+		_zte_action_slot_status=$?
+	zte_action_guard_release "$_zte_action_root" || return 1
+	return "$_zte_action_slot_status"
 }
 
 # Print the slot type observed at one point in time. Callers must treat
@@ -210,7 +257,6 @@ zte_action_slot_owner_live() {
 # power-transition marker, whose recovery semantics do not apply here.
 zte_device_action_claim() {
 	_zte_action_root=$1
-	zte_action_init "$_zte_action_root" || return 1
 	zte_action_has_records "$_zte_action_root" && return 1
 	zte_action_slot_create "$_zte_action_root" automatic || return 1
 	if zte_action_has_records "$_zte_action_root" ||
@@ -384,8 +430,15 @@ zte_action_finish() {
 		return 1
 	chmod 600 "$_zte_action_tmp" || return 1
 	mv "$_zte_action_tmp" "$_zte_action_result" || return 1
-	rm -f "$_zte_action_running" || return 1
-	zte_action_slot_remove "$_zte_action_root" || :
+	zte_action_guard_claim "$_zte_action_root" || return 1
+	_zte_action_finish_status=0
+	rm -f "$_zte_action_running" || _zte_action_finish_status=$?
+	if [ "$_zte_action_finish_status" = 0 ]; then
+		_zte_action_slot_remove_locked "$_zte_action_root" ||
+			_zte_action_finish_status=$?
+	fi
+	zte_action_guard_release "$_zte_action_root" || return 1
+	[ "$_zte_action_finish_status" = 0 ]
 }
 
 zte_action_recover_running() {
@@ -404,7 +457,7 @@ zte_action_recover_running() {
 	done
 }
 
-zte_action_reconcile_active() {
+_zte_action_reconcile_active_locked() {
 	_zte_action_root=$1
 	zte_action_init "$_zte_action_root" || return 1
 	_zte_action_record_found=0
@@ -423,13 +476,14 @@ zte_action_reconcile_active() {
 		return 1
 	if [ "$_zte_action_record_found" = 1 ]; then
 		if [ "$_zte_action_slot_observed" = absent ]; then
-			zte_action_slot_create "$_zte_action_root" reconcile || return 1
+			_zte_action_slot_create_locked \
+				"$_zte_action_root" reconcile || return 1
 		fi
 	else
 		case $_zte_action_slot_observed in
 			absent|unknown) return 0 ;;
 			legacy)
-				zte_action_slot_remove "$_zte_action_root" || :
+				_zte_action_slot_remove_locked "$_zte_action_root" || :
 				return 0
 				;;
 			regular) ;;
@@ -441,8 +495,18 @@ zte_action_reconcile_active() {
 			_zte_action_owner_status=$?
 		fi
 		[ "$_zte_action_owner_status" = 1 ] || return 0
-		zte_action_slot_remove "$_zte_action_root" || :
+		_zte_action_slot_remove_locked "$_zte_action_root" || :
 	fi
+}
+
+zte_action_reconcile_active() {
+	_zte_action_root=$1
+	zte_action_guard_claim "$_zte_action_root" || return 1
+	_zte_action_reconcile_status=0
+	_zte_action_reconcile_active_locked "$_zte_action_root" ||
+		_zte_action_reconcile_status=$?
+	zte_action_guard_release "$_zte_action_root" || return 1
+	return "$_zte_action_reconcile_status"
 }
 
 zte_action_prune_results() {

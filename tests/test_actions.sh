@@ -273,6 +273,49 @@ assert_success zte_action_reconcile_active "$permission_state"
 assert_success test -e "$permission_state/actions/active"
 assert_success zte_device_action_release "$permission_state"
 
+# Every mutation of actions/active shares one short atomic guard. While held,
+# claim, reconcile, and release all fail closed without changing the slot.
+guard_state=$work/active-guard
+assert_success zte_device_action_claim "$guard_state"
+guard_owner_before=$(cat "$guard_state/actions/active")
+assert_success zte_action_guard_claim "$guard_state"
+assert_failure zte_device_action_claim "$guard_state"
+assert_failure zte_action_reconcile_active "$guard_state"
+assert_failure zte_device_action_release "$guard_state"
+assert_eq "$guard_owner_before" "$(cat "$guard_state/actions/active")"
+assert_success zte_action_guard_release "$guard_state"
+assert_success zte_device_action_release "$guard_state"
+
+untrusted_guard_state=$work/untrusted-active-guard
+assert_success zte_device_action_claim "$untrusted_guard_state"
+untrusted_owner=$(cat "$untrusted_guard_state/actions/active")
+ln -s "$work/untrusted-guard-target" \
+    "$untrusted_guard_state/actions/active.guard"
+assert_failure zte_device_action_claim "$untrusted_guard_state"
+assert_failure zte_action_reconcile_active "$untrusted_guard_state"
+assert_failure zte_device_action_release "$untrusted_guard_state"
+assert_eq "$untrusted_owner" \
+    "$(cat "$untrusted_guard_state/actions/active")"
+rm -f "$untrusted_guard_state/actions/active.guard"
+assert_success zte_device_action_release "$untrusted_guard_state"
+
+# A first reconciler may clear a proven stale owner. A successor can then
+# claim, and a later reconciler must observe and retain that successor.
+successor_state=$work/reconcile-successor
+zte_action_process_liveness() {
+    [ "$1" != 999999 ]
+}
+assert_success zte_action_init "$successor_state"
+printf '%s\n' 'automatic 999999 123' >"$successor_state/actions/active"
+chmod 600 "$successor_state/actions/active"
+assert_success zte_action_reconcile_active "$successor_state"
+assert_failure test -e "$successor_state/actions/active"
+assert_success zte_device_action_claim "$successor_state"
+successor_owner=$(cat "$successor_state/actions/active")
+assert_success zte_action_reconcile_active "$successor_state"
+assert_eq "$successor_owner" "$(cat "$successor_state/actions/active")"
+assert_success zte_device_action_release "$successor_state"
+
 assert_success zte_power_transition_claim "$exclusive_state"
 assert_failure zte_device_action_claim "$exclusive_state"
 assert_success zte_power_transition_release "$exclusive_state"
@@ -289,5 +332,18 @@ zte_action_slot_observe() {
 }
 assert_success zte_action_reconcile_active "$race_state"
 assert_success test -f "$race_state/actions/active"
+
+# Once the hard-link publication succeeds, failure to remove the private temp
+# name is cleanup debt, not a failed claim with a live active slot.
+cleanup_state=$work/post-publish-cleanup
+cleanup_log=$work/post-publish-cleanup-called
+zte_action_slot_tmp_cleanup() {
+    printf '%s\n' called >"$cleanup_log"
+    return 1
+}
+assert_success zte_device_action_claim "$cleanup_state"
+assert_success test -f "$cleanup_state/actions/active"
+assert_eq called "$(cat "$cleanup_log")"
+assert_success zte_device_action_release "$cleanup_state"
 
 finish
