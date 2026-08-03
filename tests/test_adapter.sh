@@ -563,6 +563,12 @@ assert_eq 1 "$(wc -l <"$client_login_log" | tr -d ' ')"
 device_with_clients=$(zte_adapter_normalize "$raw" "$client_expected")
 assert_eq true "$(printf '%s' "$device_with_clients" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).clients.available)))')"
 assert_eq 'AA:BB:CC:DD:EE:FF' "$(printf '%s' "$device_with_clients" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).clients.items[0].mac))')"
+client_unavailable='{"available":false,"reason":"read_failed","items":[]}'
+device_without_clients=$(zte_adapter_normalize "$raw" "$client_unavailable")
+assert_eq false "$(printf '%s' "$device_without_clients" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).clients.available)))')"
+assert_eq read_failed "$(printf '%s' "$device_without_clients" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).clients.reason))')"
+assert_failure zte_adapter_normalize "$raw" \
+    '{"available":false,"reason":"unknown","items":[]}'
 assert_eq '{"available":false,"reason":"credentials_missing","items":[]}' \
     "$(zte_adapter_clients_unavailable_json credentials_missing)"
 assert_failure zte_adapter_clients_unavailable_json unknown

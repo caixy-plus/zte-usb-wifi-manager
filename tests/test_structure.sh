@@ -52,7 +52,7 @@ esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=25$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=26$'
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/device-profile.sh" \
     '^zte_device_profile_select\(\)'
@@ -267,7 +267,7 @@ assert_file_contains README.md 'OpenWrt 24\.10\.7.*官方 SDK 构建通过'
 assert_file_contains README.md 'r15/r4→r24/r12 升级、服务、ubus 与卸载通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '源码 backend r25 / LuCI r12'
+assert_file_contains README.md '源码 backend r26 / LuCI r12'
 assert_file_contains README.md '九类语义写请求契约'
 assert_file_contains README.md '生产写 capability 仍全部保持 0'
 assert_file_contains README.md 'docs/superpowers/plans/2026-08-01-write-request-contracts\.md'

@@ -211,14 +211,24 @@ zte_adapter_clients_json() {
 	command -v jsonfilter >/dev/null 2>&1 || return 1
 	_zte_clients_available=$(jsonfilter -s "$_zte_clients_json" \
 		-e '@.available') || return 1
-	[ "$_zte_clients_available" = true ] || return 1
-	_zte_clients_items=$(jsonfilter -s "$_zte_clients_json" -e '@.items') ||
-		return 1
-	case $_zte_clients_items in
-		\[*\]) ;;
+	case $_zte_clients_available in
+		true)
+			_zte_clients_items=$(jsonfilter -s "$_zte_clients_json" \
+				-e '@.items') || return 1
+			case $_zte_clients_items in
+				\[*\]) ;;
+				*) return 1 ;;
+			esac
+			printf '{"available":true,"items":%s}\n' \
+				"$_zte_clients_items"
+			;;
+		false)
+			_zte_clients_reason=$(jsonfilter -s "$_zte_clients_json" \
+				-e '@.reason') || return 1
+			zte_adapter_clients_unavailable_json "$_zte_clients_reason"
+			;;
 		*) return 1 ;;
 	esac
-	printf '{"available":true,"items":%s}\n' "$_zte_clients_items"
 }
 
 zte_adapter_fetch_sms_once() {
