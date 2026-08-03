@@ -271,12 +271,23 @@ zte_adapter_feature_status_json() {
 		_zte_feature_sms=true
 	if [ "$ZTE_ADAPTER_ID" = zte_u30 ]; then
 		_zte_feature_switch_sim_implementation=not_implemented
+		_zte_feature_switch_sim_verification=spare_device_required
 		_zte_feature_action_implementation=implemented
+		_zte_feature_action_verification=spare_device_required
 		_zte_feature_power_implementation=implemented
 		_zte_feature_power_verification=spare_device_required
-	else
+	elif [ "$ZTE_ADAPTER_ID" = zte_u25s ]; then
 		_zte_feature_switch_sim_implementation=implemented
+		_zte_feature_switch_sim_verification=spare_device_required
 		_zte_feature_action_implementation=not_implemented
+		_zte_feature_action_verification=spare_device_required
+		_zte_feature_power_implementation=unsupported
+		_zte_feature_power_verification=not_applicable
+	else
+		_zte_feature_switch_sim_implementation=unsupported
+		_zte_feature_switch_sim_verification=not_applicable
+		_zte_feature_action_implementation=unsupported
+		_zte_feature_action_verification=not_applicable
 		_zte_feature_power_implementation=unsupported
 		_zte_feature_power_verification=not_applicable
 	fi
@@ -288,7 +299,7 @@ zte_adapter_feature_status_json() {
 	printf '%s' '"traffic_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
 	printf '%s' '"sms_read":{"implementation":"implemented","verification":"simulator_only","access":"read","enabled":true},'
 	printf '%s' '"device_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
-	printf '"switch_sim":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_switch_sim_implementation" "$_zte_feature_switch_sim"
+	printf '"switch_sim":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_switch_sim_implementation" "$_zte_feature_switch_sim_verification" "$_zte_feature_switch_sim"
 	for _zte_feature_name in set_apn set_connection_mode set_wifi set_traffic_plan reset_traffic send_sms delete_sms mark_sms_read reboot_device shutdown_device; do
 		case $_zte_feature_name in
 			set_apn) _zte_feature_enabled=$_zte_feature_set_apn ;;
@@ -302,16 +313,16 @@ zte_adapter_feature_status_json() {
 			reboot_device) _zte_feature_enabled=$_zte_feature_reboot_device ;;
 			shutdown_device) _zte_feature_enabled=$_zte_feature_shutdown_device ;;
 		esac
-		printf '"%s":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_name" "$_zte_feature_action_implementation" "$_zte_feature_enabled"
+		printf '"%s":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_name" "$_zte_feature_action_implementation" "$_zte_feature_action_verification" "$_zte_feature_enabled"
 	done
 	printf '"set_power_supply_mode":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_power_implementation" "$_zte_feature_power_verification" "$_zte_feature_set_power_supply_mode"
-	printf '"sim_switch":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_switch_sim_implementation" "$_zte_feature_switch_sim"
-	printf '"cellular_write":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_cellular"
-	printf '"wifi_write":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_set_wifi"
-	printf '"traffic_write":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_traffic"
-	printf '"sms_write":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_sms"
-	printf '"device_restart":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_reboot_device"
-	printf '"device_shutdown":{"implementation":"%s","verification":"spare_device_required","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_shutdown_device"
+	printf '"sim_switch":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_switch_sim_implementation" "$_zte_feature_switch_sim_verification" "$_zte_feature_switch_sim"
+	printf '"cellular_write":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_action_verification" "$_zte_feature_cellular"
+	printf '"wifi_write":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_action_verification" "$_zte_feature_set_wifi"
+	printf '"traffic_write":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_action_verification" "$_zte_feature_traffic"
+	printf '"sms_write":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_action_verification" "$_zte_feature_sms"
+	printf '"device_restart":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_action_verification" "$_zte_feature_reboot_device"
+	printf '"device_shutdown":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_action_implementation" "$_zte_feature_action_verification" "$_zte_feature_shutdown_device"
 	printf '"power_supply_mode":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_power_implementation" "$_zte_feature_power_verification" "$_zte_feature_set_power_supply_mode"
 	printf '%s' '"firmware_update":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
 	printf '%s' '"factory_reset":{"implementation":"native_console_only","verification":"native_console","access":"write","enabled":false},'
@@ -403,6 +414,28 @@ zte_adapter_effective_capabilities_json() {
 
 zte_adapter_capabilities_json() {
 	zte_adapter_effective_capabilities_json 1 1 1 1 1 1 1 1 1 1 1 1 1
+}
+
+zte_adapter_unavailable_capabilities_json() {
+	ZTE_ADAPTER_ID=unknown \
+	ZTE_ADAPTER_MODEL=Unavailable \
+	ZTE_ADAPTER_TRANSPORT=unknown \
+	ZTE_ADAPTER_TLS_VERIFICATION=not_applicable \
+	ZTE_LOGIN_REQUIRED=0 \
+	ZTE_CAP_SWITCH_SIM=0 \
+	ZTE_CAP_SET_APN=0 \
+	ZTE_CAP_SET_CONNECTION_MODE=0 \
+	ZTE_CAP_SET_WIFI=0 \
+	ZTE_CAP_SET_TRAFFIC_PLAN=0 \
+	ZTE_CAP_RESET_TRAFFIC=0 \
+	ZTE_CAP_SEND_SMS=0 \
+	ZTE_CAP_DELETE_SMS=0 \
+	ZTE_CAP_MARK_SMS_READ=0 \
+	ZTE_CAP_REBOOT_DEVICE=0 \
+	ZTE_CAP_SHUTDOWN_DEVICE=0 \
+	ZTE_CAP_SET_POWER_SUPPLY_MODE=0 \
+		zte_adapter_effective_capabilities_json \
+			0 0 0 0 0 0 0 0 0 0 0 0 0
 }
 
 zte_adapter_action_supported() {

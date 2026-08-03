@@ -64,7 +64,10 @@ apply_cached_profile_from_status() {
 }
 
 get_capabilities() {
-	apply_cached_profile_from_status || :
+	if ! apply_cached_profile_from_status; then
+		zte_adapter_unavailable_capabilities_json
+		return
+	fi
 	_zte_cap_write=$(
 		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
 	) || _zte_cap_write=0

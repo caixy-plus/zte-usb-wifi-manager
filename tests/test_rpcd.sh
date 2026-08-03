@@ -67,8 +67,11 @@ capabilities=$(rpcd_call call capabilities)
 assert_success assert_json "$capabilities"
 assert_eq false "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')" \
     'rpcd must retain the legacy effective capability gate'
-assert_eq spare_device_required "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).sim_switch?.verification)))')" \
-    'rpcd must expose the static SIM calibration state'
+assert_eq unknown "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).adapter))')"
+assert_eq Unavailable "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).model))')"
+assert_eq unsupported "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).switch_sim?.implementation)))')" \
+    'rpcd must not infer a device profile when no trusted status exists'
+assert_eq not_applicable "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).switch_sim?.verification)))')"
 assert_eq native_console_only "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).factory_reset?.implementation)))')" \
     'rpcd must expose native-console-only operations'
 
@@ -231,6 +234,52 @@ chmod +x "$test_bin/uci"
 RPCD_TEST_LIB_DIR=$write_lib
 export RPCD_TEST_LIB_DIR
 
+rpcd_all_write_gates_capabilities() {
+    ZTE_TEST_WRITE_ENABLED=1 \
+    ZTE_TEST_SWITCH_SIM_ENABLED=1 \
+    ZTE_TEST_SET_APN_ENABLED=1 \
+    ZTE_TEST_SET_CONNECTION_MODE_ENABLED=1 \
+    ZTE_TEST_SET_WIFI_ENABLED=1 \
+    ZTE_TEST_SET_TRAFFIC_PLAN_ENABLED=1 \
+    ZTE_TEST_RESET_TRAFFIC_ENABLED=1 \
+    ZTE_TEST_SEND_SMS_ENABLED=1 \
+    ZTE_TEST_DELETE_SMS_ENABLED=1 \
+    ZTE_TEST_MARK_SMS_READ_ENABLED=1 \
+    ZTE_TEST_REBOOT_DEVICE_ENABLED=1 \
+    ZTE_TEST_SHUTDOWN_DEVICE_ENABLED=1 \
+    ZTE_TEST_SET_POWER_SUPPLY_MODE_ENABLED=1 \
+        rpcd_call call capabilities
+}
+
+assert_unavailable_capabilities() {
+    _zte_test_unavailable=$1
+    assert_eq unknown "$(printf '%s' "$_zte_test_unavailable" |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).adapter))')"
+    assert_eq Unavailable "$(printf '%s' "$_zte_test_unavailable" |
+        node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).model))')"
+    assert_eq true "$(printf '%s' "$_zte_test_unavailable" | node -e '
+let s="";
+process.stdin.on("data", d => s += d);
+process.stdin.on("end", () => {
+    const c = JSON.parse(s);
+    const actions = [
+        "switch_sim", "set_apn", "set_connection_mode", "set_wifi",
+        "set_traffic_plan", "reset_traffic", "send_sms", "delete_sms",
+        "mark_sms_read", "reboot_device", "shutdown_device",
+        "set_power_supply_mode"
+    ];
+    const grouped = [
+        "sim_switch", "cellular_write", "wifi_write", "traffic_write",
+        "sms_write", "device_reboot", "device_shutdown", "power_supply_write"
+    ];
+    process.stdout.write(String(actions.concat(grouped).every(key => c[key] === false) &&
+        actions.every(key => c.feature_status[key].enabled === false &&
+            c.feature_status[key].implementation === "unsupported" &&
+            c.feature_status[key].verification === "not_applicable")));
+});
+')"
+}
+
 base_state_dir=$state_dir
 for profile_case in missing malformed device_null unknown mismatch; do
     state_dir=$work/profile-$profile_case
@@ -249,6 +298,9 @@ for profile_case in missing malformed device_null unknown mismatch; do
                 >"$status_file"
             ;;
     esac
+    unavailable_capabilities=$(rpcd_all_write_gates_capabilities)
+    assert_success assert_json "$unavailable_capabilities"
+    assert_unavailable_capabilities "$unavailable_capabilities"
     profile_reply=$(printf '%s\n' \
         '{"action":"set_wifi","enabled":false}' |
         ZTE_TEST_WRITE_ENABLED=1 ZTE_TEST_SET_WIFI_ENABLED=1 \
