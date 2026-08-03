@@ -41,6 +41,22 @@
       "readback_command": "ConnectionMode,autoConnectWhenRoaming",
       "real_device_verification": "required_before_enable"
     },
+    "set_apn": {
+      "goform_id": "APN_PROC",
+      "action": "set_default",
+      "context_read": "index,profile_name,apn_wan_apn,apn_ppp_auth_mode,apn_ppp_username",
+      "password_readback_forbidden": true,
+      "readback_fields": ["apn_wan_apn", "apn_ppp_auth_mode", "apn_ppp_username"],
+      "real_device_verification": "required_before_enable"
+    },
+    "set_wifi": {
+      "goform_id": "setAccessPointInfo",
+      "device_config": { "wifi_has_5g": false, "password_encode": false },
+      "supported_band_before_calibration": "2g",
+      "readback_command": "wifi_onoff_state,wifi_chip1_ssid1_switch_onoff,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode",
+      "password_readback_forbidden": true,
+      "real_device_verification": "required_before_enable"
+    },
     "set_traffic_plan": {
       "goform_id": "DATA_LIMIT_SETTING",
       "unit": "data",
@@ -65,6 +81,14 @@
       "id_key": "msg_id",
       "id_suffix": ";",
       "tag": "0",
+      "real_device_verification": "required_before_enable"
+    },
+    "send_sms": {
+      "goform_id": "SEND_SMS",
+      "id": "-1",
+      "encoding": "WebUI encodeMessage and getEncodeType",
+      "status_command": "sms_cmd_status_info",
+      "status_selector": "4",
       "real_device_verification": "required_before_enable"
     },
     "reboot_device": {

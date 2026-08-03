@@ -816,7 +816,7 @@ process_actions() {
 		_zte_action_event_code=action_failed
 	elif zte_adapter_action_supported "$_zte_action_type"; then
 		case $_zte_action_type in
-			set_connection_mode|set_traffic_plan|reset_traffic)
+			set_apn|set_connection_mode|set_wifi|set_traffic_plan|reset_traffic)
 				_zte_action_result=''
 				if _zte_action_result=$(zte_execute_u30_setting \
 					"$host" '' "$COOKIE_FILE" "$_zte_action_type" \
@@ -835,7 +835,7 @@ process_actions() {
 					_zte_action_event_code=action_failed
 				fi
 				;;
-			delete_sms|mark_sms_read)
+			send_sms|delete_sms|mark_sms_read)
 				_zte_action_password=''
 				if zte_adapter_login_required; then
 					_zte_action_password=$(zte_read_password \

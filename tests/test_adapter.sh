@@ -306,6 +306,65 @@ isTest=false&goformId=SHUTDOWN_DEVICE' \
     "$(cut -d'|' -f2 "$u30_action_log")"
 assert_failure zte_adapter_delete_sms 192.168.0.1 '../42' "$jar"
 assert_failure zte_adapter_device_command 192.168.0.1 factory_reset "$jar"
+assert_eq 'GSM7_default|00480069' "$(zte_adapter_sms_encode 'Hi')"
+assert_eq 'UNICODE|4F60597D' "$(zte_adapter_sms_encode '你好')"
+assert_failure zte_adapter_sms_encode "$(printf '\377')"
+zte_adapter_sms_time() { printf '%s\n' '26;08;03;14;05;09;+8'; }
+: >"$u30_action_log"
+assert_success zte_adapter_send_sms \
+    192.168.0.1 '+12025550123' '你好' "$jar"
+assert_eq \
+    'isTest=false&goformId=SEND_SMS&notCallback=true&Number=%2B12025550123&sms_time=26%3B08%3B03%3B14%3B05%3B09%3B%2B8&MessageBody=4F60597D&ID=-1&encode_type=UNICODE' \
+    "$(cut -d'|' -f2 "$u30_action_log")"
+assert_failure zte_adapter_send_sms \
+    192.168.0.1 'bad;number' 'fixture' "$jar"
+: >"$u30_action_log"
+assert_success zte_adapter_set_wifi \
+    192.168.0.1 0 '' '' '' '' '' "$jar"
+assert_eq 'isTest=false&goformId=switchWiFiModule&SwitchOption=0' \
+    "$(cut -d'|' -f2 "$u30_action_log")"
+: >"$u30_action_log"
+assert_success zte_adapter_set_wifi \
+    192.168.0.1 1 2g 'Fixture WiFi' wpa2_psk 'fixture-pass' auto "$jar"
+assert_eq \
+    'isTest=false&goformId=setAccessPointInfo&ChipIndex=0&AccessPointIndex=0&AccessPointSwitchStatus=1&SSID=Fixture%20WiFi&ApIsolate=0&AuthMode=WPA2PSK&ApBroadcastDisabled=0&EncrypType=CCMP&Password=fixture-pass' \
+    "$(cut -d'|' -f2 "$u30_action_log")"
+assert_failure zte_adapter_set_wifi \
+    192.168.0.1 1 5g 'Fixture' open '' auto "$jar"
+assert_failure zte_adapter_set_wifi \
+    192.168.0.1 1 2g 'Fixture' open '' 6 "$jar"
+zte_http_get() {
+    printf '%s\n' '{"sms_cmd_status_result":"3"}'
+}
+assert_eq succeeded "$(zte_adapter_fetch_sms_command_status \
+    192.168.0.1 4 "$jar")"
+zte_http_get() {
+    printf '%s\n' '{"sms_cmd_status_result":"2"}'
+}
+assert_eq failed "$(zte_adapter_fetch_sms_command_status \
+    192.168.0.1 4 "$jar")"
+zte_http_get() {
+    printf '%s\n' '{"wifi_onoff_state":"1","wifi_chip1_ssid1_switch_onoff":"1","wifi_chip1_ssid1_ssid":"Fixture WiFi","wifi_chip1_ssid1_auth_mode":"WPA2PSK"}'
+}
+assert_eq '{"enabled":true,"band":"2g","ssid":"Fixture WiFi","security":"wpa2_psk"}' \
+    "$(zte_adapter_fetch_wifi_setting 192.168.0.1 "$jar")"
+zte_http_get() {
+    printf '%s\n' '{"wifi_onoff_state":"0","wifi_chip1_ssid1_switch_onoff":"0","wifi_chip1_ssid1_ssid":"Fixture WiFi","wifi_chip1_ssid1_auth_mode":"WPA2PSK"}'
+}
+assert_eq '{"enabled":false}' \
+    "$(zte_adapter_fetch_wifi_setting 192.168.0.1 "$jar")"
+zte_http_get() {
+    printf '%s\n' '{"index":"2","profile_name":"Carrier","apn_wan_apn":"old.apn","apn_ppp_auth_mode":"none","apn_ppp_username":""}'
+}
+: >"$u30_action_log"
+assert_success zte_adapter_set_apn 192.168.0.1 internet ipv4v6 chap \
+    fixture-user fixture-pass "$jar"
+assert_eq \
+    'isTest=false&goformId=APN_PROC&apn_action=set_default&index=2&apn_mode=manual&profile_name=Carrier&apn_wan_apn=internet&dns_mode=auto&prefer_dns_manual=&w_standby_dns_manual=&apn_ppp_username=fixture-user&apn_ppp_passwd=fixture-pass&apn_ppp_auth_mode=chap&apn_select=manual&apn_wan_dial=%2A99%23&apn_pdp_type=PPP&apn_pdp_select=auto&apn_pdp_addr=&set_default_flag=1' \
+    "$(cut -d'|' -f2 "$u30_action_log")"
+assert_failure zte_adapter_set_apn 192.168.0.1 'bad&apn' ipv4 none '' '' "$jar"
+assert_eq '{"apn":"old.apn","auth":"none","username":""}' \
+    "$(zte_adapter_fetch_apn_setting 192.168.0.1 "$jar")"
 u30_raw=$(
     zte_http_get() {
         printf '%s\n' "$1" >"$u30_url_log"
@@ -318,7 +377,10 @@ u30_normalized=$(zte_adapter_normalize "$u30_raw")
 assert_eq 0 "$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).power_supply.mode_raw)' "$u30_normalized")"
 assert_eq false "$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).power_supply.direct_supply))' "$u30_normalized")"
 u30_capability_matrix=$(zte_adapter_capabilities_json)
+assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.cellular_write.implementation))')"
+assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.wifi_write.implementation))')"
 assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.traffic_write.implementation))')"
+assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.sms_write.implementation))')"
 assert_eq false "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).traffic_write)))')"
 assert_eq implemented "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).feature_status.device_restart.implementation))')"
 assert_eq false "$(printf '%s' "$u30_capability_matrix" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).device_reboot)))')"

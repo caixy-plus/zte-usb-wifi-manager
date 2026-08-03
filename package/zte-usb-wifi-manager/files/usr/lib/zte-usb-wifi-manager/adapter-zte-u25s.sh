@@ -369,8 +369,10 @@ zte_adapter_u30_fetch_flat() {
 	_zte_u30_fetch_fields=$2
 	case $_zte_u30_fetch_fields in
 		'ConnectionMode,autoConnectWhenRoaming'|\
+'index,profile_name,apn_wan_apn,apn_ppp_auth_mode,apn_ppp_username'|\
 'flux_data_volume_limit_switch,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_clear_date,flux_limited_disconnect'|\
-'flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time') ;;
+'flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time'|\
+'wifi_onoff_state,wifi_chip1_ssid1_switch_onoff,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode') ;;
 		*) return 1 ;;
 	esac
 	_zte_u30_fetch_origin=$(zte_adapter_origin "$1") || return 1
@@ -391,6 +393,158 @@ zte_adapter_fetch_connection_mode() {
 		on_demand) printf '%s\n' on_demand ;;
 		*) return 1 ;;
 	esac
+}
+
+zte_adapter_fetch_apn_context() {
+	_zte_apn_read_response=$(zte_adapter_u30_fetch_flat "$1" \
+		'index,profile_name,apn_wan_apn,apn_ppp_auth_mode,apn_ppp_username' \
+		"$2") || return 1
+	for _zte_apn_read_field in index profile_name apn_wan_apn \
+		apn_ppp_auth_mode apn_ppp_username; do
+		zte_json_flat_has "$_zte_apn_read_response" \
+			"$_zte_apn_read_field" || return 1
+	done
+	_zte_apn_read_index=$(zte_json_flat_get "$_zte_apn_read_response" index)
+	zte_adapter_payload_uint_range "$_zte_apn_read_index" 0 19 || return 1
+	printf '%s\n' "$_zte_apn_read_response"
+}
+
+zte_adapter_set_apn() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_apn_set_host=$1
+	_zte_apn_set_apn=$2
+	_zte_apn_set_pdp=$3
+	_zte_apn_set_auth=$4
+	_zte_apn_set_username=$5
+	_zte_apn_set_password=$6
+	_zte_apn_set_jar=$7
+	case $_zte_apn_set_apn in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
+	[ "${#_zte_apn_set_apn}" -le 100 ] || return 1
+	case $_zte_apn_set_pdp in ipv4|ipv6|ipv4v6) ;; *) return 1 ;; esac
+	case $_zte_apn_set_auth in
+		none)
+			_zte_apn_set_username=''
+			_zte_apn_set_password=''
+			;;
+		pap|chap)
+			zte_adapter_payload_text "$_zte_apn_set_username" 1 128 &&
+				zte_adapter_payload_text "$_zte_apn_set_password" 1 128 || return 1
+			;;
+		pap_or_chap)
+			zte_adapter_payload_text "$_zte_apn_set_username" 1 128 &&
+				zte_adapter_payload_text "$_zte_apn_set_password" 1 128 || return 1
+			_zte_apn_set_auth=pap_chap
+			;;
+		*) return 1 ;;
+	esac
+	_zte_apn_set_context=$(zte_adapter_fetch_apn_context \
+		"$_zte_apn_set_host" "$_zte_apn_set_jar") || return 1
+	_zte_apn_set_index=$(zte_json_flat_get \
+		"$_zte_apn_set_context" index)
+	_zte_apn_set_profile=$(zte_json_flat_get \
+		"$_zte_apn_set_context" profile_name)
+	[ -n "$_zte_apn_set_profile" ] || return 1
+	_zte_apn_set_form="isTest=false&goformId=APN_PROC&apn_action=set_default&$(zte_form_pair index "$_zte_apn_set_index")&apn_mode=manual&$(zte_form_pair profile_name "$_zte_apn_set_profile")&$(zte_form_pair apn_wan_apn "$_zte_apn_set_apn")&dns_mode=auto&prefer_dns_manual=&w_standby_dns_manual=&$(zte_form_pair apn_ppp_username "$_zte_apn_set_username")&$(zte_form_pair apn_ppp_passwd "$_zte_apn_set_password")&$(zte_form_pair apn_ppp_auth_mode "$_zte_apn_set_auth")&apn_select=manual&$(zte_form_pair apn_wan_dial '*99#')&apn_pdp_type=PPP&apn_pdp_select=auto&apn_pdp_addr=&set_default_flag=1"
+	zte_adapter_u30_post_body "$_zte_apn_set_host" \
+		"$_zte_apn_set_form" "$_zte_apn_set_jar"
+}
+
+zte_adapter_fetch_apn_setting() {
+	_zte_apn_setting=$(zte_adapter_fetch_apn_context "$1" "$2") || return 1
+	_zte_apn_setting_apn=$(zte_json_flat_get "$_zte_apn_setting" apn_wan_apn)
+	_zte_apn_setting_auth=$(zte_json_flat_get \
+		"$_zte_apn_setting" apn_ppp_auth_mode)
+	_zte_apn_setting_username=$(zte_json_flat_get \
+		"$_zte_apn_setting" apn_ppp_username)
+	case $_zte_apn_setting_auth in
+		none|pap|chap) ;;
+		pap_chap|PAP_CHAP) _zte_apn_setting_auth=pap_or_chap ;;
+		*) return 1 ;;
+	esac
+	printf '{"apn":"%s","auth":"%s","username":"%s"}\n' \
+		"$(zte_json_escape "$_zte_apn_setting_apn")" \
+		"$_zte_apn_setting_auth" \
+		"$(zte_json_escape "$_zte_apn_setting_username")"
+}
+
+zte_adapter_set_wifi() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_wifi_set_host=$1
+	_zte_wifi_set_enabled=$2
+	_zte_wifi_set_band=$3
+	_zte_wifi_set_ssid=$4
+	_zte_wifi_set_security=$5
+	_zte_wifi_set_password=$6
+	_zte_wifi_set_channel=$7
+	_zte_wifi_set_jar=$8
+	case $_zte_wifi_set_enabled in
+		0)
+			zte_adapter_u30_post_body "$_zte_wifi_set_host" \
+				'isTest=false&goformId=switchWiFiModule&SwitchOption=0' \
+				"$_zte_wifi_set_jar"
+			return
+			;;
+		1) ;;
+		*) return 1 ;;
+	esac
+	# The observed MU3351 device config explicitly reports WIFI_HAS_5G=false.
+	# Do not construct an unverified second-chip request from dormant generic UI.
+	[ "$_zte_wifi_set_band" = 2g ] &&
+		[ "$_zte_wifi_set_channel" = auto ] || return 1
+	zte_adapter_payload_text "$_zte_wifi_set_ssid" 1 32 || return 1
+	case $_zte_wifi_set_security in
+		open)
+			_zte_wifi_set_auth=OPEN
+			_zte_wifi_set_crypto='&EncrypType=NONE'
+			;;
+		wpa2_psk|wpa3_sae|wpa2_wpa3)
+			zte_adapter_payload_text "$_zte_wifi_set_password" 8 63 || return 1
+			case $_zte_wifi_set_security in
+				wpa2_psk) _zte_wifi_set_auth=WPA2PSK ;;
+				wpa3_sae) _zte_wifi_set_auth=WPA3PSK ;;
+				wpa2_wpa3) _zte_wifi_set_auth=WPA2PSKWPA3PSK ;;
+			esac
+			_zte_wifi_set_crypto="&EncrypType=CCMP&$(zte_form_pair Password "$_zte_wifi_set_password")"
+			;;
+		*) return 1 ;;
+	esac
+	_zte_wifi_set_form="isTest=false&goformId=setAccessPointInfo&ChipIndex=0&AccessPointIndex=0&AccessPointSwitchStatus=1&$(zte_form_pair SSID "$_zte_wifi_set_ssid")&ApIsolate=0&AuthMode=$_zte_wifi_set_auth&ApBroadcastDisabled=0$_zte_wifi_set_crypto"
+	zte_adapter_u30_post_body "$_zte_wifi_set_host" \
+		"$_zte_wifi_set_form" "$_zte_wifi_set_jar"
+}
+
+zte_adapter_fetch_wifi_setting() {
+	_zte_wifi_read_response=$(zte_adapter_u30_fetch_flat "$1" \
+		'wifi_onoff_state,wifi_chip1_ssid1_switch_onoff,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode' \
+		"$2") || return 1
+	for _zte_wifi_read_field in wifi_onoff_state \
+		wifi_chip1_ssid1_switch_onoff wifi_chip1_ssid1_ssid \
+		wifi_chip1_ssid1_auth_mode; do
+		zte_json_flat_has "$_zte_wifi_read_response" \
+			"$_zte_wifi_read_field" || return 1
+	done
+	_zte_wifi_read_module=$(zte_json_flat_get \
+		"$_zte_wifi_read_response" wifi_onoff_state)
+	_zte_wifi_read_switch=$(zte_json_flat_get \
+		"$_zte_wifi_read_response" wifi_chip1_ssid1_switch_onoff)
+	case $_zte_wifi_read_module:$_zte_wifi_read_switch in
+		0:*|*:0) printf '%s\n' '{"enabled":false}'; return ;;
+		1:1) ;;
+		*) return 1 ;;
+	esac
+	_zte_wifi_read_ssid=$(zte_json_flat_get \
+		"$_zte_wifi_read_response" wifi_chip1_ssid1_ssid)
+	case $(zte_json_flat_get "$_zte_wifi_read_response" \
+		wifi_chip1_ssid1_auth_mode) in
+		OPEN) _zte_wifi_read_security=open ;;
+		WPA2PSK) _zte_wifi_read_security=wpa2_psk ;;
+		WPA3PSK) _zte_wifi_read_security=wpa3_sae ;;
+		WPA2PSKWPA3PSK) _zte_wifi_read_security=wpa2_wpa3 ;;
+		*) return 1 ;;
+	esac
+	printf '{"enabled":true,"band":"2g","ssid":"%s","security":"%s"}\n' \
+		"$(zte_json_escape "$_zte_wifi_read_ssid")" \
+		"$_zte_wifi_read_security"
 }
 
 zte_adapter_set_traffic_plan() {
@@ -519,6 +673,142 @@ zte_adapter_fetch_sms_message_state() {
 $_zte_sms_state_items
 EOF
 	printf '%s\n' absent
+}
+
+# Match the target WebUI's encodeMessage()/getEncodeType() contract without
+# adding a locale or iconv dependency. The input is decoded as strict UTF-8;
+# each Unicode scalar is emitted as uppercase hexadecimal with at least four
+# digits, exactly as the browser implementation does.
+zte_adapter_sms_encode() {
+	printf '%s' "${1-}" | od -An -v -tu1 | LC_ALL=C awk '
+		function gsm7(cp) {
+			if (cp == 10 || cp == 13 || (cp >= 32 && cp <= 126 && cp != 96))
+				return 1
+			return cp == 163 || cp == 165 || cp == 232 || cp == 233 ||
+				cp == 249 || cp == 236 || cp == 242 || cp == 199 ||
+				cp == 216 || cp == 248 || cp == 197 || cp == 229 ||
+				cp == 916 || cp == 934 || cp == 915 || cp == 923 ||
+				cp == 937 || cp == 928 || cp == 936 || cp == 931 ||
+				cp == 920 || cp == 926 || cp == 198 || cp == 230 ||
+				cp == 223 || cp == 201 || cp == 161 || cp == 196 ||
+				cp == 214 || cp == 209 || cp == 220 || cp == 167 ||
+				cp == 191 || cp == 228 || cp == 246 || cp == 241 ||
+				cp == 252 || cp == 224 || cp == 8364
+		}
+		function emit(cp) {
+			if (cp < 0 || cp > 1114111 || (cp >= 55296 && cp <= 57343)) {
+				bad = 1
+				return
+			}
+			if (!gsm7(cp))
+				type = "UNICODE"
+			if (cp <= 65535)
+				body = body sprintf("%04X", cp)
+			else
+				body = body sprintf("%X", cp)
+		}
+		{
+			for (i = 1; i <= NF; i++)
+				bytes[++count] = $i + 0
+		}
+		END {
+			type = "GSM7_default"
+			for (i = 1; i <= count && !bad; i++) {
+				b1 = bytes[i]
+				if (b1 < 128) {
+					emit(b1)
+					continue
+				}
+				if (b1 >= 194 && b1 <= 223) {
+					if (++i > count || bytes[i] < 128 || bytes[i] > 191) { bad = 1; break }
+					emit((b1 - 192) * 64 + bytes[i] - 128)
+					continue
+				}
+				if (b1 >= 224 && b1 <= 239) {
+					if (i + 2 > count) { bad = 1; break }
+					b2 = bytes[++i]; b3 = bytes[++i]
+					if (b2 < 128 || b2 > 191 || b3 < 128 || b3 > 191 ||
+						(b1 == 224 && b2 < 160) || (b1 == 237 && b2 > 159)) { bad = 1; break }
+					emit((b1 - 224) * 4096 + (b2 - 128) * 64 + b3 - 128)
+					continue
+				}
+				if (b1 >= 240 && b1 <= 244) {
+					if (i + 3 > count) { bad = 1; break }
+					b2 = bytes[++i]; b3 = bytes[++i]; b4 = bytes[++i]
+					if (b2 < 128 || b2 > 191 || b3 < 128 || b3 > 191 ||
+						b4 < 128 || b4 > 191 || (b1 == 240 && b2 < 144) ||
+						(b1 == 244 && b2 > 143)) { bad = 1; break }
+					cp = (b1 - 240) * 262144 + (b2 - 128) * 4096 + (b3 - 128) * 64 + b4 - 128
+					emit(cp)
+					continue
+				}
+				bad = 1
+			}
+			if (bad)
+				exit 1
+			printf "%s|%s\n", type, body
+		}
+	'
+}
+
+zte_adapter_sms_time() {
+	_zte_sms_time_base=$(date '+%y;%m;%d;%H;%M;%S') || return 1
+	_zte_sms_time_offset=$(date '+%z') || return 1
+	case $_zte_sms_time_offset in
+		[+-][0-9][0-9][0-9][0-9]) ;;
+		*) return 1 ;;
+	esac
+	_zte_sms_time_sign=${_zte_sms_time_offset%????}
+	_zte_sms_time_hour=${_zte_sms_time_offset#?}
+	_zte_sms_time_hour=${_zte_sms_time_hour%??}
+	_zte_sms_time_minute=${_zte_sms_time_offset#???}
+	case $_zte_sms_time_hour in 0[0-9]) _zte_sms_time_hour=${_zte_sms_time_hour#0} ;; esac
+	case $_zte_sms_time_minute in
+		00) _zte_sms_time_zone=$_zte_sms_time_sign$_zte_sms_time_hour ;;
+		15) _zte_sms_time_zone=$_zte_sms_time_sign$_zte_sms_time_hour.25 ;;
+		30) _zte_sms_time_zone=$_zte_sms_time_sign$_zte_sms_time_hour.5 ;;
+		45) _zte_sms_time_zone=$_zte_sms_time_sign$_zte_sms_time_hour.75 ;;
+		*) return 1 ;;
+	esac
+	printf '%s;%s\n' "$_zte_sms_time_base" "$_zte_sms_time_zone"
+}
+
+zte_adapter_send_sms() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_sms_send_host=$1
+	_zte_sms_send_number=$2
+	_zte_sms_send_content=$3
+	_zte_sms_send_jar=$4
+	if ! zte_adapter_payload_phone "$_zte_sms_send_number" ||
+		! zte_adapter_payload_text "$_zte_sms_send_content" 1 700; then
+		return 1
+	fi
+	_zte_sms_send_encoded=$(zte_adapter_sms_encode \
+		"$_zte_sms_send_content") || return 1
+	_zte_sms_send_type=${_zte_sms_send_encoded%%|*}
+	_zte_sms_send_body=${_zte_sms_send_encoded#*|}
+	_zte_sms_send_time=$(zte_adapter_sms_time) || return 1
+	_zte_sms_send_form="isTest=false&goformId=SEND_SMS&notCallback=true&$(zte_form_pair Number "$_zte_sms_send_number")&$(zte_form_pair sms_time "$_zte_sms_send_time")&MessageBody=$_zte_sms_send_body&ID=-1&encode_type=$_zte_sms_send_type"
+	zte_adapter_u30_post_body "$_zte_sms_send_host" \
+		"$_zte_sms_send_form" "$_zte_sms_send_jar"
+}
+
+zte_adapter_fetch_sms_command_status() {
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_sms_status_command=$2
+	case $_zte_sms_status_command in 1|2|3|4|5|6) ;; *) return 1 ;; esac
+	_zte_sms_status_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_sms_status_response=$(zte_http_get \
+		"$_zte_sms_status_origin/goform/goform_get_cmd_process?cmd=sms_cmd_status_info&sms_cmd=$_zte_sms_status_command&isTest=false" \
+		"$3") || return 1
+	zte_json_is_flat_object "$_zte_sms_status_response" || return 1
+	case $(zte_json_flat_get "$_zte_sms_status_response" \
+		sms_cmd_status_result) in
+		3) printf '%s\n' succeeded ;;
+		2) printf '%s\n' failed ;;
+		0|1|'') printf '%s\n' pending ;;
+		*) return 1 ;;
+	esac
 }
 
 zte_adapter_device_command() {

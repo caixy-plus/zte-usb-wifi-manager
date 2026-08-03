@@ -14,16 +14,21 @@
 | 语义操作 | goformId | 安全读回 |
 |---|---|---|
 | 连接模式 | `SET_CONNECTION_MODE` | `ConnectionMode` |
+| APN | `APN_PROC` / `set_default` | 当前 APN、认证模式、用户名（不读回密码） |
+| 2.4 GHz Wi-Fi | `setAccessPointInfo` | 开关、SSID、认证模式（不读回密码） |
 | 流量套餐 | `DATA_LIMIT_SETTING` | 套餐开关、上限、提醒比例、周期日、到量断网 |
 | 流量清零 | `RESET_DATA_COUNTER` | 月度发送、接收、时长均为零 |
 | 短信删除 | `DELETE_SMS` | 指定消息 ID 不再存在 |
 | 短信已读 | `SET_MSG_READ` | 指定消息 tag 为 `0` |
+| 短信发送 | `SEND_SMS` | `sms_cmd_status_info`，`sms_cmd=4` |
 | 设备重启 | `REBOOT_DEVICE` | 先观测离线，再观测状态接口恢复 |
 | 设备关机 | `SHUTDOWN_DEVICE` | 连续离线；必须另有恢复路径才允许校准 |
 
 所有 POST 都是单次执行：传输失败属于结果不明确，不自动重复写入。读回可以按
-有界次数重试。APN、Wi-Fi 设置和短信发送仍需要补齐当前页面上下文或字符编码契约，
-因此本轮不把这三项标记为已实现，也不开放对应 capability。
+有界次数重试。APN 写入会先读取当前 profile/index，再按页面的 `set_default` 契约
+更新；Wi-Fi 严格服从目标配置的 `WIFI_HAS_5G=false`，不从通用页面代码臆造 5 GHz
+能力；短信正文使用严格 UTF-8 解码并复刻 WebUI 的十六进制编码和编码类型判断。
+这些实现均不读取 APN/Wi-Fi 密码作为读回依据。
 
 ## 门控状态
 

@@ -90,6 +90,58 @@ zte_execute_u30_setting() {
 		}
 	fi
 	case $_zte_setting_action in
+		set_apn)
+			_zte_setting_apn=$(zte_json_path_get \
+				"$_zte_setting_record" payload apn 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			_zte_setting_pdp=$(zte_json_path_get \
+				"$_zte_setting_record" payload pdp_type 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			_zte_setting_auth=$(zte_json_path_get \
+				"$_zte_setting_record" payload auth 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			_zte_setting_username=$(zte_json_path_get \
+				"$_zte_setting_record" payload username 2>/dev/null) ||
+				_zte_setting_username=''
+			_zte_setting_password=$(zte_json_path_get \
+				"$_zte_setting_record" payload password 2>/dev/null) ||
+				_zte_setting_password=''
+			case $_zte_setting_apn in
+				''|*[!A-Za-z0-9._-]*) printf '%s\n' invalid_action; return 1 ;;
+			esac
+			[ "${#_zte_setting_apn}" -le 100 ] || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			case $_zte_setting_pdp in ipv4|ipv6|ipv4v6) ;; *)
+				printf '%s\n' invalid_action; return 1 ;; esac
+			case $_zte_setting_auth in
+				none) _zte_setting_username=''; _zte_setting_password='' ;;
+				pap|chap|pap_or_chap)
+					if ! zte_adapter_payload_text \
+						"$_zte_setting_username" 1 128 ||
+						! zte_adapter_payload_text \
+						"$_zte_setting_password" 1 128; then
+						printf '%s\n' invalid_action; return 1
+					fi
+					;;
+				*) printf '%s\n' invalid_action; return 1 ;;
+			esac
+			zte_adapter_set_apn "$_zte_setting_host" "$_zte_setting_apn" \
+				"$_zte_setting_pdp" "$_zte_setting_auth" \
+				"$_zte_setting_username" "$_zte_setting_password" \
+				"$_zte_setting_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			_zte_setting_password=''
+			_zte_setting_expected=$(printf \
+				'{"apn":"%s","auth":"%s","username":"%s"}' \
+				"$(zte_json_escape "$_zte_setting_apn")" \
+				"$_zte_setting_auth" \
+				"$(zte_json_escape "$_zte_setting_username")")
+			;;
 		set_connection_mode)
 			_zte_setting_mode=$(zte_json_path_get \
 				"$_zte_setting_record" payload mode 2>/dev/null) || {
@@ -102,6 +154,73 @@ zte_execute_u30_setting() {
 				printf '%s\n' write_ambiguous; return 1;
 			}
 			_zte_setting_expected=$_zte_setting_mode
+			;;
+		set_wifi)
+			_zte_setting_enabled=$(zte_json_path_get \
+				"$_zte_setting_record" payload enabled 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			case $_zte_setting_enabled in
+				false)
+					_zte_setting_enabled_raw=0
+					_zte_setting_band=''
+					_zte_setting_ssid=''
+					_zte_setting_security=''
+					_zte_setting_password=''
+					_zte_setting_channel=''
+					_zte_setting_expected='{"enabled":false}'
+					;;
+				true)
+					_zte_setting_enabled_raw=1
+					_zte_setting_band=$(zte_json_path_get \
+						"$_zte_setting_record" payload band 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					_zte_setting_ssid=$(zte_json_path_get \
+						"$_zte_setting_record" payload ssid 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					_zte_setting_security=$(zte_json_path_get \
+						"$_zte_setting_record" payload security 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					_zte_setting_channel=$(zte_json_path_get \
+						"$_zte_setting_record" payload channel 2>/dev/null) || {
+						printf '%s\n' invalid_action; return 1;
+					}
+					_zte_setting_password=$(zte_json_path_get \
+						"$_zte_setting_record" payload password 2>/dev/null) ||
+						_zte_setting_password=''
+					if [ "$_zte_setting_band" != 2g ] ||
+						[ "$_zte_setting_channel" != auto ] ||
+						! zte_adapter_payload_text "$_zte_setting_ssid" 1 32; then
+						printf '%s\n' invalid_action; return 1;
+					fi
+					case $_zte_setting_security in
+						open) ;;
+						wpa2_psk|wpa3_sae|wpa2_wpa3)
+							zte_adapter_payload_text \
+								"$_zte_setting_password" 8 63 || {
+								printf '%s\n' invalid_action; return 1;
+							}
+							;;
+						*) printf '%s\n' invalid_action; return 1 ;;
+					esac
+					_zte_setting_expected=$(printf \
+						'{"enabled":true,"band":"2g","ssid":"%s","security":"%s"}' \
+						"$(zte_json_escape "$_zte_setting_ssid")" \
+						"$_zte_setting_security")
+					;;
+				*) printf '%s\n' invalid_action; return 1 ;;
+			esac
+			zte_adapter_set_wifi "$_zte_setting_host" \
+				"$_zte_setting_enabled_raw" "$_zte_setting_band" \
+				"$_zte_setting_ssid" "$_zte_setting_security" \
+				"$_zte_setting_password" "$_zte_setting_channel" \
+				"$_zte_setting_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			_zte_setting_password=''
 			;;
 		set_traffic_plan)
 			_zte_setting_enabled=$(zte_json_path_get \
@@ -170,8 +289,16 @@ zte_execute_u30_setting() {
 	while [ "$_zte_setting_attempt" -le "$_zte_setting_attempts" ]; do
 		_zte_setting_observed=''
 		case $_zte_setting_action in
+			set_apn)
+				_zte_setting_observed=$(zte_adapter_fetch_apn_setting \
+					"$_zte_setting_host" "$_zte_setting_jar" 2>/dev/null) || :
+				;;
 			set_connection_mode)
 				_zte_setting_observed=$(zte_adapter_fetch_connection_mode \
+					"$_zte_setting_host" "$_zte_setting_jar" 2>/dev/null) || :
+				;;
+			set_wifi)
+				_zte_setting_observed=$(zte_adapter_fetch_wifi_setting \
 					"$_zte_setting_host" "$_zte_setting_jar" 2>/dev/null) || :
 				;;
 			set_traffic_plan)
@@ -214,15 +341,35 @@ zte_execute_u30_sms_action() {
 			printf '%s\n' authentication_failed; return 1;
 		}
 	fi
-	_zte_sms_execute_id=$(zte_json_path_get \
-		"$_zte_sms_execute_record" payload message_id 2>/dev/null) || {
-		printf '%s\n' invalid_action; return 1;
-	}
-	zte_adapter_payload_message_id "$_zte_sms_execute_id" || {
-		printf '%s\n' invalid_action; return 1;
-	}
 	case $_zte_sms_execute_action in
+		send_sms)
+			_zte_sms_execute_number=$(zte_json_path_get \
+				"$_zte_sms_execute_record" payload number 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			_zte_sms_execute_content=$(zte_json_path_get \
+				"$_zte_sms_execute_record" payload content 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			if ! zte_adapter_payload_phone "$_zte_sms_execute_number" ||
+				! zte_adapter_payload_text "$_zte_sms_execute_content" 1 700; then
+				printf '%s\n' invalid_action; return 1;
+			fi
+			zte_adapter_send_sms "$_zte_sms_execute_host" \
+				"$_zte_sms_execute_number" "$_zte_sms_execute_content" \
+				"$_zte_sms_execute_jar" || {
+				printf '%s\n' write_ambiguous; return 1;
+			}
+			_zte_sms_execute_expected=succeeded
+			;;
 		delete_sms)
+			_zte_sms_execute_id=$(zte_json_path_get \
+				"$_zte_sms_execute_record" payload message_id 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			zte_adapter_payload_message_id "$_zte_sms_execute_id" || {
+				printf '%s\n' invalid_action; return 1;
+			}
 			zte_adapter_delete_sms "$_zte_sms_execute_host" \
 				"$_zte_sms_execute_id" "$_zte_sms_execute_jar" || {
 				printf '%s\n' write_ambiguous; return 1;
@@ -230,6 +377,13 @@ zte_execute_u30_sms_action() {
 			_zte_sms_execute_expected=absent
 			;;
 		mark_sms_read)
+			_zte_sms_execute_id=$(zte_json_path_get \
+				"$_zte_sms_execute_record" payload message_id 2>/dev/null) || {
+				printf '%s\n' invalid_action; return 1;
+			}
+			zte_adapter_payload_message_id "$_zte_sms_execute_id" || {
+				printf '%s\n' invalid_action; return 1;
+			}
 			zte_adapter_mark_sms_read "$_zte_sms_execute_host" \
 				"$_zte_sms_execute_id" "$_zte_sms_execute_jar" || {
 				printf '%s\n' write_ambiguous; return 1;
@@ -246,10 +400,23 @@ zte_execute_u30_sms_action() {
 	_zte_sms_execute_failure=readback_failed
 	_zte_sms_execute_attempt=1
 	while [ "$_zte_sms_execute_attempt" -le "$_zte_sms_execute_attempts" ]; do
-		_zte_sms_execute_observed=$(zte_adapter_fetch_sms_message_state \
-			"$_zte_sms_execute_host" "$_zte_sms_execute_id" \
-			"$_zte_sms_execute_jar" 2>/dev/null) || _zte_sms_execute_observed=''
+		case $_zte_sms_execute_action in
+			send_sms)
+				_zte_sms_execute_observed=$(zte_adapter_fetch_sms_command_status \
+					"$_zte_sms_execute_host" 4 "$_zte_sms_execute_jar" \
+					2>/dev/null) || _zte_sms_execute_observed=''
+				;;
+			*)
+				_zte_sms_execute_observed=$(zte_adapter_fetch_sms_message_state \
+					"$_zte_sms_execute_host" "$_zte_sms_execute_id" \
+					"$_zte_sms_execute_jar" 2>/dev/null) || _zte_sms_execute_observed=''
+				;;
+		esac
 		if [ -n "$_zte_sms_execute_observed" ]; then
+			if [ "$_zte_sms_execute_observed" = failed ]; then
+				printf '%s\n' device_rejected
+				return 1
+			fi
 			if [ "$_zte_sms_execute_observed" = "$_zte_sms_execute_expected" ]; then
 				printf '%s\n' ok
 				return 0

@@ -276,6 +276,24 @@ zte_adapter_set_connection_mode() { return 1; }
 assert_eq write_ambiguous "$(zte_execute_u30_setting 192.168.0.1 '' \
     "$work/cookies" set_connection_mode "$connection_record")"
 
+zte_adapter_set_apn() {
+    printf 'apn|%s|%s|%s|%s|%s\n' "$2" "$3" "$4" "$5" "$6" \
+        >>"$setting_write_log"
+}
+zte_adapter_fetch_apn_setting() {
+    printf '%s\n' '{"apn":"internet","auth":"chap","username":"fixture-user"}'
+}
+apn_record='{"payload":{"action":"set_apn","apn":"internet","pdp_type":"ipv4v6","auth":"chap","username":"fixture-user","password":"fixture-pass"}}'
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
+    set_apn "$apn_record")"
+assert_file_contains "$setting_write_log" \
+    'apn|internet|ipv4v6|chap|fixture-user|fixture-pass'
+zte_adapter_fetch_apn_setting() {
+    printf '%s\n' '{"apn":"other","auth":"chap","username":"fixture-user"}'
+}
+assert_eq readback_mismatch "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_apn "$apn_record")"
+
 zte_adapter_set_traffic_plan() {
     printf 'traffic|%s|%s|%s|%s|%s\n' "$2" "$3" "$4" "$5" "$6" \
         >>"$setting_write_log"
@@ -293,6 +311,21 @@ assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
 assert_eq invalid_action "$(zte_execute_u30_setting 192.168.0.1 '' \
     "$work/cookies" reboot_device '{"payload":{}}')"
 
+zte_adapter_set_wifi() {
+    printf 'wifi|%s|%s|%s|%s|%s|%s\n' "$2" "$3" "$4" "$5" "$6" "$7" \
+        >>"$setting_write_log"
+}
+zte_adapter_fetch_wifi_setting() {
+    printf '%s\n' '{"enabled":true,"band":"2g","ssid":"Fixture WiFi","security":"wpa2_psk"}'
+}
+wifi_record='{"payload":{"action":"set_wifi","enabled":true,"band":"2g","ssid":"Fixture WiFi","security":"wpa2_psk","password":"fixture-pass","channel":"auto"}}'
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
+    set_wifi "$wifi_record")"
+assert_file_contains "$setting_write_log" 'wifi|1|2g|Fixture WiFi|wpa2_psk|fixture-pass|auto'
+zte_adapter_fetch_wifi_setting() { printf '%s\n' '{"enabled":false}'; }
+assert_eq readback_mismatch "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_wifi "$wifi_record")"
+
 # SMS delete/read actions must be confirmed from a fresh inbox read. Device
 # reboot requires an observed outage followed by recovery; shutdown requires
 # a bounded sequence of failed probes and remains capability-gated.
@@ -309,6 +342,22 @@ assert_eq ok "$(zte_execute_u30_sms_action 192.168.0.1 '' "$work/cookies" \
 zte_adapter_fetch_sms_message_state() { printf '%s\n' 1; }
 assert_eq readback_mismatch "$(zte_execute_u30_sms_action 192.168.0.1 '' \
     "$work/cookies" mark_sms_read "$read_record")"
+sms_send_log=$work/sms-send
+: >"$sms_send_log"
+zte_adapter_send_sms() {
+    printf '%s|%s\n' "$2" "$3" >>"$sms_send_log"
+}
+zte_adapter_fetch_sms_command_status() { printf '%s\n' succeeded; }
+send_record='{"payload":{"action":"send_sms","number":"+12025550123","content":"fixture message"}}'
+assert_eq ok "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" send_sms "$send_record")"
+assert_eq '+12025550123|fixture message' "$(cat "$sms_send_log")"
+zte_adapter_fetch_sms_command_status() { printf '%s\n' failed; }
+assert_eq device_rejected "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" send_sms "$send_record")"
+zte_adapter_send_sms() { return 1; }
+assert_eq write_ambiguous "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" send_sms "$send_record")"
 
 device_probe_count=0
 zte_adapter_device_command() { return 0; }

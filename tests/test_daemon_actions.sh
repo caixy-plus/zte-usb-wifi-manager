@@ -201,7 +201,7 @@ assert_eq \
 # gate and result-record discipline as the calibrated power action.
 zte_adapter_action_supported() {
     case $1 in
-        set_connection_mode|set_traffic_plan|reset_traffic|delete_sms|reboot_device)
+        set_apn|set_connection_mode|set_wifi|set_traffic_plan|reset_traffic|send_sms|delete_sms|reboot_device)
             return 0
             ;;
     esac
@@ -229,7 +229,26 @@ case $(tail -n 1 "$execute_log") in
     192.168.0.1\|*\|set_connection_mode\|*'"mode":"automatic"'*) pass ;;
     *) fail 'daemon did not pass the validated queued setting to the executor' ;;
 esac
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1246 set_apn \
+    '{"action":"set_apn","apn":"fixture","pdp_type":"ipv4","auth":"none"}' 1722345684
+assert_success process_actions
+assert_eq succeeded "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1246)" state)"
+wifi_write_enabled=1
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1245 set_wifi \
+    '{"action":"set_wifi","enabled":false}' 1722345684
+assert_success process_actions
+assert_eq succeeded "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1245)" state)"
 zte_execute_u30_sms_action() { printf '%s\n' ok; }
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1244 send_sms \
+    '{"action":"send_sms","number":"+12025550123","content":"fixture"}' 1722345684
+assert_success process_actions
+assert_eq succeeded "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1244)" state)"
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345684-1242 delete_sms \
     '{"action":"delete_sms","message_id":"42","confirm":true}' 1722345684
@@ -247,11 +266,11 @@ assert_eq succeeded "$(zte_json_top_get \
 # Anything outside the calibrated production capability remains unsupported.
 zte_adapter_action_supported() { return 1; }
 assert_success zte_action_enqueue \
-    "$STATE_DIR" op-1722345684-1238 set_wifi \
-    '{"action":"set_wifi","enabled":true}' 1722345684
+    "$STATE_DIR" op-1722345684-1238 shutdown_device \
+    '{"action":"shutdown_device","confirm":true}' 1722345684
 assert_success process_actions
 assert_eq \
-    '{"operation_id":"op-1722345684-1238","type":"set_wifi","state":"failed","code":"unsupported","updated":1722345680}' \
+    '{"operation_id":"op-1722345684-1238","type":"shutdown_device","state":"failed","code":"unsupported","updated":1722345680}' \
     "$(zte_action_get "$STATE_DIR" op-1722345684-1238)"
 
 assert_failure zte_action_has_active "$STATE_DIR"
