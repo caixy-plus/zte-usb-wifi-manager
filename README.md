@@ -17,7 +17,8 @@
 仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r26 / LuCI r12
 已完成本地离线自动化验证、OpenWrt 25.12.5 / 24.10.7 官方双 SDK 构建，以及两套
 隔离 QEMU 中从 backend r15 / LuCI r4 原位升级的完整生命周期验证。最近完成路由器
-验证的发布包仍是 backend r15 / LuCI r4；r26/r12 尚未进行最后的真机调试验收：
+只读验证的版本为 backend r26 / LuCI r12；设备写能力和 72 小时稳定性仍待备用硬件
+验收：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
 - 已接入 U30 Pro 的 CDC-NCM 自动识别、HTTPS 匿名只读状态、设备原生
@@ -93,8 +94,12 @@
   [r24/r12 SDK 验证](docs/validation/2026-08-03-r24-r12-sdk.md)与
   [r24/r12 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)。
   真机结果不使用历史版本证据替代。
+- 当前 r26/r12 已通过两套官方 SDK 构建、r25→r26 双版本隔离 QEMU 升级，并在
+  Cudy TR3000 v1 + U30 Pro 上完成只读验收。完整 U30 状态恢复为 `ok`；不支持的
+  客户端明细端点只降级该子功能，不再使主快照失败。详见
+  [r26/r12 最终验证](docs/validation/2026-08-03-r26-r12-final.md)。
 
-当前状态不代表已经完成人工上机验收。
+当前状态不代表设备写接口或 72 小时稳定性已经完成人工上机验收。
 
 项目不会根据固件通用代码中的残留符号自行增加功能。产品能力以当前设备原生管理页面、实机验证结果和明确需求为准。
 
@@ -114,17 +119,16 @@
 
 当前构建与验证证据：
 
-| OpenWrt | 包格式 | 当前 r24 / LuCI r12 | 验证结果 |
+| OpenWrt | 包格式 | 当前 r26 / LuCI r12 | 验证结果 |
 |---|---|---|---|
-| OpenWrt 25.12.5 | `.apk` | 官方 SDK 构建通过 | r15/r4→r24/r12 升级、服务、ubus 与卸载通过 |
-| OpenWrt 24.10.7 | `.ipk` | 官方 SDK 构建通过 | r15/r4→r24/r12 升级、服务、ubus 与卸载通过 |
+| OpenWrt 25.12.5 | `.apk` | 官方 SDK 构建通过 | r25→r26 QEMU 升级及 Cudy/U30 只读验收通过 |
+| OpenWrt 24.10.7 | `.ipk` | 官方 SDK 构建通过 | r25→r26 QEMU 升级、配置、服务和 ubus 通过 |
 
-当前 backend r24 / LuCI r12 已完成本地检查、官方双版本 SDK 构建和隔离 QEMU
-升级验证。升级测试证明旧配置可保留自定义值和已选适配器，同时自动补齐关闭状态的
-新写入门控与智能充电配置。记录见
-[r24/r12 SDK 验证](docs/validation/2026-08-03-r24-r12-sdk.md)和
-[r24/r12 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)。
-该候选版本尚未部署到真实路由器；写 capability 仍保持关闭。
+当前 backend r26 / LuCI r12 已完成本地检查、官方双版本 SDK 构建、隔离 QEMU
+升级验证和 Cudy/U30 只读验收。升级保留自定义轮询值、已选 `zte_u30` 适配器和所有
+关闭状态的写门控。记录见
+[r26/r12 最终验证](docs/validation/2026-08-03-r26-r12-final.md)。设备写 capability
+仍保持关闭。
 
 从只支持 U25S 的旧版本升级时会保留 `zte.adapter=zte_u25s`，避免未经校准的自动
 识别让现有 U25S 离线。更换为 U30 Pro 的升级设备需在最后的真机调试中显式改为
@@ -527,6 +531,7 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 - [r23/r12 离线开发验证](docs/validation/2026-08-03-r23-r12-offline.md)
 - [r24/r12 官方 SDK 构建验证](docs/validation/2026-08-03-r24-r12-sdk.md)
 - [r15/r4 到 r24/r12 隔离 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)
+- [r26/r12 双 SDK、QEMU 与 U30 真机只读验证](docs/validation/2026-08-03-r26-r12-final.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
 - [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 
