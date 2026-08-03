@@ -12,6 +12,7 @@
   "sms_write": false,
   "device_reboot": false,
   "device_shutdown": false,
+  "power_supply_write": false,
   "feature_status": {
     "cellular_read": { "implementation": "implemented", "verification": "local_and_qemu", "access": "read", "enabled": true },
     "wifi_read": { "implementation": "implemented", "verification": "local_and_qemu", "access": "read", "enabled": true },
@@ -26,6 +27,7 @@
     "sms_write": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
     "device_restart": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
     "device_shutdown": { "implementation": "not_implemented", "verification": "spare_device_required", "access": "write", "enabled": false },
+    "power_supply_mode": { "implementation": "unsupported", "verification": "not_applicable", "access": "write", "enabled": false },
     "firmware_update": { "implementation": "native_console_only", "verification": "native_console", "access": "write", "enabled": false },
     "factory_reset": { "implementation": "native_console_only", "verification": "native_console", "access": "write", "enabled": false },
     "backup_restore": { "implementation": "native_console_only", "verification": "native_console", "access": "write", "enabled": false },

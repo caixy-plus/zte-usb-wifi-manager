@@ -191,6 +191,14 @@ assert_success zte_adapter_action_payload_valid shutdown_device \
     '{"action":"shutdown_device","confirm":true}'
 assert_failure zte_adapter_action_payload_valid shutdown_device \
     '{"action":"shutdown_device","confirm":true,"delay":5}'
+assert_success zte_adapter_action_payload_valid set_power_supply_mode \
+    '{"action":"set_power_supply_mode","mode":"charging"}'
+assert_success zte_adapter_action_payload_valid set_power_supply_mode \
+    '{"action":"set_power_supply_mode","mode":"direct_supply"}'
+assert_failure zte_adapter_action_payload_valid set_power_supply_mode \
+    '{"action":"set_power_supply_mode","mode":"1"}'
+assert_failure zte_adapter_action_payload_valid set_power_supply_mode \
+    '{"action":"set_power_supply_mode","mode":"charging","AD":"x"}'
 
 fixtures=./tests/fixtures/u25s
 work=/tmp/zte-test-adapter.$$

@@ -22,7 +22,8 @@
           "wifi_action",
           "traffic_action",
           "sms_action",
-          "device_action"
+          "device_action",
+          "power_action"
         ]
       }
     }

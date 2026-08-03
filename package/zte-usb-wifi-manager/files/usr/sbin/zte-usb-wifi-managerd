@@ -8,6 +8,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/credentials.sh
 . /usr/lib/zte-usb-wifi-manager/session.sh
 . /usr/lib/zte-usb-wifi-manager/policy.sh
+. /usr/lib/zte-usb-wifi-manager/smart-charge-policy.sh
 . /usr/lib/zte-usb-wifi-manager/schedule.sh
 . /usr/lib/zte-usb-wifi-manager/power-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
@@ -51,6 +52,7 @@ load_config() {
 	sms_write_enabled=''
 	device_reboot_enabled=''
 	device_shutdown_enabled=''
+	power_supply_write_enabled=''
 	poll_interval=''
 	failure_threshold=''
 	host=''
@@ -82,6 +84,7 @@ load_config() {
 	config_get sms_write_enabled writes sms_write_enabled 0
 	config_get device_reboot_enabled writes device_reboot_enabled 0
 	config_get device_shutdown_enabled writes device_shutdown_enabled 0
+	config_get power_supply_write_enabled writes power_supply_write_enabled 0
 	config_get poll_interval main poll_interval 30
 	config_get failure_threshold main failure_threshold 3
 	config_get host zte host 192.168.0.1
@@ -138,8 +141,9 @@ load_config() {
 	case $enabled:$write_enabled:$sim_switch_enabled:\
 $cellular_write_enabled:$wifi_write_enabled:$traffic_write_enabled:\
 $sms_write_enabled:$device_reboot_enabled:$device_shutdown_enabled:\
+$power_supply_write_enabled:\
 $battery_enabled:$manual_full:$schedule_enabled in
-		[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]) ;;
+		[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]) ;;
 		*)
 			logger -t zte-usb-wifi-manager 'invalid policy flags'
 			return 1
@@ -228,6 +232,9 @@ configured_action_enabled() {
 			;;
 		shutdown_device)
 			_zte_configured_feature=$device_shutdown_enabled
+			;;
+		set_power_supply_mode)
+			_zte_configured_feature=$power_supply_write_enabled
 			;;
 		*) return 1 ;;
 	esac
@@ -799,6 +806,26 @@ process_actions() {
 		_zte_action_event_code=action_failed
 	elif zte_adapter_action_supported "$_zte_action_type"; then
 		case $_zte_action_type in
+			set_power_supply_mode)
+				_zte_action_mode=$(zte_json_path_get \
+					"$_zte_action_record" payload mode)
+				_zte_action_result=''
+				if _zte_action_result=$(zte_execute_power_supply_mode \
+					"$host" '' "$COOKIE_FILE" "$_zte_action_mode"); then
+					_zte_action_state=succeeded
+					_zte_action_code=ok
+					_zte_action_event_level=info
+					_zte_action_event_code=action_succeeded
+				else
+					if zte_action_code_valid "$_zte_action_result"; then
+						_zte_action_code=$_zte_action_result
+					else
+						_zte_action_code=executor_failed
+					fi
+					_zte_action_event_level=error
+					_zte_action_event_code=action_failed
+				fi
+				;;
 			switch_sim)
 				_zte_action_target=$(
 					zte_json_path_get \

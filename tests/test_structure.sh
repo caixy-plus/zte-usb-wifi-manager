@@ -81,6 +81,7 @@ assert_file_contains "$backend/Makefile" \
     'rm -rf /var/run/zte-usb-wifi-manager'
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option sim_switch_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option power_supply_write_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option cellular_write_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option wifi_write_enabled '0'"
 assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option traffic_write_enabled '0'"
@@ -217,7 +218,7 @@ if (JSON.stringify(read.ubus.zte_usb_wifi) !==
     JSON.stringify(["status", "sms_messages", "capabilities", "credential_status", "operation_status", "logs"]))
     process.exit(1);
 if (JSON.stringify(write.ubus.zte_usb_wifi) !==
-    JSON.stringify(["set_credentials", "clear_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action", "device_action"]))
+    JSON.stringify(["set_credentials", "clear_credentials", "cellular_action", "wifi_action", "traffic_action", "sms_action", "device_action", "power_action"]))
     process.exit(1);
 ' "$acl"
 
@@ -1077,6 +1078,7 @@ config_get() {
         sms_write_enabled) sms_write_enabled=0 ;;
         device_reboot_enabled) device_reboot_enabled=0 ;;
         device_shutdown_enabled) device_shutdown_enabled=0 ;;
+        power_supply_write_enabled) power_supply_write_enabled=0 ;;
         poll_interval) poll_interval=30 ;;
         failure_threshold) failure_threshold=3 ;;
         host) host=192.168.0.1 ;;

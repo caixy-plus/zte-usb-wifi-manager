@@ -59,7 +59,7 @@ process.stdin.on("end", () => JSON.parse(input));
 
 list_output=$(rpcd_call list)
 assert_success assert_json "$list_output"
-assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"}}' \
+assert_eq '{"status":{},"sms_messages":{},"capabilities":{},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","apn":"String","pdp_type":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}' \
     "$list_output" \
     'rpcd list must expose status, credentials, and operation status'
 
@@ -157,6 +157,7 @@ for method_action in \
     sms_action:send_sms \
     device_action:reboot_device \
     device_action:shutdown_device \
+    power_action:set_power_supply_mode \
     sms_action:delete_sms \
     sms_action:mark_sms_read
 do
@@ -191,6 +192,7 @@ sed \
     -e 's/^ZTE_CAP_SMS_WRITE=0$/ZTE_CAP_SMS_WRITE=1/' \
     -e 's/^ZTE_CAP_DEVICE_REBOOT=0$/ZTE_CAP_DEVICE_REBOOT=1/' \
     -e 's/^ZTE_CAP_DEVICE_SHUTDOWN=0$/ZTE_CAP_DEVICE_SHUTDOWN=1/' \
+    -e 's/^ZTE_CAP_POWER_SUPPLY_WRITE=0$/ZTE_CAP_POWER_SUPPLY_WRITE=1/' \
     "$metadata" >"$write_lib/adapter-zte-u25s-metadata.sh"
 # The generated stub must expand this variable when it executes, not here.
 # shellcheck disable=SC2016
@@ -205,6 +207,7 @@ printf '%s\n' \
     '  "-q get zte-usb-wifi-manager.writes.sms_write_enabled") value=${ZTE_TEST_SMS_WRITE_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.device_reboot_enabled") value=${ZTE_TEST_DEVICE_REBOOT_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.device_shutdown_enabled") value=${ZTE_TEST_DEVICE_SHUTDOWN_ENABLED:-0} ;;' \
+    '  "-q get zte-usb-wifi-manager.writes.power_supply_write_enabled") value=${ZTE_TEST_POWER_SUPPLY_WRITE_ENABLED:-0} ;;' \
     '  *) exit 1 ;;' \
     'esac' \
     'printf "%s\n" "$value"' >"$test_bin/uci"

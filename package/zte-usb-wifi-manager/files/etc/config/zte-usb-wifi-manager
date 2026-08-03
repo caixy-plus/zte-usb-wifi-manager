@@ -12,6 +12,7 @@ config actions 'writes'
 	option sms_write_enabled '0'
 	option device_reboot_enabled '0'
 	option device_shutdown_enabled '0'
+	option power_supply_write_enabled '0'
 
 config device 'zte'
 	option host '192.168.0.1'
