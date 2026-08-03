@@ -147,12 +147,22 @@ IFS= read -r sdk_dir <"$sdk_list"
     # Official SDKs describe every bundled, precompiled package as a hidden
     # unconditional =m default in Config-build.in. Leaving those defaults in
     # place makes even a targeted package build restage 1,000+ unrelated
-    # packages. Dependencies selected by this project remain enabled normally.
+    # packages. Keep only the USB driver dependency closure shipped by this
+    # project; other runtime dependencies are selected from their normal feeds.
     LC_ALL=C awk '
-        /^config[[:space:]]+/ {
-            package_symbol = ($2 ~ /^PACKAGE_/)
+        BEGIN {
+            keep["PACKAGE_kmod-mii"] = 1
+            keep["PACKAGE_kmod-nls-base"] = 1
+            keep["PACKAGE_kmod-usb-common"] = 1
+            keep["PACKAGE_kmod-usb-core"] = 1
+            keep["PACKAGE_kmod-usb-net"] = 1
+            keep["PACKAGE_kmod-usb-net-cdc-ether"] = 1
+            keep["PACKAGE_kmod-usb-net-cdc-ncm"] = 1
         }
-        package_symbol &&
+        /^config[[:space:]]+/ {
+            package_symbol = $2
+        }
+        package_symbol ~ /^PACKAGE_/ && !keep[package_symbol] &&
             /^[[:space:]]*default[[:space:]]+m[[:space:]]*$/ {
             sub(/default[[:space:]]+m/, "default n")
             changed++

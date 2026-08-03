@@ -347,7 +347,7 @@ case " $* " in
             "$root/bin/packages/fixture" "$root/staging_dir/host/bin"
         : >"$root/feeds/luci/luci.mk"
         cat >"$root/Config-build.in" <<'CONFIG'
-config PACKAGE_kmod-sdk-default
+config PACKAGE_kmod-usb-net
     tristate
     default m
 
@@ -428,7 +428,12 @@ cat >"$fake_bin/make" <<'EOF'
 set -eu
 case " $* " in
     ' defconfig ')
-        ! grep -Eq '^[[:space:]]*default m[[:space:]]*$' Config-build.in
+        awk '
+            /^config PACKAGE_kmod-usb-net$/ { wanted = 1; next }
+            /^config / { wanted = 0 }
+            wanted && /^[[:space:]]*default m[[:space:]]*$/ { found = 1 }
+            END { exit(found ? 0 : 1) }
+        ' Config-build.in
         grep -Eq '^[[:space:]]*default n[[:space:]]*$' Config-build.in
         grep -Fqx '# CONFIG_ALL is not set' .config
         grep -Fqx '# CONFIG_ALL_KMODS is not set' .config
