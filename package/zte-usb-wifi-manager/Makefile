@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=23
+PKG_RELEASE:=24
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
@@ -30,17 +30,57 @@ endef
 
 define Package/zte-usb-wifi-manager/postinst
 #!/bin/sh
-if [ -z "$${IPKG_INSTROOT}" ] &&
-	[ "$$(cat /tmp/sysinfo/board_name 2>/dev/null)" = \
+if [ -z "$${IPKG_INSTROOT}" ]; then
+	zte_config_changed=0
+	zte_legacy_config=0
+	uci -q get zte-usb-wifi-manager.writes.device_reboot_enabled \
+		>/dev/null 2>&1 || zte_legacy_config=1
+
+	zte_ensure_config() {
+		zte_config_key=$$1
+		zte_config_default=$$2
+		if uci -q get "$$zte_config_key" >/dev/null 2>&1; then
+			return 0
+		fi
+		uci set "$$zte_config_key=$$zte_config_default" || exit 1
+		zte_config_changed=1
+	}
+
+	# Conffiles are intentionally preserved by APK/IPK upgrades. Add every new
+	# gate with its fail-closed default so an older config cannot silently omit
+	# controls introduced by a newer package.
+	zte_ensure_config zte-usb-wifi-manager.writes.device_reboot_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.device_shutdown_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.writes.power_supply_write_enabled 0
+	zte_ensure_config zte-usb-wifi-manager.charging smart_charge
+	zte_ensure_config zte-usb-wifi-manager.charging.enabled 0
+	zte_ensure_config zte-usb-wifi-manager.charging.low_percent 30
+	zte_ensure_config zte-usb-wifi-manager.charging.high_percent 80
+	zte_ensure_config zte-usb-wifi-manager.charging.retry_seconds 300
+
+	# r15 and earlier shipped zte_u25s as the fixed default. Only migrate a
+	# config identified as legacy; a later explicit user selection is retained.
+	if [ "$$zte_legacy_config" = 1 ] &&
+		[ "$$(uci -q get zte-usb-wifi-manager.zte.adapter 2>/dev/null)" = \
+		zte_u25s ]; then
+		uci set zte-usb-wifi-manager.zte.adapter=auto || exit 1
+		zte_config_changed=1
+	fi
+
+	if [ "$$(cat /tmp/sysinfo/board_name 2>/dev/null)" = \
 		cudy,tr3000-v1-ubootmod ] &&
-	[ "$$(uci -q get zte-usb-wifi-manager.usb.control_path 2>/dev/null)" = \
+		[ "$$(uci -q get zte-usb-wifi-manager.usb.control_path 2>/dev/null)" = \
 		/sys/class/gpio/modem_power/value ] &&
-	[ "$$(uci -q get zte-usb-wifi-manager.usb.backend 2>/dev/null)" = \
+		[ "$$(uci -q get zte-usb-wifi-manager.usb.backend 2>/dev/null)" = \
 		unconfigured ] &&
-	[ "$$(uci -q get zte-usb-wifi-manager.usb.calibrated 2>/dev/null)" = 0 ] &&
-	[ "$$(uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null)" = 0 ]; then
-	uci set zte-usb-wifi-manager.usb.control_path=auto || exit 1
-	uci commit zte-usb-wifi-manager || exit 1
+		[ "$$(uci -q get zte-usb-wifi-manager.usb.calibrated 2>/dev/null)" = 0 ] &&
+		[ "$$(uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null)" = 0 ]; then
+		uci set zte-usb-wifi-manager.usb.control_path=auto || exit 1
+		zte_config_changed=1
+	fi
+
+	[ "$$zte_config_changed" = 0 ] ||
+		uci commit zte-usb-wifi-manager || exit 1
 fi
 exit 0
 endef
