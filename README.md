@@ -15,9 +15,9 @@
 ## 当前状态
 
 仓库目前处于**U25S / U30 Pro 设备控制台整合开发预览阶段**。源码 backend r24 / LuCI r12
-已完成本地离线自动化验证和 OpenWrt 25.12.5 / 24.10.7 官方双 SDK 构建；按当前
-交付顺序，QEMU 生命周期和真机调试继续留在最后执行。最近完成 QEMU 验证的是
-backend r21 / LuCI r10，最近完成路由器验证的发布包仍是 backend r15 / LuCI r4：
+已完成本地离线自动化验证、OpenWrt 25.12.5 / 24.10.7 官方双 SDK 构建，以及两套
+隔离 QEMU 中从 backend r15 / LuCI r4 原位升级的完整生命周期验证。最近完成路由器
+验证的发布包仍是 backend r15 / LuCI r4；r24/r12 尚未进行最后的真机调试验收：
 
 - 已接入 U25S goform 双重 SHA-256 登录和批量状态读取。
 - 已接入 U30 Pro 的 CDC-NCM 自动识别、HTTPS 匿名只读状态、设备原生
@@ -88,9 +88,11 @@ backend r21 / LuCI r10，最近完成路由器验证的发布包仍是 backend r
   [r21/r10 QEMU 验证](docs/validation/2026-08-01-r21-r10-qemu.md)。
 - 阶段 4 已冻结[首版能力矩阵](docs/validation/first-release-capability-matrix.md)，
   并完成 [r20/r9 到 r21/r10 的双版本 QEMU 升级验证](docs/validation/2026-08-01-r21-r10-upgrade-qemu.md)。
-- 当前 r23/r12 已通过两套官方 SDK 的 APK/IPK 构建和独立 SHA-256 复核；详见
-  [r23/r12 SDK 验证](docs/validation/2026-08-03-r23-r12-sdk.md)。QEMU 与真机结果
-  不使用历史版本证据替代。
+- 当前 r24/r12 已通过两套官方 SDK 的 APK/IPK 构建、独立 SHA-256 复核，以及
+  r15/r4→r24/r12 的双版本隔离 QEMU 升级验证；详见
+  [r24/r12 SDK 验证](docs/validation/2026-08-03-r24-r12-sdk.md)与
+  [r24/r12 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)。
+  真机结果不使用历史版本证据替代。
 
 当前状态不代表已经完成人工上机验收。
 
@@ -112,10 +114,21 @@ backend r21 / LuCI r10，最近完成路由器验证的发布包仍是 backend r
 
 当前构建与验证证据：
 
-| OpenWrt | 包格式 | 当前 r15 / LuCI r4 | 历史 QEMU 记录 |
+| OpenWrt | 包格式 | 当前 r24 / LuCI r12 | 验证结果 |
 |---|---|---|---|
-| OpenWrt 25.12.5 | `.apk` | GitHub SDK、安装、r14→r15 升级、服务与卸载均通过 | backend r8 / LuCI r3 通过 |
-| OpenWrt 24.10.7 | `.ipk` | GitHub SDK、安装、r14→r15 升级、服务与卸载均通过 | backend r8 / LuCI r3 通过 |
+| OpenWrt 25.12.5 | `.apk` | 官方 SDK 构建通过 | r15/r4→r24/r12 升级、服务、ubus 与卸载通过 |
+| OpenWrt 24.10.7 | `.ipk` | 官方 SDK 构建通过 | r15/r4→r24/r12 升级、服务、ubus 与卸载通过 |
+
+当前 backend r24 / LuCI r12 已完成本地检查、官方双版本 SDK 构建和隔离 QEMU
+升级验证。升级测试证明旧配置可保留自定义值和已选适配器，同时自动补齐关闭状态的
+新写入门控与智能充电配置。记录见
+[r24/r12 SDK 验证](docs/validation/2026-08-03-r24-r12-sdk.md)和
+[r24/r12 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)。
+该候选版本尚未部署到真实路由器；写 capability 仍保持关闭。
+
+从只支持 U25S 的旧版本升级时会保留 `zte.adapter=zte_u25s`，避免未经校准的自动
+识别让现有 U25S 离线。更换为 U30 Pro 的升级设备需在最后的真机调试中显式改为
+`zte_u30`；全新安装仍使用 `auto`，且只接受已校准的精确 USB 身份。
 
 当前 backend r15 / LuCI r4 已完成本地检查、GitHub 双版本真实 SDK 构建，以及
 官方 OpenWrt 双版本 QEMU 安装、从 r14/r3 原位升级、配置保留、procd/rpcd/ubus
@@ -279,7 +292,27 @@ opkg install \
 `rpcd`、`ubus` 和 `uci` 等依赖。不要使用 `--force-depends` 或
 `--force-architecture`。
 
-### 4. 配置 U25S 凭据
+### 4. 选择设备适配器
+
+全新安装默认使用 `auto`，目前只会根据已校准的精确 USB 身份自动选择 U30 Pro。
+U25S 的 USB 身份尚未完成实机校准，因此全新安装到 U25S 时必须显式选择
+`zte_u25s`；不要把未知设备强制指定为任一型号：
+
+```sh
+# 真实设备是 U25S 时
+uci set zte-usb-wifi-manager.zte.adapter='zte_u25s'
+
+# 真实设备是 U30 Pro、但 auto 未识别时
+# uci set zte-usb-wifi-manager.zte.adapter='zte_u30'
+
+uci commit zte-usb-wifi-manager
+/etc/init.d/zte-usb-wifi-manager restart
+```
+
+从旧版升级会保留原来的适配器选择，不会把正在工作的 U25S 自动改成 `auto`。
+只有确认了真实型号后才能修改此项。
+
+### 5. 配置 U25S 凭据
 
 安装后先打开 LuCI：**服务 → 中兴随身 WiFi → 设备登录**。需要认证的
 U25S 可以在这里输入管理密码并点击“保存登录凭据”。页面只提供写入入口，不会读取、回显或保存在
@@ -321,7 +354,7 @@ uci set zte-usb-wifi-manager.main.write_enabled='0'
 uci commit zte-usb-wifi-manager
 ```
 
-### 5. 启动并验证
+### 6. 启动并验证
 
 ```sh
 /etc/init.d/zte-usb-wifi-manager enable
@@ -492,6 +525,8 @@ opkg remove luci-app-zte-usb-wifi-manager zte-usb-wifi-manager
 - [四阶段交付与 QEMU 验证](docs/validation/2026-07-30-four-stage-delivery.md)
 - [TR3000 USB 供电与稳定性预检](docs/validation/2026-07-31-power-hardware-preflight.md)
 - [r23/r12 离线开发验证](docs/validation/2026-08-03-r23-r12-offline.md)
+- [r24/r12 官方 SDK 构建验证](docs/validation/2026-08-03-r24-r12-sdk.md)
+- [r15/r4 到 r24/r12 隔离 QEMU 升级验证](docs/validation/2026-08-03-r24-r12-upgrade-qemu.md)
 - [框架层实施计划](docs/plans/2026-07-29-framework-foundation.md)
 - [Phase 1 只读实施计划](docs/plans/2026-07-29-phase1-read-only.md)
 

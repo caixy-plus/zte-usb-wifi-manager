@@ -257,10 +257,14 @@ assert_file_contains README.md '^## 安装$'
 assert_file_contains README.md 'apk add --allow-untrusted'
 assert_file_contains README.md 'opkg install'
 assert_file_contains README.md '/etc/zte-usb-wifi-manager/credentials'
+assert_file_contains README.md '^### 4\. 选择设备适配器$'
+assert_file_contains README.md "zte\.adapter='zte_u25s'"
+assert_file_contains README.md 'U25S 的 USB 身份尚未完成实机校准'
 assert_file_contains README.md 'OpenWrt 25\.12\.5'
 assert_file_contains README.md 'OpenWrt 24\.10\.7'
-assert_file_contains README.md 'OpenWrt 25\.12\.5.*backend r8 / LuCI r3 通过'
-assert_file_contains README.md 'OpenWrt 24\.10\.7.*backend r8 / LuCI r3 通过'
+assert_file_contains README.md 'OpenWrt 25\.12\.5.*官方 SDK 构建通过'
+assert_file_contains README.md 'OpenWrt 24\.10\.7.*官方 SDK 构建通过'
+assert_file_contains README.md 'r15/r4→r24/r12 升级、服务、ubus 与卸载通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
 assert_file_contains README.md '源码 backend r24 / LuCI r12'
@@ -496,6 +500,21 @@ assert_file_contains "$r21_upgrade_evidence" '^# r20/r9 到 r21/r10 隔离 QEMU 
 assert_file_contains "$r21_upgrade_evidence" 'OpenWrt 25\.12\.5 APK.*PASS'
 assert_file_contains "$r21_upgrade_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
 assert_file_contains "$r21_upgrade_evidence" '自定义 UCI 值 .*77.*：PASS'
+
+r24_sdk_evidence=docs/validation/2026-08-03-r24-r12-sdk.md
+assert_file_contains "$r24_sdk_evidence" '^# r24/r12 官方 SDK 构建验证$'
+assert_file_contains "$r24_sdk_evidence" 'OpenWrt 25\.12\.5 官方 SDK APK：PASS'
+assert_file_contains "$r24_sdk_evidence" 'OpenWrt 24\.10\.7 官方 SDK IPK：PASS'
+assert_file_contains "$r24_sdk_evidence" 'zte-usb-wifi-manager-0\.1\.0_rc1-r24\.apk'
+assert_file_contains "$r24_sdk_evidence" 'zte-usb-wifi-manager_0\.1\.0_rc1-r24_all\.ipk'
+
+r24_upgrade_evidence=docs/validation/2026-08-03-r24-r12-upgrade-qemu.md
+assert_file_contains "$r24_upgrade_evidence" '^# r15/r4 到 r24/r12 隔离 QEMU 升级验证$'
+assert_file_contains "$r24_upgrade_evidence" 'OpenWrt 25\.12\.5 APK.*PASS'
+assert_file_contains "$r24_upgrade_evidence" 'OpenWrt 24\.10\.7 IPK.*PASS'
+assert_file_contains "$r24_upgrade_evidence" '自定义轮询值 .*77.*在升级后保留：PASS'
+assert_file_contains "$r24_upgrade_evidence" '历史 U25S 配置继续保留 .*zte_u25s'
+assert_file_contains "$r24_upgrade_evidence" 'power_supply_mode.*unsupported'
 
 assert_file_contains "$daemon" '^set -e$'
 for library in \
