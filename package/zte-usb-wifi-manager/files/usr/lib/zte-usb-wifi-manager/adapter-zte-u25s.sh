@@ -100,7 +100,8 @@ zte_adapter_uint_json() {
 	esac
 }
 
-# Print a 0/1 device option as JSON false/true, or null when absent/empty.
+# Print a calibrated device option as JSON false/true, or null when
+# absent/empty. U30 returns on/off for some switches while U25S uses 0/1.
 zte_adapter_optional_bool_json() {
 	if ! zte_json_flat_has "$1" "$2"; then
 		printf 'null'
@@ -109,8 +110,8 @@ zte_adapter_optional_bool_json() {
 	_zte_optional_bool_value=$(zte_json_flat_get "$1" "$2")
 	case $_zte_optional_bool_value in
 		'') printf 'null' ;;
-		0) printf 'false' ;;
-		1) printf 'true' ;;
+		0|off) printf 'false' ;;
+		1|on) printf 'true' ;;
 		*) return 1 ;;
 	esac
 }

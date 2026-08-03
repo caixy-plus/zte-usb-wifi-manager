@@ -49,6 +49,7 @@ assert_eq auto_dial "$(printf '%s' "$u30_normalized" | node -e 'let s="";process
 assert_eq true "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).battery.present)))')"
 assert_eq true "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).battery.charging)))')"
 assert_eq 51 "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).battery.percent)))')"
+assert_eq true "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).traffic.plan.auto_clear)))')"
 assert_eq U30ProV1.0.0B23 "$(printf '%s' "$u30_normalized" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).firmware))')"
 assert_success zte_device_profile_select_named zte_u25s
 assert_success zte_adapter_apply_profile
