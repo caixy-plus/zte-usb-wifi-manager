@@ -33,7 +33,7 @@ define Package/zte-usb-wifi-manager/postinst
 if [ -z "$${IPKG_INSTROOT}" ]; then
 	zte_config_changed=0
 	zte_legacy_config=0
-	uci -q get zte-usb-wifi-manager.writes.device_reboot_enabled \
+	uci -q get zte-usb-wifi-manager.writes.power_supply_write_enabled \
 		>/dev/null 2>&1 || zte_legacy_config=1
 
 	zte_ensure_config() {
@@ -58,8 +58,9 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	zte_ensure_config zte-usb-wifi-manager.charging.high_percent 80
 	zte_ensure_config zte-usb-wifi-manager.charging.retry_seconds 300
 
-	# r15 and earlier shipped zte_u25s as the fixed default. Only migrate a
-	# config identified as legacy; a later explicit user selection is retained.
+	# Pre-U30 configs shipped zte_u25s as the fixed default and had no power
+	# supply gate. Only migrate that generation; a later explicit selection is
+	# retained.
 	if [ "$$zte_legacy_config" = 1 ] &&
 		[ "$$(uci -q get zte-usb-wifi-manager.zte.adapter 2>/dev/null)" = \
 		zte_u25s ]; then

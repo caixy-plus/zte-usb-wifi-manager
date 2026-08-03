@@ -175,6 +175,18 @@ for hook_format in apk ipk; do
     assert_eq 300 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_retry_seconds")"
     assert_eq commit "$(cat "$postinst_uci/commits")"
 
+    # The final pre-U30 config generation already had independent lifecycle
+    # gates but no power-supply gate. It must still migrate from the historical
+    # fixed adapter default to auto detection.
+    reset_postinst_fixture
+    printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_reboot_enabled"
+    printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_device_shutdown_enabled"
+    assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
+        PATH="$postinst_bin:$PATH" sh "$hook_postinst"
+    assert_eq auto "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
+    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_power_supply_write_enabled")"
+    assert_eq commit "$(cat "$postinst_uci/commits")"
+
     # A current config is not rewritten: explicit adapter selection and custom
     # smart-charge thresholds must survive a reinstall unchanged.
     reset_postinst_fixture
