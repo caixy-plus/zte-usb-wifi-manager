@@ -19,6 +19,8 @@ assert_success zte_smart_charge_epoch_valid 2147483647
 assert_failure zte_smart_charge_epoch_valid 2147483648
 assert_failure zte_smart_charge_epoch_valid 9999999999
 assert_success zte_smart_charge_error_valid attempt_in_progress
+assert_success zte_smart_charge_error_valid attempt_charging
+assert_success zte_smart_charge_error_valid attempt_direct_supply
 
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
@@ -162,7 +164,7 @@ assert_failure test -e "$STATE_DIR/actions/active"
 cooldown_file=$STATE_DIR/smart-charge-cooldown
 assert_eq 600 "$(test_file_mode "$cooldown_file")"
 assert_eq '1722345980 write_ambiguous' "$(cat "$cooldown_file")"
-assert_eq '1722345980 attempt_in_progress' "$(cat "$preflight_record")"
+assert_eq '1722345980 attempt_direct_supply' "$(cat "$preflight_record")"
 
 # A daemon restart reloads an unexpired cooldown from tmpfs, and expiration,
 # malformed data, unsafe modes, or symlinks are never trusted.
@@ -184,8 +186,20 @@ direct_supply
 direct_supply
 failed' "$(cat "$execute_log")"
 
-# An intent left by a crash is loaded as cooldown before any new POST. A fresh
-# snapshot that confirms the target clears it read-only; a mismatch waits.
+# A concrete executor failure is not proof that the device stayed unchanged.
+# Even matching readback must honor the full cooldown instead of clearing early.
+device_json='{"battery":{"percent":85},"power_supply":{"mode_raw":"1","direct_supply":true}}'
+assert_success apply_smart_charge_policy
+assert_eq COOLDOWN "$policy_state"
+assert_eq '1722345980 write_ambiguous' "$(cat "$cooldown_file")"
+assert_eq 'charging
+direct_supply
+direct_supply
+failed' "$(cat "$execute_log")"
+device_json='{"battery":{"percent":85},"power_supply":{"mode_raw":"0","direct_supply":false}}'
+
+# A legacy targetless intent left by a crash is fail-closed. Even when the
+# current policy and snapshot agree, it cannot prove which POST was attempted.
 assert_success zte_smart_charge_cooldown_write \
     "$STATE_DIR" 1722345980 attempt_in_progress
 loaded_cooldown=$(zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681)
@@ -203,6 +217,29 @@ assert_eq COOLDOWN "$policy_state"
 assert_eq '' "$(cat "$crash_restart_post_log")"
 device_json='{"battery":{"percent":85},"power_supply":{"mode_raw":"1","direct_supply":true}}'
 assert_success apply_smart_charge_policy
+assert_eq COOLDOWN "$policy_state"
+assert_success test -f "$cooldown_file"
+assert_eq '1722345980 attempt_in_progress' "$(cat "$cooldown_file")"
+assert_eq '' "$(cat "$crash_restart_post_log")"
+
+# A target-bound intent may clear early only when fresh readback confirms the
+# original target. A changed policy matching the opposite current mode must
+# retain cooldown and must not POST; confirmation clears read-only this cycle.
+assert_success zte_smart_charge_cooldown_write \
+    "$STATE_DIR" 1722345980 attempt_direct_supply
+loaded_cooldown=$(zte_smart_charge_cooldown_load "$STATE_DIR" 1722345681)
+assert_eq '1722345980:attempt_direct_supply' "$loaded_cooldown"
+smart_charge_retry_after=${loaded_cooldown%%:*}
+smart_charge_last_error=${loaded_cooldown#*:}
+device_json='{"battery":{"percent":25},"power_supply":{"mode_raw":"0","direct_supply":false}}'
+assert_success apply_smart_charge_policy
+assert_eq COOLDOWN "$policy_state"
+assert_eq '1722345980 attempt_direct_supply' "$(cat "$cooldown_file")"
+assert_eq '' "$(cat "$crash_restart_post_log")"
+device_json='{"battery":{"percent":25},"power_supply":{"mode_raw":"1","direct_supply":true}}'
+assert_success apply_smart_charge_policy
+assert_eq BATTERY_LOW "$policy_state"
+assert_eq keep "$power_action"
 assert_eq 0 "$smart_charge_retry_after"
 assert_failure test -e "$cooldown_file"
 assert_eq '' "$(cat "$crash_restart_post_log")"
@@ -260,10 +297,20 @@ zte_execute_power_supply_mode() {
     ln -s "$victim" "$STATE_DIR/smart-charge-cooldown"
     printf '%s\n' ok
 }
+persistence_event_log=$work/persistence-event
+record_event() {
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" \
+        >>"$persistence_event_log"
+}
 smart_charge_retry_after=0
 smart_charge_persistence_failed=0
 assert_success apply_smart_charge_policy
 assert_eq 1 "$smart_charge_persistence_failed"
+assert_eq COOLDOWN_PERSIST_FAILED "$policy_state"
+assert_eq direct_supply "$power_action"
+assert_eq attempt_direct_supply "$smart_charge_last_error"
+assert_eq 'error|smart_charge|smart_charge_persistence_failed|1722345680' \
+    "$(cat "$persistence_event_log")"
 assert_success test -L "$cooldown_file"
 rm -f "$cooldown_file"
 smart_charge_persistence_failed=0

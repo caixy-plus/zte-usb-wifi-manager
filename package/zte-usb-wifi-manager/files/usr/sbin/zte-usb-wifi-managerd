@@ -1012,21 +1012,49 @@ apply_smart_charge_policy() {
 		DIRECT_SUPPLY) _zte_smart_target=direct_supply ;;
 		*) policy_state=STATE_UNKNOWN; return 0 ;;
 	esac
-	if [ "$_zte_smart_target" = "$_zte_smart_current" ]; then
-		if [ "${smart_charge_persistence_failed:-0}" = 1 ]; then
-			policy_state=COOLDOWN_PERSIST_FAILED
-			return 0
-		fi
-		if [ "${smart_charge_retry_after:-0}" != 0 ] ||
-			[ -n "${smart_charge_last_error:-}" ]; then
+	if [ "${smart_charge_persistence_failed:-0}" = 1 ]; then
+		policy_state=COOLDOWN_PERSIST_FAILED
+		return 0
+	fi
+	_zte_smart_now=$(date +%s)
+	if [ "${smart_charge_retry_after:-0}" != 0 ] ||
+		[ -n "${smart_charge_last_error:-}" ]; then
+		_zte_smart_intent_target=''
+		case ${smart_charge_last_error:-} in
+			attempt_charging) _zte_smart_intent_target=charging ;;
+			attempt_direct_supply)
+				_zte_smart_intent_target=direct_supply
+				;;
+		esac
+		if [ -n "$_zte_smart_intent_target" ] &&
+			[ "$_zte_smart_intent_target" = "$_zte_smart_current" ]; then
 			if zte_smart_charge_cooldown_clear "$STATE_DIR"; then
 				smart_charge_retry_after=0
 				smart_charge_last_error=''
 			else
 				smart_charge_persistence_failed=1
 				policy_state=COOLDOWN_PERSIST_FAILED
+				record_event error smart_charge \
+					smart_charge_persistence_failed "$_zte_smart_now" || :
 			fi
+			return 0
 		fi
+		if zte_is_uint "${smart_charge_retry_after:-0}" &&
+			[ "${smart_charge_retry_after:-0}" -gt "$_zte_smart_now" ]; then
+			policy_state=COOLDOWN
+			return 0
+		fi
+		if ! zte_smart_charge_cooldown_clear "$STATE_DIR"; then
+			smart_charge_persistence_failed=1
+			policy_state=COOLDOWN_PERSIST_FAILED
+			record_event error smart_charge \
+				smart_charge_persistence_failed "$_zte_smart_now" || :
+			return 0
+		fi
+		smart_charge_retry_after=0
+		smart_charge_last_error=''
+	fi
+	if [ "$_zte_smart_target" = "$_zte_smart_current" ]; then
 		return 0
 	fi
 	if ! zte_adapter_action_supported set_power_supply_mode; then
@@ -1037,22 +1065,12 @@ apply_smart_charge_policy() {
 		policy_state=WRITE_DISABLED
 		return 0
 	fi
-	if [ "${smart_charge_persistence_failed:-0}" = 1 ]; then
-		policy_state=COOLDOWN_PERSIST_FAILED
-		return 0
-	fi
-	_zte_smart_now=$(date +%s)
-	if zte_is_uint "${smart_charge_retry_after:-0}" &&
-		[ "${smart_charge_retry_after:-0}" -gt "$_zte_smart_now" ]; then
-		policy_state=COOLDOWN
-		return 0
-	fi
 	if ! zte_device_action_claim "$STATE_DIR"; then
 		policy_state=ACTION_BUSY
 		return 0
 	fi
 	smart_charge_retry_after=$((_zte_smart_now + SMART_CHARGE_RETRY_SECONDS))
-	smart_charge_last_error=attempt_in_progress
+	smart_charge_last_error=attempt_$_zte_smart_target
 	if ! zte_smart_charge_cooldown_write "$STATE_DIR" \
 		"$smart_charge_retry_after" "$smart_charge_last_error"; then
 		smart_charge_persistence_failed=1
@@ -1064,14 +1082,20 @@ apply_smart_charge_policy() {
 	if _zte_smart_execute_result=$(zte_execute_power_supply_mode \
 		"$host" '' "$COOKIE_FILE" "$_zte_smart_target"); then
 		power_action=$_zte_smart_target
-		smart_charge_retry_after=0
-		smart_charge_last_error=''
-		if ! zte_smart_charge_cooldown_clear "$STATE_DIR"; then
+		if zte_smart_charge_cooldown_clear "$STATE_DIR"; then
+			smart_charge_retry_after=0
+			smart_charge_last_error=''
+			record_event info smart_charge smart_charge_applied \
+				"$_zte_smart_now" || :
+		else
 			smart_charge_persistence_failed=1
+			policy_state=COOLDOWN_PERSIST_FAILED
+			logger -t zte-usb-wifi-manager \
+				'smart-charge intent clear failed after device write'
+			record_event error smart_charge \
+				smart_charge_persistence_failed "$_zte_smart_now" || :
 		fi
 		zte_device_action_release "$STATE_DIR" || :
-		record_event info smart_charge smart_charge_applied \
-			"$_zte_smart_now" || :
 		return 0
 	fi
 	if zte_smart_charge_error_valid "$_zte_smart_execute_result"; then
