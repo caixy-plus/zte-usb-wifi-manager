@@ -719,7 +719,7 @@ eval "$(extract_daemon_function record_event)"
 eval "$(extract_daemon_function record_state_change)"
 assert_file_contains "$daemon" 'charging-transaction\.sh'
 assert_file_contains "$daemon" '^recover_charging_transaction\(\) \{$'
-assert_file_contains "$daemon" '^\trecover_charging_transaction$'
+assert_file_contains "$daemon" '^[[:space:]]+recover_charging_transaction$'
 assert_file_contains "$backend/Makefile" 'DEPENDS:=.*\+flock'
 handle_planned_power_off() { return 1; }
 # Smart-charge behavior has a dedicated orchestration suite. These legacy
