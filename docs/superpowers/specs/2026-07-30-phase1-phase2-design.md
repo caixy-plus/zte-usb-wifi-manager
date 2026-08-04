@@ -48,6 +48,7 @@ LuCI ← rpcd/ubus ← 原子状态快照     ← daemon ← U25S/netifd
 status.json
 actions/pending/<operation_id>.json
 actions/running/<operation_id>.json
+actions/verifying/<operation_id>.json
 actions/results/<operation_id>.json
 events.jsonl
 sms/<message_id>.json
@@ -175,7 +176,10 @@ U25S 的客户端。
 
 - 认证过期只自动重新登录一次。
 - 写动作进行时暂停冲突动作，不暂停只读轮询。
-- daemon 重启后扫描 `running` 动作，统一转入 `verifying`，通过读回决定结果。
+- daemon 重启后在动作互斥锁内把 `running` 原子转入 `verifying`；下一次设备
+  轮询后只用只读 GET 比较目标状态，禁止重新发送写请求。可证明命中时标记
+  `verified_after_restart`，不匹配、不可读或缺少持久验证基线时终结为
+  `timed_out`。
 - 动作结果保留有限条目并按时间清理，不写入闪存。
 - 事件日志只记录动作类型、阶段、结果、耗时和脱敏错误码。
 - 密码、Cookie、认证摘要、号码、短信正文、IMEI、IMSI、ICCID 和完整 MAC 禁止出现。

@@ -41,6 +41,7 @@ for directory in \
     "$state/actions" \
     "$state/actions/pending" \
     "$state/actions/running" \
+    "$state/actions/verifying" \
     "$state/actions/results"
 do
     assert_eq 700 "$(test_file_mode "$directory")"
@@ -56,6 +57,9 @@ expected='{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"queu
 assert_eq "$expected" "$(cat "$record")"
 assert_success zte_action_has_active "$state"
 assert_eq "$expected" "$(zte_action_get "$state" "$operation_id")"
+assert_eq \
+    '{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"queued","created":1722345678}' \
+    "$(zte_action_public_status "$state" "$operation_id")"
 
 assert_failure zte_action_enqueue \
     "$state" op-1722345679-1235 set_wifi '{"enabled":true}' 1722345679
@@ -71,11 +75,16 @@ assert_eq "$expected_running" "$running"
 assert_failure test -e "$record"
 assert_eq "$expected_running" \
     "$(cat "$state/actions/running/$operation_id.json")"
+assert_eq \
+    '{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"running","created":1722345678}' \
+    "$(zte_action_public_status "$state" "$operation_id")"
 
 assert_success zte_action_finish \
     "$state" "$operation_id" failed unsupported 1722345682
 expected_result='{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"failed","code":"unsupported","updated":1722345682}'
 assert_eq "$expected_result" "$(zte_action_get "$state" "$operation_id")"
+assert_eq "$expected_result" \
+    "$(zte_action_public_status "$state" "$operation_id")"
 assert_failure zte_action_has_active "$state"
 assert_failure zte_action_finish \
     "$state" "$operation_id" succeeded ok 1722345683
@@ -86,8 +95,265 @@ assert_success zte_action_enqueue \
 zte_action_claim "$state" >/dev/null
 assert_success zte_action_recover_running "$state" 1722345685
 assert_eq \
-    '{"operation_id":"op-1722345684-1238","type":"set_wifi","state":"failed","code":"daemon_restarted","updated":1722345685}' \
+    '{"operation_id":"op-1722345684-1238","type":"set_wifi","state":"verifying","payload":{"enabled":true},"created":1722345684}' \
     "$(zte_action_get "$state" "$second_id")"
+assert_failure test -e "$state/actions/running/$second_id.json"
+assert_success test -f "$state/actions/verifying/$second_id.json"
+assert_success zte_action_has_active "$state"
+# A second startup sees an already durable verifying record and does not
+# execute or rewrite it.
+verifying_before=$(cat "$state/actions/verifying/$second_id.json")
+assert_success zte_action_recover_running "$state" 1722345686
+assert_eq "$verifying_before" \
+    "$(cat "$state/actions/verifying/$second_id.json")"
+assert_success zte_action_finish \
+    "$state" "$second_id" succeeded verified_after_restart 1722345687
+assert_eq \
+    '{"operation_id":"op-1722345684-1238","type":"set_wifi","state":"succeeded","code":"verified_after_restart","updated":1722345687}' \
+    "$(zte_action_get "$state" "$second_id")"
+assert_failure zte_action_has_active "$state"
+
+# Recovery validates every running record before moving anything. Corruption
+# and a duplicate verifying destination stay fail-closed.
+corrupt_state=$work/corrupt-recovery
+assert_success zte_action_init "$corrupt_state"
+printf '%s\n' '{"operation_id":"wrong","type":"set_wifi","state":"running","payload":{"enabled":true},"created":1722345684}' \
+    >"$corrupt_state/actions/running/op-1722345688-1240.json"
+chmod 600 "$corrupt_state/actions/running/op-1722345688-1240.json"
+assert_failure zte_action_recover_running "$corrupt_state" 1722345689
+assert_success test -f \
+    "$corrupt_state/actions/running/op-1722345688-1240.json"
+
+duplicate_state=$work/duplicate-recovery
+duplicate_id=op-1722345690-1241
+assert_success zte_action_enqueue \
+    "$duplicate_state" "$duplicate_id" set_wifi '{"enabled":false}' 1722345690
+zte_action_claim "$duplicate_state" >/dev/null
+cp "$duplicate_state/actions/running/$duplicate_id.json" \
+    "$duplicate_state/actions/verifying/$duplicate_id.json"
+sed 's/"state":"running"/"state":"verifying"/' \
+    "$duplicate_state/actions/verifying/$duplicate_id.json" \
+    >"$duplicate_state/actions/verifying/$duplicate_id.json.tmp"
+mv "$duplicate_state/actions/verifying/$duplicate_id.json.tmp" \
+    "$duplicate_state/actions/verifying/$duplicate_id.json"
+chmod 600 "$duplicate_state/actions/verifying/$duplicate_id.json"
+assert_success zte_action_recover_running "$duplicate_state" 1722345691
+assert_failure test -e "$duplicate_state/actions/running/$duplicate_id.json"
+assert_success test -f "$duplicate_state/actions/verifying/$duplicate_id.json"
+
+# A crash after pending->running rename but before the state rewrite proves no
+# POST was issued. Startup recovery restores the queued record.
+queued_window_state=$work/queued-window
+queued_window_id=op-1722345692-1242
+assert_success zte_action_enqueue \
+    "$queued_window_state" "$queued_window_id" set_wifi \
+    '{"enabled":false}' 1722345692
+real_mv=$(command -v mv)
+mv_calls=$work/queued-window-mv-calls
+: >"$mv_calls"
+mv() {
+    printf '%s\n' call >>"$mv_calls"
+    if [ "$(wc -l <"$mv_calls" | tr -d ' ')" -eq 2 ]; then
+        return 1
+    fi
+    "$real_mv" "$@"
+}
+assert_failure zte_action_claim "$queued_window_state"
+unset -f mv 2>/dev/null || unset mv
+assert_success test -f \
+    "$queued_window_state/actions/running/$queued_window_id.json"
+assert_eq queued "$(zte_json_top_get \
+    "$(cat "$queued_window_state/actions/running/$queued_window_id.json")" \
+    state)"
+assert_success zte_action_recover_running "$queued_window_state" 1722345693
+assert_failure test -e \
+    "$queued_window_state/actions/running/$queued_window_id.json"
+assert_success test -f \
+    "$queued_window_state/actions/pending/$queued_window_id.json"
+assert_failure test -e \
+    "$queued_window_state/actions/verifying/$queued_window_id.json"
+
+# A crash after running->verifying rename leaves a recoverable record whose
+# stale state is repaired idempotently on the next startup.
+rename_window_state=$work/rename-window
+rename_window_id=op-1722345694-1244
+assert_success zte_action_enqueue \
+    "$rename_window_state" "$rename_window_id" set_wifi \
+    '{"enabled":true}' 1722345694
+zte_action_claim "$rename_window_state" >/dev/null
+: >"$mv_calls"
+mv() {
+    printf '%s\n' call >>"$mv_calls"
+    if [ "$(wc -l <"$mv_calls" | tr -d ' ')" -eq 2 ]; then
+        return 1
+    fi
+    "$real_mv" "$@"
+}
+assert_failure zte_action_recover_running "$rename_window_state" 1722345695
+unset -f mv 2>/dev/null || unset mv
+assert_failure test -e \
+    "$rename_window_state/actions/running/$rename_window_id.json"
+assert_success test -f \
+    "$rename_window_state/actions/verifying/$rename_window_id.json"
+assert_eq running "$(zte_json_top_get \
+    "$(cat "$rename_window_state/actions/verifying/$rename_window_id.json")" \
+    state)"
+assert_success zte_action_recover_running "$rename_window_state" 1722345696
+assert_eq verifying "$(zte_json_top_get \
+    "$(cat "$rename_window_state/actions/verifying/$rename_window_id.json")" \
+    state)"
+
+# Failure while preparing the replacement state file also retains the renamed
+# authoritative record and is repairable on the next pass.
+temp_window_state=$work/temp-window
+temp_window_id=op-1722345697-1245
+assert_success zte_action_enqueue \
+    "$temp_window_state" "$temp_window_id" set_wifi \
+    '{"enabled":true}' 1722345697
+zte_action_claim "$temp_window_state" >/dev/null
+real_chmod=$(command -v chmod)
+chmod() {
+    case $1 in
+        600)
+            case $2 in *.tmp.*) return 1 ;; esac
+            ;;
+    esac
+    "$real_chmod" "$@"
+}
+assert_failure zte_action_recover_running "$temp_window_state" 1722345698
+unset -f chmod 2>/dev/null || unset chmod
+assert_failure test -e \
+    "$temp_window_state/actions/running/$temp_window_id.json"
+assert_eq running "$(zte_json_top_get \
+    "$(cat "$temp_window_state/actions/verifying/$temp_window_id.json")" \
+    state)"
+assert_success zte_action_recover_running "$temp_window_state" 1722345699
+assert_eq verifying "$(zte_json_top_get \
+    "$(cat "$temp_window_state/actions/verifying/$temp_window_id.json")" \
+    state)"
+
+# Divergent natural duplicates are never guessed away.
+divergent_dual_state=$work/divergent-dual
+divergent_dual_id=op-1722345699-1249
+assert_success zte_action_enqueue \
+    "$divergent_dual_state" "$divergent_dual_id" set_wifi \
+    '{"enabled":false}' 1722345699
+zte_action_claim "$divergent_dual_state" >/dev/null
+sed -e 's/"state":"running"/"state":"verifying"/' \
+    -e 's/"enabled":false/"enabled":true/' \
+    "$divergent_dual_state/actions/running/$divergent_dual_id.json" \
+    >"$divergent_dual_state/actions/verifying/$divergent_dual_id.json"
+chmod 600 \
+    "$divergent_dual_state/actions/verifying/$divergent_dual_id.json"
+assert_failure zte_action_recover_running "$divergent_dual_state" 1722345700
+assert_success test -f \
+    "$divergent_dual_state/actions/running/$divergent_dual_id.json"
+assert_success test -f \
+    "$divergent_dual_state/actions/verifying/$divergent_dual_id.json"
+
+# Unsafe recovery entries are distinguishable from an empty queue (status 2),
+# including dangling symlinks and oversized regular files.
+unsafe_recovery_state=$work/unsafe-recovery
+assert_success zte_action_init "$unsafe_recovery_state"
+unsafe_recovery_id=op-1722345701-1251
+ln -s "$work/missing-record" \
+    "$unsafe_recovery_state/actions/verifying/$unsafe_recovery_id.json"
+if zte_action_verifying_next "$unsafe_recovery_state" >/dev/null 2>&1; then
+    unsafe_recovery_status=0
+else
+    unsafe_recovery_status=$?
+fi
+assert_eq 2 "$unsafe_recovery_status"
+rm "$unsafe_recovery_state/actions/verifying/$unsafe_recovery_id.json"
+dd if=/dev/zero \
+    of="$unsafe_recovery_state/actions/verifying/$unsafe_recovery_id.json" \
+    bs=1024 count=65 2>/dev/null
+chmod 600 \
+    "$unsafe_recovery_state/actions/verifying/$unsafe_recovery_id.json"
+
+# File size/mode/type checks happen before record content is read. Neither
+# public status nor recovery may cat/wc an oversized record into memory.
+unsafe_read_log=$work/unsafe-read-log
+: >"$unsafe_read_log"
+real_cat=$(command -v cat)
+real_wc=$(command -v wc)
+cat() {
+    case ${1-} in
+        "$unsafe_recovery_state"/actions/*)
+            printf '%s\n' cat >>"$unsafe_read_log"
+            ;;
+    esac
+    "$real_cat" "$@"
+}
+wc() {
+    printf '%s\n' wc >>"$unsafe_read_log"
+    "$real_wc" "$@"
+}
+assert_failure zte_action_public_status \
+    "$unsafe_recovery_state" "$unsafe_recovery_id"
+assert_eq '' "$("$real_cat" "$unsafe_read_log")"
+assert_failure zte_action_recover_running \
+    "$unsafe_recovery_state" 1722345702
+assert_eq '' "$("$real_cat" "$unsafe_read_log")"
+unset -f cat 2>/dev/null || unset cat
+unset -f wc 2>/dev/null || unset wc
+
+# Publishing the terminal result is the commit point. If source cleanup
+# fails, restart recovery preserves that result byte-for-byte and only removes
+# the matching residual source/slot.
+terminal_commit_state=$work/terminal-commit
+terminal_commit_id=op-1722345703-1253
+assert_success zte_action_enqueue \
+    "$terminal_commit_state" "$terminal_commit_id" set_wifi \
+    '{"enabled":false}' 1722345703
+zte_action_claim "$terminal_commit_state" >/dev/null
+assert_success zte_action_recover_running \
+    "$terminal_commit_state" 1722345704
+terminal_commit_source=$terminal_commit_state/actions/verifying/$terminal_commit_id.json
+real_rm=$(command -v rm)
+rm() {
+    if [ "${1-}" = "$terminal_commit_source" ]; then
+        return 1
+    fi
+    "$real_rm" "$@"
+}
+assert_failure zte_action_finish \
+    "$terminal_commit_state" "$terminal_commit_id" succeeded \
+    verified_after_restart 1722345705
+unset -f rm 2>/dev/null || unset rm
+terminal_commit_result=$terminal_commit_state/actions/results/$terminal_commit_id.json
+assert_success test -f "$terminal_commit_source"
+assert_success test -f "$terminal_commit_result"
+terminal_commit_before=$(cat "$terminal_commit_result")
+assert_success zte_action_recover_running \
+    "$terminal_commit_state" 1722345706
+assert_failure test -e "$terminal_commit_source"
+assert_eq "$terminal_commit_before" "$(cat "$terminal_commit_result")"
+assert_eq "$terminal_commit_before" \
+    "$(zte_action_public_status "$terminal_commit_state" "$terminal_commit_id")"
+assert_failure zte_action_has_active "$terminal_commit_state"
+
+# A conflicting terminal result is never allowed to erase or supersede the
+# nonterminal source.
+terminal_conflict_state=$work/terminal-conflict
+terminal_conflict_id=op-1722345707-1257
+assert_success zte_action_enqueue \
+    "$terminal_conflict_state" "$terminal_conflict_id" set_wifi \
+    '{"enabled":true}' 1722345707
+zte_action_claim "$terminal_conflict_state" >/dev/null
+assert_success zte_action_recover_running \
+    "$terminal_conflict_state" 1722345708
+printf '%s\n' \
+    '{"operation_id":"op-1722345707-1257","type":"set_apn","state":"succeeded","code":"ok","updated":1722345708}' \
+    >"$terminal_conflict_state/actions/results/$terminal_conflict_id.json"
+chmod 600 \
+    "$terminal_conflict_state/actions/results/$terminal_conflict_id.json"
+assert_failure zte_action_recover_running \
+    "$terminal_conflict_state" 1722345709
+assert_success test -f \
+    "$terminal_conflict_state/actions/verifying/$terminal_conflict_id.json"
+assert_success test -f \
+    "$terminal_conflict_state/actions/results/$terminal_conflict_id.json"
 
 prune_state=$work/prune
 assert_success zte_action_init "$prune_state"
@@ -346,43 +612,68 @@ assert_success test -f "$cleanup_state/actions/active"
 assert_eq called "$(cat "$cleanup_log")"
 assert_success zte_device_action_release "$cleanup_state"
 
-# Two recoverers may validate the same running record. Pause the first at its
-# guard boundary, let the second finish and a successor claim, then resume the
-# first. It must fail on the missing running record without touching successor.
+# Recovery shares the active guard. A competing recovery attempt cannot move
+# the running record, and a later pass moves it exactly once to verifying.
 dual_state=$work/dual-recoverer
 dual_id=op-1722353000-7200
-successor_id=op-1722353001-7201
 assert_success zte_action_enqueue \
     "$dual_state" "$dual_id" set_wifi '{"enabled":true}' 1722353000
 zte_action_claim "$dual_state" >/dev/null
-dual_injected=0
-zte_action_guard_claim() {
-    _test_guard_root=$1
-    if [ "$_test_guard_root" = "$dual_state" ] &&
-        [ "$dual_injected" = 0 ]; then
-        dual_injected=1
-        zte_action_finish \
-            "$dual_state" "$dual_id" failed daemon_restarted \
-            1722353001 || return 1
-        zte_action_enqueue \
-            "$dual_state" "$successor_id" set_wifi \
-            '{"enabled":false}' 1722353001 || return 1
-    fi
-    mkdir "$_test_guard_root/actions/active.guard" 2>/dev/null || return 1
-    chmod 700 "$_test_guard_root/actions/active.guard"
-}
-if zte_action_finish \
-    "$dual_state" "$dual_id" failed daemon_restarted 1722353002; then
-    dual_first_status=0
-else
-    dual_first_status=$?
-fi
-assert_eq 1 "$dual_first_status"
-assert_success test -f \
-    "$dual_state/actions/pending/$successor_id.json"
-assert_success test -f "$dual_state/actions/active"
-zte_action_claim "$dual_state" >/dev/null
+assert_success zte_action_guard_claim "$dual_state"
+assert_failure zte_action_recover_running "$dual_state" 1722353001
+assert_success test -f "$dual_state/actions/running/$dual_id.json"
+assert_failure test -e "$dual_state/actions/verifying/$dual_id.json"
+assert_success zte_action_guard_release "$dual_state"
+assert_success zte_action_recover_running "$dual_state" 1722353002
+assert_failure test -e "$dual_state/actions/running/$dual_id.json"
+assert_success test -f "$dual_state/actions/verifying/$dual_id.json"
 assert_success zte_action_finish \
-    "$dual_state" "$successor_id" failed unsupported 1722353003
+    "$dual_state" "$dual_id" timed_out verification_inconclusive 1722353003
+
+# If active ownership is externally replaced by a later automatic writer,
+# finishing the durable verification record must never unlink that successor.
+finish_successor_state=$work/finish-successor
+finish_successor_id=op-1722353010-7210
+assert_success zte_action_enqueue \
+    "$finish_successor_state" "$finish_successor_id" set_wifi \
+    '{"enabled":false}' 1722353010
+zte_action_claim "$finish_successor_state" >/dev/null
+assert_success zte_action_recover_running "$finish_successor_state" 1722353011
+finish_successor_start=$(zte_action_process_start_id "$$")
+printf 'automatic %s %s\n' "$$" "$finish_successor_start" \
+    >"$finish_successor_state/actions/active"
+chmod 600 "$finish_successor_state/actions/active"
+finish_successor_owner=$(cat "$finish_successor_state/actions/active")
+assert_success zte_action_finish \
+    "$finish_successor_state" "$finish_successor_id" succeeded \
+    verified_after_restart 1722353012
+assert_eq "$finish_successor_owner" \
+    "$(cat "$finish_successor_state/actions/active")"
+assert_success zte_device_action_release "$finish_successor_state"
+
+# A repaired/manual successor uses the same queue owner format. Its remaining
+# durable record, not just the slot owner label, prevents the older verifying
+# operation from deleting the successor's slot.
+manual_successor_state=$work/finish-manual-successor
+old_id=op-1722353020-7220
+new_id=op-1722353021-7221
+assert_success zte_action_enqueue \
+    "$manual_successor_state" "$old_id" set_wifi \
+    '{"enabled":true}' 1722353020
+zte_action_claim "$manual_successor_state" >/dev/null
+assert_success zte_action_recover_running "$manual_successor_state" 1722353021
+printf '%s\n' \
+    '{"operation_id":"op-1722353021-7221","type":"set_wifi","state":"queued","payload":{"enabled":false},"created":1722353021}' \
+    >"$manual_successor_state/actions/pending/$new_id.json"
+chmod 600 "$manual_successor_state/actions/pending/$new_id.json"
+manual_successor_owner=$(cat "$manual_successor_state/actions/active")
+assert_success zte_action_finish \
+    "$manual_successor_state" "$old_id" succeeded \
+    verified_after_restart 1722353022
+assert_eq "$manual_successor_owner" \
+    "$(cat "$manual_successor_state/actions/active")"
+zte_action_claim "$manual_successor_state" >/dev/null
+assert_success zte_action_finish \
+    "$manual_successor_state" "$new_id" failed unsupported 1722353023
 
 finish

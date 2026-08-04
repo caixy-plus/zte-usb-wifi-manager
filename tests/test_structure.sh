@@ -623,6 +623,7 @@ assert_file_contains Makefile 'tests/test_adapter.sh'
 assert_file_contains Makefile 'tests/test_u25s_simulator.sh'
 assert_file_contains Makefile 'tests/test_actions.sh'
 assert_file_contains Makefile 'tests/test_action_executor.sh'
+assert_file_contains Makefile 'tests/test_action_verifier.sh'
 assert_file_contains Makefile 'tests/test_daemon_actions.sh'
 assert_file_contains Makefile 'tests/test_power_adapter.sh'
 assert_file_contains Makefile 'tests/test_event_log.sh'
@@ -1592,17 +1593,18 @@ early_safety_restore() {
 init_state() { :; }
 configure_device_profile() { ZTE_ADAPTER_MODEL=U25S; }
 main_poll_count=0
+main_action_order=$work/main-action-order
+: >"$main_action_order"
 # Assignments are read by the eval-defined production main function.
 # shellcheck disable=SC2034
 poll_once() {
+    printf '%s\n' poll >>"$main_action_order"
     main_poll_count=$((main_poll_count + 1))
     case $main_poll_count in
         1) failures=1 ;;
         2) failures=2 ;;
-        3)
-            failures=0
-            enabled=0
-            ;;
+        3) failures=0 ;;
+        4) failures=0; enabled=0 ;;
     esac
 }
 sleep() { printf '%s\n' "$1" >>"$sleep_log"; }
@@ -1611,9 +1613,22 @@ STATE_DIR=$work/real-state
 # Read by the eval-defined production main function.
 # shellcheck disable=SC2034
 ACTION_RESULT_MAX_COUNT=50
-process_actions() { :; }
+process_verifying_actions() {
+    printf '%s\n' verifying >>"$main_action_order"
+    verifier_attempt=$((verifier_attempt + 1))
+    case $verifier_attempt in 1|2|4) return 1 ;; esac
+}
+verifier_attempt=0
+process_actions() { printf '%s\n' queued >>"$main_action_order"; }
 zte_action_reconcile_active() { :; }
-zte_action_recover_running() { :; }
+action_recover_log=$work/action-recover-calls
+: >"$action_recover_log"
+zte_action_recover_running() {
+    printf '%s|%s\n' "$1" "$2" >>"$action_recover_log"
+}
+recovery_logger_log=$work/recovery-logger
+: >"$recovery_logger_log"
+logger() { printf '%s\n' "$*" >>"$recovery_logger_log"; }
 prune_call_log=$work/prune-calls
 : >"$prune_call_log"
 zte_action_prune_results() {
@@ -1629,6 +1644,20 @@ printf '%s\n' malformed >"$STATE_DIR/smart-charge-cooldown"
 chmod 600 "$STATE_DIR/smart-charge-cooldown"
 main
 assert_eq \
+    "poll
+verifying
+queued
+poll
+verifying
+queued
+poll
+verifying
+queued
+poll
+verifying
+queued" \
+    "$(cat "$main_action_order")"
+assert_eq \
     "safety
 config" \
     "$(cat "$startup_order")"
@@ -1637,10 +1666,17 @@ assert_eq \
     "$work/real-state|info|service|service_started|1722345678|524288" \
     "$(sed -n '1p' "$event_call_log")"
 assert_eq "$work/real-state|50" "$(cat "$prune_call_log")"
+assert_eq 5 "$(wc -l <"$action_recover_log" | tr -d ' ')" \
+    'startup plus every poll must retry idempotent action recovery'
+assert_eq 2 "$(grep -c 'recovery_corrupt' "$event_call_log")" \
+    'persistent recovery corruption must emit once until state recovers'
+assert_eq 2 "$(wc -l <"$recovery_logger_log" | tr -d ' ')" \
+    'recovery logger must follow the same state-change suppression'
 assert_eq 1 "$smart_charge_persistence_failed"
 assert_success test -f "$STATE_DIR/smart-charge-cooldown"
 assert_eq '60
 120
+30
 30' "$(cat "$sleep_log")"
 shutdown_manager
 assert_failure test -e "$PID_FILE"

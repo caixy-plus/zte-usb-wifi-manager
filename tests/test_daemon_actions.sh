@@ -16,11 +16,13 @@ lib=$backend/files/usr/lib/zte-usb-wifi-manager
 . "$lib/http.sh"
 . "$lib/device-profile.sh"
 . "$lib/adapter-zte-u25s-metadata.sh"
+. "$lib/action-executor.sh"
 
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
 }
 eval "$(extract_daemon_function process_actions)"
+eval "$(extract_daemon_function process_verifying_actions)"
 eval "$(extract_daemon_function configured_action_enabled)"
 eval "$(extract_daemon_function configure_device_profile)"
 eval "$(extract_daemon_function collect_private_clients)"
@@ -304,4 +306,141 @@ assert_eq \
     "$(zte_action_get "$STATE_DIR" op-1722345684-1238)"
 
 assert_failure zte_action_has_active "$STATE_DIR"
+
+# A daemon restart never retries a write. The durable running record advances
+# to verifying, ignores current capability/UCI gates, and is finalized solely
+# from the read-only verifier result.
+make_verifying() {
+    _test_operation_id=$1
+    _test_action=$2
+    _test_payload=$3
+    assert_success zte_action_enqueue \
+        "$STATE_DIR" "$_test_operation_id" "$_test_action" \
+        "$_test_payload" 1722345690
+    zte_action_claim "$STATE_DIR" >/dev/null
+    assert_success zte_action_recover_running "$STATE_DIR" 1722345691
+}
+
+ZTE_DEVICE_PROFILE_ID=zte_u30
+ZTE_ADAPTER_ID=zte_u30
+profile_error=''
+write_enabled=0
+set_connection_mode_enabled=0
+verify_log=$work/verify-log
+: >"$verify_log"
+zte_verify_action_after_restart() {
+    printf '%s\n' "$3" >>"$verify_log"
+    printf '%s\n' verified_after_restart
+}
+: >"$event_log"
+make_verifying op-1722345690-1300 set_connection_mode \
+    '{"action":"set_connection_mode","mode":"automatic"}'
+assert_success process_verifying_actions
+assert_eq \
+    '{"operation_id":"op-1722345690-1300","type":"set_connection_mode","state":"succeeded","code":"verified_after_restart","updated":1722345680}' \
+    "$(zte_action_get "$STATE_DIR" op-1722345690-1300)"
+assert_eq set_connection_mode "$(cat "$verify_log")"
+assert_eq 'info|action|action_succeeded|1722345680' \
+    "$(cat "$event_log")"
+
+: >"$verify_log"
+: >"$event_log"
+zte_verify_action_after_restart() {
+    printf '%s\n' "$3" >>"$verify_log"
+    printf '%s\n' readback_mismatch
+    return 1
+}
+make_verifying op-1722345691-1301 set_wifi \
+    '{"action":"set_wifi","enabled":false}'
+assert_success process_verifying_actions
+assert_eq timed_out "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345691-1301)" state)"
+assert_eq readback_mismatch "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345691-1301)" code)"
+assert_eq 'warn|action|action_timed_out|1722345680' \
+    "$(cat "$event_log")"
+
+# Payload corruption and an untrusted profile fail closed before any device
+# read. Neither current write flags nor capabilities are consulted.
+: >"$verify_log"
+make_verifying op-1722345692-1302 set_connection_mode \
+    '{"action":"set_connection_mode","mode":"automatic","extra":"bad"}'
+assert_success process_verifying_actions
+assert_eq readback_failed "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345692-1302)" code)"
+assert_eq '' "$(cat "$verify_log")"
+
+make_verifying op-1722345693-1303 set_connection_mode \
+    '{"action":"set_connection_mode","mode":"automatic"}'
+ZTE_DEVICE_PROFILE_ID=zte_u25s
+assert_success process_verifying_actions
+assert_eq readback_failed "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345693-1303)" code)"
+assert_eq '' "$(cat "$verify_log")"
+ZTE_DEVICE_PROFILE_ID=zte_u30
+
+# Recovery authorization is an explicit profile/action matrix. U25S may
+# verify only SIM switching; the same uncalibrated action on U30 is terminally
+# inconclusive without reaching the verifier.
+zte_verify_action_after_restart() {
+    printf '%s\n' "$ZTE_DEVICE_PROFILE_ID:$3" >>"$verify_log"
+    printf '%s\n' verified_after_restart
+}
+: >"$verify_log"
+ZTE_DEVICE_PROFILE_ID=zte_u25s
+ZTE_ADAPTER_ID=zte_u25s
+make_verifying op-1722345695-1310 switch_sim \
+    '{"action":"switch_sim","target":"sim2","confirm":true}'
+assert_success process_verifying_actions
+assert_eq 'zte_u25s:switch_sim' "$(cat "$verify_log")"
+assert_eq verified_after_restart "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345695-1310)" code)"
+
+: >"$verify_log"
+ZTE_DEVICE_PROFILE_ID=zte_u30
+ZTE_ADAPTER_ID=zte_u30
+make_verifying op-1722345696-1311 switch_sim \
+    '{"action":"switch_sim","target":"sim2","confirm":true}'
+assert_success process_verifying_actions
+assert_eq verification_inconclusive "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345696-1311)" code)"
+assert_eq '' "$(cat "$verify_log")"
+
+# Status 2 can be a recoverable crash window (directory rename committed,
+# state rewrite pending). The verifier retries idempotent recovery once and
+# completes the operation without waiting for a daemon restart.
+zte_verify_action_after_restart() {
+    printf '%s\n' "$3" >>"$verify_log"
+    printf '%s\n' verified_after_restart
+}
+: >"$verify_log"
+transient_id=op-1722345697-1312
+assert_success zte_action_enqueue \
+    "$STATE_DIR" "$transient_id" set_wifi \
+    '{"action":"set_wifi","enabled":false}' 1722345697
+zte_action_claim "$STATE_DIR" >/dev/null
+mv "$STATE_DIR/actions/running/$transient_id.json" \
+    "$STATE_DIR/actions/verifying/$transient_id.json"
+assert_eq running "$(zte_json_top_get \
+    "$(cat "$STATE_DIR/actions/verifying/$transient_id.json")" state)"
+assert_success process_verifying_actions
+assert_eq verified_after_restart "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" "$transient_id")" code)"
+assert_eq set_wifi "$(cat "$verify_log")"
+
+# Actions without persistent proof are terminally inconclusive after restart;
+# the verifier remains responsible for making that classification without a
+# command retry.
+zte_verify_action_after_restart() {
+    printf '%s\n' "$3" >>"$verify_log"
+    printf '%s\n' verification_inconclusive
+    return 1
+}
+make_verifying op-1722345694-1304 send_sms \
+    '{"action":"send_sms","number":"+12025550123","content":"fixture"}'
+assert_success process_verifying_actions
+assert_eq verification_inconclusive "$(zte_json_top_get \
+    "$(zte_action_get "$STATE_DIR" op-1722345694-1304)" code)"
+assert_failure zte_action_has_active "$STATE_DIR"
+assert_success process_verifying_actions
 finish

@@ -977,6 +977,86 @@ process_actions() {
 	)
 }
 
+# Resolve an action that may already have reached the device before a daemon
+# restart. Recovery is read-only and independent of current feature flags: a
+# second POST could duplicate a non-idempotent operation.
+process_verifying_actions() {
+	(
+	if _zte_verify_record=$(zte_action_verifying_next \
+		"$STATE_DIR" 2>/dev/null); then
+		_zte_verify_record_status=0
+	else
+		_zte_verify_record_status=$?
+	fi
+	if [ "$_zte_verify_record_status" = 2 ]; then
+		zte_action_recover_running "$STATE_DIR" "$(date +%s)" || return 1
+		if _zte_verify_record=$(zte_action_verifying_next \
+			"$STATE_DIR" 2>/dev/null); then
+			_zte_verify_record_status=0
+		else
+			_zte_verify_record_status=$?
+		fi
+	fi
+	if [ "$_zte_verify_record_status" != 0 ]; then
+		[ "$_zte_verify_record_status" = 1 ] && return 0
+		return 1
+	fi
+	_zte_verify_operation=$(zte_json_top_get \
+		"$_zte_verify_record" operation_id)
+	_zte_verify_action=$(zte_json_top_get "$_zte_verify_record" type)
+	if ! zte_operation_id_valid "$_zte_verify_operation" ||
+		! zte_action_type_valid "$_zte_verify_action"; then
+		return 1
+	fi
+	_zte_verify_time=$(date +%s)
+	_zte_verify_state=timed_out
+	_zte_verify_code=readback_failed
+	_zte_verify_event_level=warn
+	_zte_verify_event_code=action_timed_out
+	_zte_verify_payload=$(zte_json_top_object_get \
+		"$_zte_verify_record" payload 2>/dev/null) || _zte_verify_payload=''
+
+	if [ -n "$_zte_verify_payload" ] &&
+		zte_adapter_action_payload_valid \
+			"$_zte_verify_action" "$_zte_verify_payload" &&
+		[ -z "${profile_error:-}" ] &&
+		[ "${ZTE_DEVICE_PROFILE_ID:-}" = "${ZTE_ADAPTER_ID:-}" ]; then
+		if zte_action_restart_verification_supported \
+			"${ZTE_DEVICE_PROFILE_ID:-}" "${ZTE_ADAPTER_ID:-}" \
+			"$_zte_verify_action"; then
+			_zte_verify_result=''
+			if _zte_verify_result=$(zte_verify_action_after_restart \
+				"$host" "$COOKIE_FILE" "$_zte_verify_action" \
+				"$_zte_verify_record"); then
+				if [ "$_zte_verify_result" = verified_after_restart ]; then
+					_zte_verify_state=succeeded
+					_zte_verify_code=verified_after_restart
+					_zte_verify_event_level=info
+					_zte_verify_event_code=action_succeeded
+				fi
+			else
+				case $_zte_verify_result in
+					readback_mismatch|readback_failed|verification_inconclusive)
+						_zte_verify_code=$_zte_verify_result
+						;;
+				esac
+			fi
+		else
+			_zte_verify_code=verification_inconclusive
+		fi
+	fi
+
+	zte_action_finish \
+		"$STATE_DIR" "$_zte_verify_operation" "$_zte_verify_state" \
+		"$_zte_verify_code" "$_zte_verify_time" || return 1
+	zte_action_prune_results \
+		"$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || return 1
+	record_event \
+		"$_zte_verify_event_level" action "$_zte_verify_event_code" \
+		"$_zte_verify_time" || :
+	)
+}
+
 # Evaluate and, when every server-side gate is open, apply U30 Pro's
 # device-side power-supply mode. This function never calls the legacy USB
 # power adapter. A failed or ambiguous POST is cooled down before another
@@ -1510,8 +1590,25 @@ main() {
 	zte_action_recover_running "$STATE_DIR" "$(date +%s)" || :
 	zte_action_prune_results "$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || :
 	record_event info service service_started "$(date +%s)" || :
+	action_recovery_error_active=0
 	while [ "$enabled" = 1 ]; do
 		poll_once
+		_zte_action_recovery_failed=0
+		zte_action_recover_running "$STATE_DIR" "$(date +%s)" ||
+			_zte_action_recovery_failed=1
+		process_verifying_actions || _zte_action_recovery_failed=1
+		if [ "$_zte_action_recovery_failed" = 1 ]; then
+			if [ "$action_recovery_error_active" != 1 ]; then
+				_zte_recovery_error_time=$(date +%s)
+				logger -t zte-usb-wifi-manager \
+					'action restart-verification state is corrupt; writes remain locked'
+				record_event error action recovery_corrupt \
+					"$_zte_recovery_error_time" || :
+			fi
+			action_recovery_error_active=1
+		else
+			action_recovery_error_active=0
+		fi
 		process_actions
 		sleep "$(zte_backoff_interval "$poll_interval" "$failures")"
 	done

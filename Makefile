@@ -18,6 +18,7 @@ test:
 		tests/test_u25s_simulator.sh \
 		tests/test_actions.sh \
 		tests/test_action_executor.sh \
+		tests/test_action_verifier.sh \
 		tests/test_sim_calibration.sh \
 		tests/test_u30_power_calibration.sh \
 		tests/test_daemon_actions.sh \

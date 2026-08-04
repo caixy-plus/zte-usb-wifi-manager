@@ -974,5 +974,52 @@ zte_http_post() { printf '%s\n' 'not-json'; }
 assert_failure zte_adapter_switch_sim 192.168.0.1 sim1 "$jar"
 assert_failure zte_adapter_switch_sim 192.168.0.1 invalid "$jar"
 
+# Restart verification has a dedicated GET-only SIM readback. It must not
+# enter the login stack or reuse the mutating switch endpoint.
+sim_read_log=$work/sim-read
+sim_mutation_log=$work/sim-mutations
+: >"$sim_mutation_log"
+zte_http_get() {
+    printf '%s|%s\n' "$1" "$2" >"$sim_read_log"
+    printf '%s\n' '{"simcard_active_slot_temp":"2"}'
+}
+zte_http_post() {
+    printf '%s\n' mutation >>"$sim_mutation_log"
+    return 1
+}
+zte_session_login() {
+    printf '%s\n' mutation >>"$sim_mutation_log"
+    return 1
+}
+assert_eq sim2 "$(zte_adapter_fetch_sim_target 192.168.0.1 "$jar")"
+assert_eq \
+    "http://192.168.0.1/goform/goform_get_cmd_process?cmd=simcard_active_slot_temp&isTest=false|$jar" \
+    "$(cat "$sim_read_log")"
+assert_eq 0 "$(wc -l <"$sim_mutation_log" | tr -d ' ')"
+zte_http_get() { printf '%s\n' '{"simcard_active_slot_temp":"9"}'; }
+assert_failure zte_adapter_fetch_sim_target 192.168.0.1 "$jar"
+zte_http_get() { printf '%s\n' 'not-json'; }
+assert_failure zte_adapter_fetch_sim_target 192.168.0.1 "$jar"
+
+# Restart reconciliation uses one composite GET so target, modem readiness,
+# registration and PPP restoration belong to the same observed snapshot.
+zte_http_get() {
+    printf '%s|%s\n' "$1" "$2" >"$sim_read_log"
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"modem_init_complete","network_provider_fullname":"Fixture Carrier","ppp_status":"ipv4_ipv6_connected"}'
+}
+assert_eq \
+    '{"target":"sim2","modem":"modem_init_complete","provider":"Fixture Carrier","ppp":"ipv4_ipv6_connected"}' \
+    "$(zte_adapter_fetch_sim_recovery_state 192.168.0.1 "$jar")"
+assert_eq \
+    "http://192.168.0.1/goform/goform_get_cmd_process?cmd=simcard_active_slot_temp,mc_modem_main_state,network_provider_fullname,ppp_status&multi_data=1&isTest=false|$jar" \
+    "$(cat "$sim_read_log")"
+assert_eq 0 "$(wc -l <"$sim_mutation_log" | tr -d ' ')"
+zte_http_get() {
+    printf '%s\n' \
+        '{"simcard_active_slot_temp":"2","mc_modem_main_state":"modem_init_complete","network_provider_fullname":"Fixture Carrier"}'
+}
+assert_failure zte_adapter_fetch_sim_recovery_state 192.168.0.1 "$jar"
+
 rm -rf "$work"
 finish

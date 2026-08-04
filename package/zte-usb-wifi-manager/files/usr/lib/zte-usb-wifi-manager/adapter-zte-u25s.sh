@@ -284,6 +284,61 @@ zte_adapter_sim_card_index() {
 	esac
 }
 
+# Read the active SIM choice without invoking the login/session stack. Restart
+# reconciliation must never issue a second write merely because authentication
+# or state history was lost with the daemon process.
+zte_adapter_fetch_sim_target() {
+	_zte_sim_read_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_sim_read_response=$(zte_http_get \
+		"$_zte_sim_read_origin/goform/goform_get_cmd_process?cmd=simcard_active_slot_temp&isTest=false" \
+		"$2") || return 1
+	zte_json_is_flat_object "$_zte_sim_read_response" || return 1
+	zte_json_flat_has "$_zte_sim_read_response" \
+		simcard_active_slot_temp || return 1
+	case $(zte_json_flat_get \
+		"$_zte_sim_read_response" simcard_active_slot_temp) in
+		0) printf '%s\n' physical ;;
+		1) printf '%s\n' sim1 ;;
+		2) printf '%s\n' sim2 ;;
+		3) printf '%s\n' sim3 ;;
+		*) return 1 ;;
+	esac
+}
+
+# Read every signal required to prove a recovered U25S SIM switch from one
+# GET-only snapshot. This deliberately bypasses login and all setters.
+zte_adapter_fetch_sim_recovery_state() {
+	_zte_sim_recovery_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_sim_recovery_response=$(zte_http_get \
+		"$_zte_sim_recovery_origin/goform/goform_get_cmd_process?cmd=simcard_active_slot_temp,mc_modem_main_state,network_provider_fullname,ppp_status&multi_data=1&isTest=false" \
+		"$2") || return 1
+	zte_json_is_flat_object "$_zte_sim_recovery_response" || return 1
+	for _zte_sim_recovery_field in simcard_active_slot_temp \
+		mc_modem_main_state network_provider_fullname ppp_status; do
+		zte_json_flat_has "$_zte_sim_recovery_response" \
+			"$_zte_sim_recovery_field" || return 1
+	done
+	case $(zte_json_flat_get \
+		"$_zte_sim_recovery_response" simcard_active_slot_temp) in
+		0) _zte_sim_recovery_target=physical ;;
+		1) _zte_sim_recovery_target=sim1 ;;
+		2) _zte_sim_recovery_target=sim2 ;;
+		3) _zte_sim_recovery_target=sim3 ;;
+		*) return 1 ;;
+	esac
+	_zte_sim_recovery_modem=$(zte_json_flat_get \
+		"$_zte_sim_recovery_response" mc_modem_main_state)
+	_zte_sim_recovery_provider=$(zte_json_flat_get \
+		"$_zte_sim_recovery_response" network_provider_fullname)
+	_zte_sim_recovery_ppp=$(zte_json_flat_get \
+		"$_zte_sim_recovery_response" ppp_status)
+	printf '{"target":"%s","modem":"%s","provider":"%s","ppp":"%s"}\n' \
+		"$_zte_sim_recovery_target" \
+		"$(zte_json_escape "$_zte_sim_recovery_modem")" \
+		"$(zte_json_escape "$_zte_sim_recovery_provider")" \
+		"$(zte_json_escape "$_zte_sim_recovery_ppp")"
+}
+
 # $1 host, $2 semantic SIM target, $3 cookie jar.
 # This only emits the request shape observed in the target U25S UI. Production
 # capability gating remains in metadata until a spare-device switch and

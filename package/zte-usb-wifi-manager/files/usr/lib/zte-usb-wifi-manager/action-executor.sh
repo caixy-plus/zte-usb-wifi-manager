@@ -12,6 +12,215 @@ ZTE_DEVICE_ACTION_ATTEMPTS=${ZTE_DEVICE_ACTION_ATTEMPTS:-30}
 ZTE_DEVICE_ACTION_INTERVAL=${ZTE_DEVICE_ACTION_INTERVAL:-2}
 ZTE_DEVICE_ACTION_MIN_OUTAGE_SECONDS=${ZTE_DEVICE_ACTION_MIN_OUTAGE_SECONDS:-6}
 
+# Build the canonical state that the already-issued action must expose through
+# an existing read-only adapter contract. This helper is shared by normal
+# execution and restart verification so their comparisons cannot drift.
+zte_action_expected_readback() (
+	_zte_expected_action=$1
+	_zte_expected_record=$2
+	_zte_expected_payload=$(zte_json_top_object_get \
+		"$_zte_expected_record" payload 2>/dev/null) || return 1
+	zte_adapter_action_payload_valid \
+		"$_zte_expected_action" "$_zte_expected_payload" || return 1
+	case $_zte_expected_action in
+		set_apn)
+			_zte_expected_apn=$(zte_json_flat_get \
+				"$_zte_expected_payload" apn)
+			_zte_expected_auth=$(zte_json_flat_get \
+				"$_zte_expected_payload" auth)
+			_zte_expected_username=''
+			if [ "$_zte_expected_auth" != none ]; then
+				_zte_expected_username=$(zte_json_flat_get \
+					"$_zte_expected_payload" username)
+			fi
+			printf '{"apn":"%s","auth":"%s","username":"%s"}\n' \
+				"$(zte_json_escape "$_zte_expected_apn")" \
+				"$_zte_expected_auth" \
+				"$(zte_json_escape "$_zte_expected_username")"
+			;;
+		set_connection_mode)
+			printf '%s|off\n' "$(zte_json_flat_get \
+				"$_zte_expected_payload" mode)"
+			;;
+		set_wifi)
+			_zte_expected_enabled=$(zte_json_flat_get \
+				"$_zte_expected_payload" enabled)
+			if [ "$_zte_expected_enabled" = false ]; then
+				printf '%s\n' '{"enabled":false}'
+			else
+				printf '{"enabled":true,"band":"2g","ssid":"%s","security":"%s"}\n' \
+					"$(zte_json_escape "$(zte_json_flat_get \
+						"$_zte_expected_payload" ssid)")" \
+					"$(zte_json_flat_get \
+						"$_zte_expected_payload" security)"
+			fi
+			;;
+		set_traffic_plan)
+			_zte_expected_enabled=$(zte_json_flat_get \
+				"$_zte_expected_payload" enabled)
+			if [ "$_zte_expected_enabled" = false ]; then
+				printf '%s\n' '0||||||'
+			else
+				_zte_expected_disconnect=$(zte_json_flat_get \
+					"$_zte_expected_payload" disconnect)
+				case $_zte_expected_disconnect in
+					true) _zte_expected_disconnect=1 ;;
+					false) _zte_expected_disconnect=0 ;;
+				esac
+				printf '1|data|%s|%s|1|%s|%s\n' \
+					"$(zte_json_flat_get \
+						"$_zte_expected_payload" limit_bytes)" \
+					"$(zte_json_flat_get \
+						"$_zte_expected_payload" alert_percent)" \
+					"$(zte_json_flat_get \
+						"$_zte_expected_payload" cycle_day)" \
+					"$_zte_expected_disconnect"
+			fi
+			;;
+		reset_traffic) printf '%s\n' '0|0|0' ;;
+		set_power_supply_mode)
+			zte_json_flat_get "$_zte_expected_payload" mode
+			printf '\n'
+			;;
+		switch_sim)
+			zte_json_flat_get "$_zte_expected_payload" target
+			printf '\n'
+			;;
+		delete_sms) printf '%s\n' absent ;;
+		mark_sms_read) printf '%s\n' 0 ;;
+		*) return 1 ;;
+	esac
+)
+
+# Verify an action that may already have reached the device before the daemon
+# died. This function performs only bounded, read-only adapter calls. It never
+# authenticates, invokes a setter, sends SMS, or issues a device command.
+zte_action_restart_verification_supported() {
+	_zte_verify_profile=${1-}
+	_zte_verify_adapter=${2-}
+	_zte_verify_action=${3-}
+	[ "$_zte_verify_profile" = "$_zte_verify_adapter" ] || return 1
+	case $_zte_verify_profile:$_zte_verify_action in
+		zte_u25s:switch_sim) return 0 ;;
+		zte_u30:set_apn|zte_u30:set_connection_mode|zte_u30:set_wifi|\
+zte_u30:set_traffic_plan|zte_u30:reset_traffic|\
+zte_u30:set_power_supply_mode|zte_u30:send_sms|zte_u30:delete_sms|\
+zte_u30:mark_sms_read|zte_u30:reboot_device|zte_u30:shutdown_device)
+			return 0
+			;;
+		*) return 1 ;;
+	esac
+}
+
+zte_verify_action_after_restart() (
+	_zte_verify_host=$1
+	_zte_verify_jar=$2
+	_zte_verify_action=$3
+	_zte_verify_record=$4
+	if ! zte_action_restart_verification_supported \
+		"${ZTE_DEVICE_PROFILE_ID:-}" "${ZTE_ADAPTER_ID:-}" \
+		"$_zte_verify_action"; then
+		printf '%s\n' verification_inconclusive
+		return 1
+	fi
+	case $_zte_verify_action in
+		send_sms|delete_sms|reboot_device|shutdown_device)
+			printf '%s\n' verification_inconclusive
+			return 1
+			;;
+	esac
+	_zte_verify_expected=$(zte_action_expected_readback \
+		"$_zte_verify_action" "$_zte_verify_record") || {
+		printf '%s\n' readback_failed
+		return 1
+	}
+	_zte_verify_observed=''
+	case $_zte_verify_action in
+		set_apn)
+			_zte_verify_observed=$(zte_adapter_fetch_apn_setting \
+				"$_zte_verify_host" "$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		set_connection_mode)
+			_zte_verify_observed=$(zte_adapter_fetch_connection_mode \
+				"$_zte_verify_host" "$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		set_wifi)
+			_zte_verify_observed=$(zte_adapter_fetch_wifi_setting \
+				"$_zte_verify_host" "$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		set_traffic_plan)
+			_zte_verify_observed=$(zte_adapter_fetch_traffic_plan \
+				"$_zte_verify_host" "$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		reset_traffic)
+			_zte_verify_observed=$(zte_adapter_fetch_traffic_counters \
+				"$_zte_verify_host" "$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		set_power_supply_mode)
+			_zte_verify_observed=$(zte_adapter_fetch_power_supply_mode \
+				"$_zte_verify_host" "$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		switch_sim)
+			_zte_verify_observed=$(zte_adapter_fetch_sim_recovery_state \
+				"$_zte_verify_host" "$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		mark_sms_read)
+			_zte_verify_message_id=$(zte_json_path_get \
+				"$_zte_verify_record" payload message_id 2>/dev/null) ||
+				_zte_verify_message_id=''
+			[ -n "$_zte_verify_message_id" ] || {
+				printf '%s\n' readback_failed
+				return 1
+			}
+			_zte_verify_observed=$(zte_adapter_fetch_sms_message_state \
+				"$_zte_verify_host" "$_zte_verify_message_id" \
+				"$_zte_verify_jar" 2>/dev/null) || :
+			;;
+		*) ;;
+	esac
+	[ -n "$_zte_verify_observed" ] || {
+		printf '%s\n' readback_failed
+		return 1
+	}
+	if [ "$_zte_verify_action" = switch_sim ]; then
+		zte_json_is_flat_object "$_zte_verify_observed" || {
+			printf '%s\n' readback_failed
+			return 1
+		}
+		_zte_verify_sim_target=$(zte_json_flat_get \
+			"$_zte_verify_observed" target)
+		_zte_verify_sim_modem=$(zte_json_flat_get \
+			"$_zte_verify_observed" modem)
+		_zte_verify_sim_provider=$(zte_json_flat_get \
+			"$_zte_verify_observed" provider)
+		_zte_verify_sim_ppp=$(zte_json_flat_get \
+			"$_zte_verify_observed" ppp)
+		if [ "$_zte_verify_sim_target" = "$_zte_verify_expected" ] &&
+			case $_zte_verify_sim_modem in
+				connected|modem_init_complete) true ;;
+				*) false ;;
+			esac &&
+			case $_zte_verify_sim_provider in *[![:space:]]*) true ;; *) false ;; esac &&
+			[ "$_zte_verify_sim_ppp" = ipv4_ipv6_connected ]; then
+			printf '%s\n' verified_after_restart
+			return 0
+		fi
+		printf '%s\n' readback_mismatch
+		return 1
+	fi
+	if [ "$_zte_verify_action" = mark_sms_read ] &&
+		[ "$_zte_verify_observed" = absent ]; then
+		printf '%s\n' verification_inconclusive
+		return 1
+	fi
+	if [ "$_zte_verify_observed" = "$_zte_verify_expected" ]; then
+		printf '%s\n' verified_after_restart
+		return 0
+	fi
+	printf '%s\n' readback_mismatch
+	return 1
+)
+
 # Execute one non-retriable U30 power mode write and verify it with safe reads.
 # A failed POST is deliberately reported as ambiguous and is never repeated.
 zte_execute_power_supply_mode() {
@@ -135,11 +344,6 @@ zte_execute_u30_setting() (
 				printf '%s\n' write_ambiguous; return 1;
 			}
 			_zte_setting_password=''
-			_zte_setting_expected=$(printf \
-				'{"apn":"%s","auth":"%s","username":"%s"}' \
-				"$(zte_json_escape "$_zte_setting_apn")" \
-				"$_zte_setting_auth" \
-				"$(zte_json_escape "$_zte_setting_username")")
 			;;
 		set_connection_mode)
 			_zte_setting_mode=$(zte_json_path_get \
@@ -152,7 +356,6 @@ zte_execute_u30_setting() (
 				"$_zte_setting_mode" "$_zte_setting_jar" || {
 				printf '%s\n' write_ambiguous; return 1;
 			}
-			_zte_setting_expected="$_zte_setting_mode|off"
 			;;
 		set_wifi)
 			_zte_setting_enabled=$(zte_json_path_get \
@@ -167,7 +370,6 @@ zte_execute_u30_setting() (
 					_zte_setting_security=''
 					_zte_setting_password=''
 					_zte_setting_channel=''
-					_zte_setting_expected='{"enabled":false}'
 					;;
 				true)
 					_zte_setting_enabled_raw=1
@@ -205,10 +407,6 @@ zte_execute_u30_setting() (
 							;;
 						*) printf '%s\n' invalid_action; return 1 ;;
 					esac
-					_zte_setting_expected=$(printf \
-						'{"enabled":true,"band":"2g","ssid":"%s","security":"%s"}' \
-						"$(zte_json_escape "$_zte_setting_ssid")" \
-						"$_zte_setting_security")
 					;;
 				*) printf '%s\n' invalid_action; return 1 ;;
 			esac
@@ -250,7 +448,6 @@ zte_execute_u30_setting() (
 						false) _zte_setting_disconnect_raw=0 ;;
 						*) printf '%s\n' invalid_action; return 1 ;;
 					esac
-					_zte_setting_expected="1|data|$_zte_setting_limit|$_zte_setting_alert|1|$_zte_setting_day|$_zte_setting_disconnect_raw"
 					;;
 				false)
 					_zte_setting_enabled_raw=0
@@ -258,7 +455,6 @@ zte_execute_u30_setting() (
 					_zte_setting_alert=''
 					_zte_setting_day=''
 					_zte_setting_disconnect_raw=''
-					_zte_setting_expected='0||||||'
 					;;
 				*) printf '%s\n' invalid_action; return 1 ;;
 			esac
@@ -274,10 +470,14 @@ zte_execute_u30_setting() (
 				"$_zte_setting_jar" || {
 				printf '%s\n' write_ambiguous; return 1;
 			}
-			_zte_setting_expected='0|0|0'
 			;;
 		*) printf '%s\n' invalid_action; return 1 ;;
 	esac
+	_zte_setting_expected=$(zte_action_expected_readback \
+		"$_zte_setting_action" "$_zte_setting_record") || {
+		printf '%s\n' invalid_action
+		return 1
+	}
 	_zte_setting_attempts=$ZTE_SETTING_READBACK_ATTEMPTS
 	_zte_setting_interval=$ZTE_SETTING_READBACK_INTERVAL
 	zte_is_uint "$_zte_setting_attempts" &&
@@ -413,7 +613,10 @@ zte_execute_u30_sms_action() (
 				"$_zte_sms_execute_id" "$_zte_sms_execute_jar" || {
 				printf '%s\n' write_ambiguous; return 1;
 			}
-			_zte_sms_execute_expected=0
+			_zte_sms_execute_expected=$(zte_action_expected_readback \
+				"$_zte_sms_execute_action" "$_zte_sms_execute_record") || {
+				printf '%s\n' invalid_action; return 1;
+			}
 			;;
 		*) printf '%s\n' invalid_action; return 1 ;;
 	esac

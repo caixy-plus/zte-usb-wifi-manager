@@ -241,7 +241,7 @@ get_operation_status() {
 		printf '%s\n' '{"ok":false,"error":"invalid_operation_id"}'
 		return
 	fi
-	if ! zte_action_get "$STATE_DIR" "$_zte_operation_id"; then
+	if ! zte_action_public_status "$STATE_DIR" "$_zte_operation_id"; then
 		printf '%s\n' '{"ok":false,"error":"operation_not_found"}'
 	fi
 }

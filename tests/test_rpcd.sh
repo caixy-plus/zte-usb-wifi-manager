@@ -135,10 +135,44 @@ operation_id=op-1722345678-1234
 operation_record='{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"queued","payload":{"target":"sim1"},"created":1722345678}'
 printf '%s\n' "$operation_record" \
     >"$state_dir/actions/pending/$operation_id.json"
+chmod 600 "$state_dir/actions/pending/$operation_id.json"
 operation_status=$(printf '{"operation_id":"%s"}\n' "$operation_id" | rpcd_call \
     call operation_status)
 assert_success assert_json "$operation_status"
-assert_eq "$operation_record" "$operation_status"
+assert_eq \
+    '{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"queued","created":1722345678}' \
+    "$operation_status"
+
+# Public operation status is deliberately narrower than the private queue
+# record. Predicting an operation ID must not disclose action parameters.
+secret_index=0
+for secret_case in \
+    'set_apn|{"action":"set_apn","apn":"secret-apn","auth":"chap","username":"secret-user","password":"DUMMY_APN_PASSWORD"}' \
+    'set_wifi|{"action":"set_wifi","enabled":true,"band":"2g","ssid":"secret-ssid","security":"wpa2_psk","password":"DUMMY_WIFI_PASSWORD","channel":"auto"}' \
+    'send_sms|{"action":"send_sms","number":"+12025550999","content":"DUMMY_SMS_CONTENT"}' \
+    'delete_sms|{"action":"delete_sms","message_id":"DUMMY_MESSAGE_ID","confirm":true}'
+do
+    secret_type=${secret_case%%|*}
+    secret_payload=${secret_case#*|}
+    secret_id=op-1722345678-$((2000 + secret_index))
+    secret_index=$((secret_index + 1))
+    printf '{"operation_id":"%s","type":"%s","state":"queued","payload":%s,"created":1722345678}\n' \
+        "$secret_id" "$secret_type" "$secret_payload" \
+        >"$state_dir/actions/pending/$secret_id.json"
+    chmod 600 "$state_dir/actions/pending/$secret_id.json"
+    secret_status=$(printf '{"operation_id":"%s"}\n' "$secret_id" |
+        rpcd_call call operation_status)
+    assert_eq \
+        "{\"operation_id\":\"$secret_id\",\"type\":\"$secret_type\",\"state\":\"queued\",\"created\":1722345678}" \
+        "$secret_status"
+    case $secret_status in
+        *payload*|*DUMMY*|*secret-apn*|*secret-user*|*secret-ssid*|*12025550999*)
+            fail "operation_status leaked private $secret_type payload"
+            ;;
+        *) pass ;;
+    esac
+    rm -f "$state_dir/actions/pending/$secret_id.json"
+done
 
 invalid_status=$(printf '%s\n' '{"operation_id":"../bad"}' | rpcd_call \
     call operation_status)
