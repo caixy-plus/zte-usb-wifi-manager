@@ -326,15 +326,15 @@ test('capability-gates every semantic write form', function() {
 	assert.ok(text(tree).indexOf('标记已读') !== -1);
 	assert.ok(text(tree).indexOf('删除短信') !== -1);
 	tree = renderPanel({}, 'device', null, capabilities);
-	assert.ok(text(tree).indexOf('重启 U25S') !== -1);
-	assert.ok(text(tree).indexOf('关闭 U25S') !== -1);
+	assert.ok(text(tree).indexOf('重启 中兴随身 WiFi') !== -1);
+	assert.ok(text(tree).indexOf('关闭 中兴随身 WiFi') !== -1);
 	assert.ok(text(tree).indexOf('智能充电与电源直供') !== -1);
 
 	assert.strictEqual(text(renderPanel({}, 'network')).indexOf('保存 APN'), -1);
 	assert.strictEqual(text(renderPanel({}, 'wifi')).indexOf('保存 Wi-Fi 设置'), -1);
 	assert.strictEqual(text(renderPanel({}, 'traffic')).indexOf('保存流量套餐'), -1);
 	assert.strictEqual(text(renderPanel({}, 'sms')).indexOf('发送短信'), -1);
-	assert.strictEqual(text(renderPanel({}, 'device')).indexOf('重启 U25S'), -1);
+	assert.strictEqual(text(renderPanel({}, 'device')).indexOf('重启 中兴随身 WiFi'), -1);
 });
 
 test('renders each write control only for its exact action capability', function() {
@@ -468,7 +468,7 @@ test('requires independent confirmation and submits device controls', async func
 	let tree = renderPanel({}, 'device', null,
 		{ reboot_device: true, shutdown_device: true });
 	const reboot = nodesByTag(tree, 'button').find(function(node) {
-		return text(node) === '重启 U25S';
+		return text(node) === '重启 中兴随身 WiFi';
 	});
 	const confirmations = nodesByTag(tree, 'input').filter(function(node) {
 		return node.attrs.type === 'checkbox' &&
@@ -485,7 +485,7 @@ test('requires independent confirmation and submits device controls', async func
 	});
 	rebootConfirmation.checked = true;
 	await nodesByTag(tree, 'button').find(function(node) {
-		return text(node) === '重启 U25S';
+		return text(node) === '重启 中兴随身 WiFi';
 	}).attrs.click();
 	assert.deepStrictEqual(calls[0], [ 'reboot_device', true ]);
 
@@ -495,7 +495,7 @@ test('requires independent confirmation and submits device controls', async func
 		return node.attrs['data-purpose'] === 'device-reboot-confirm';
 	}).checked = true;
 	await nodesByTag(tree, 'button').find(function(node) {
-		return text(node) === '关闭 U25S';
+		return text(node) === '关闭 中兴随身 WiFi';
 	}).attrs.click();
 	assert.strictEqual(calls.length, 1, 'reboot confirmation must not authorize shutdown');
 
@@ -505,14 +505,14 @@ test('requires independent confirmation and submits device controls', async func
 		return node.attrs['data-purpose'] === 'device-shutdown-confirm';
 	}).checked = true;
 	await nodesByTag(tree, 'button').find(function(node) {
-		return text(node) === '关闭 U25S';
+		return text(node) === '关闭 中兴随身 WiFi';
 	}).attrs.click();
 	assert.deepStrictEqual(calls[1], [ 'shutdown_device', true ]);
 
 	assert.strictEqual(text(renderPanel({}, 'device', null,
-		{ reboot_device: true })).indexOf('关闭 U25S'), -1);
+		{ reboot_device: true })).indexOf('关闭 中兴随身 WiFi'), -1);
 	assert.strictEqual(text(renderPanel({}, 'device', null,
-		{ shutdown_device: true })).indexOf('重启 U25S'), -1);
+		{ shutdown_device: true })).indexOf('重启 中兴随身 WiFi'), -1);
 });
 
 test('submits normalized requests for each write family', async function() {
@@ -708,16 +708,19 @@ test('uses U30 status when the capabilities RPC fails', function() {
 	assert.strictEqual(text(clients).indexOf('5 GHz 客户端'), -1);
 });
 
-test('renders a write-only U25S password entry and credential state', function() {
+test('renders a generic write-only ZTE password entry and credential state', function() {
 	const tree = render({ state: 'ok' });
 	const passwordInput = nodesByTag(tree, 'input').find(function(input) {
 		return input.attrs.type === 'password';
 	});
 	assert.ok(passwordInput, 'missing password input');
 	assert.strictEqual(passwordInput.attrs.autocomplete, 'new-password');
+	assert.strictEqual(passwordInput.attrs.placeholder, '中兴设备管理密码');
 	assert.ok(text(tree).indexOf('设备登录') !== -1);
+	assert.ok(text(tree).indexOf('中兴设备管理登录') !== -1);
 	assert.ok(text(tree).indexOf('保存登录凭据') !== -1);
 	assert.ok(text(tree).indexOf('未保存管理密码') !== -1);
+	assert.strictEqual(text(tree).indexOf('U25S 管理登录'), -1);
 	assert.strictEqual(source.indexOf('localStorage'), -1);
 	assert.strictEqual(source.indexOf('sessionStorage'), -1);
 });
@@ -786,7 +789,7 @@ test('requires confirmation before clearing the saved local credential', async f
 	assert.ok(clearButton);
 	await clearButton.attrs.click();
 	assert.strictEqual(clearCalls, 0);
-	assert.ok(text(current).indexOf('请先确认清除路由器中保存的 U25S 管理密码') !== -1);
+	assert.ok(text(current).indexOf('请先确认清除路由器中保存的中兴设备管理密码') !== -1);
 	confirmation = nodesByTag(current, 'input').find(function(input) {
 		return input.attrs['data-purpose'] === 'clear-credentials';
 	});
@@ -901,7 +904,10 @@ test('renders precise capability readiness without bypassing legacy gates', func
 	assert.strictEqual(rowValue(current, '接入设备明细'), '已实现（模拟器已验证，需设备认证）');
 	assert.strictEqual(rowValue(current, 'SIM 切换'), '已实现，等待备用设备实机校准');
 	assert.strictEqual(rowValue(current, 'Wi-Fi 设置'), '尚未实现');
-	assert.strictEqual(rowValue(current, '固件更新'), '仅支持在 U25S 原生控制台操作');
+	assert.strictEqual(rowValue(current, '固件更新'), '仅支持在设备原生控制台操作');
+	const diagnosticsPanel = nodesByClass(current, 'zte-tab-panel')[0];
+	assert.strictEqual(diagnosticsPanel.children.some(Array.isArray), false,
+		'diagnostics must not pass a nested row array to LuCI E()');
 	assert.strictEqual(nodesByTag(current, 'select').length, 0,
 		'descriptive metadata must not bypass the legacy capability boolean');
 	tabById(current, 'overview').attrs.click();
@@ -1389,6 +1395,22 @@ test('renders the overview panel from current status', function() {
 	assert.strictEqual(rowValue(tree, '后端状态'), '正常');
 	assert.strictEqual(rowValue(tree, '电池状态'), '82%');
 	assert.notStrictEqual(rowValue(tree, '状态快照时间'), '—');
+});
+
+test('uses power-supply mode instead of a contradictory raw charging flag', function() {
+	const status = {
+		state: 'ok',
+		device: {
+			model: 'U30 Pro',
+			battery: { present: true, percent: 53, charging: true },
+			power_supply: { mode_raw: '1', direct_supply: true }
+		}
+	};
+	const overview = renderPanel(status, 'overview');
+	assert.strictEqual(rowValue(overview, '电池状态'), '53% · 电源直供');
+	const device = renderPanel(status, 'device', null, { model: 'U30 Pro' });
+	assert.strictEqual(rowValue(device, '充电状态'), '未充电（电源直供）');
+	assert.strictEqual(rowValue(device, '供电模式'), '电源直供（停止给电池充电）');
 });
 
 test('renders the mobile-network panel from current status', function() {

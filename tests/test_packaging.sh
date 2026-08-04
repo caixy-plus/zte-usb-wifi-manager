@@ -12,7 +12,7 @@ expected_2512='25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_
 expected_2410='24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f|fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148'
 
 release_metadata=scripts/project-release-metadata.js
-assert_eq '0.1.0_rc1|31|12|v0.1.0-rc1-r31|prerelease' \
+assert_eq '0.1.0_rc1|31|13|v0.1.0-rc1-r31|prerelease' \
     "$(node "$release_metadata")"
 stable_root=$work/stable-release-root
 mkdir -p "$stable_root/package/zte-usb-wifi-manager" \
@@ -479,7 +479,7 @@ package_file=$2
 case $(basename "$package_file") in
     luci-app-*)
         package_name=luci-app-zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r12
+        package_version=0.1.0_rc1-r13
         ;;
     *)
         package_name=zte-usb-wifi-manager
@@ -502,7 +502,7 @@ SCRIPT
         case $(basename "$package_file") in
             luci-app-*)
                 package_name=luci-app-zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r12
+                package_version=0.1.0_rc1-r13
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
@@ -573,9 +573,9 @@ case " $* " in
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
-            >bin/packages/fixture/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r12.apk
+            >bin/packages/fixture/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r13.apk
         printf 'ipk-luci\n' \
-            >bin/packages/fixture/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r12_all.ipk
+            >bin/packages/fixture/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r13_all.ipk
         ;;
 esac
 EOF
@@ -623,9 +623,9 @@ assert_failure env PATH="$fake_bin:$PATH" \
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
 printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r31.apk"
-printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r12.apk"
+printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r13.apk"
 printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r31_all.ipk"
-printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r12_all.ipk"
+printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r13_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
 const fs = require('fs');

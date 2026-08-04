@@ -203,7 +203,7 @@ touch /etc/zte-usb-wifi-manager/credentials
 chmod 600 /etc/zte-usb-wifi-manager/credentials
 
 uci set zte-usb-wifi-manager.main.write_enabled='0'
-uci set zte-usb-wifi-manager.policy.enabled='0'
+uci set zte-usb-wifi-manager.charging.enabled='0'
 uci commit zte-usb-wifi-manager
 
 /etc/init.d/zte-usb-wifi-manager enable

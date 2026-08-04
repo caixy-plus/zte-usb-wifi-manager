@@ -267,14 +267,16 @@ function nativeConsoleUrl(status, capabilities) {
 
 function deviceModel(status, capabilities) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
-	return device.model || status.model || capabilities.model || 'U25S';
+	return device.model || status.model || capabilities.model || _('中兴随身 WiFi');
 }
 
-function batteryLabel(battery) {
+function batteryLabel(battery, powerSupply) {
 	if (battery.present === false)
 		return _('未检测到电池');
 	if (battery.percent === null || battery.percent === undefined || battery.percent === '')
 		return null;
+	if (powerSupply && (powerSupply.direct_supply === true || powerSupply.mode_raw === '1'))
+		return battery.percent + '% · ' + _('电源直供');
 
 	return battery.percent + '%' + (battery.charging === true ? ' · ' + _('充电中') : '');
 }
@@ -312,7 +314,9 @@ function yesNoLabel(value) {
 	return null;
 }
 
-function chargingLabel(value) {
+function chargingLabel(value, powerSupply) {
+	if (powerSupply && (powerSupply.direct_supply === true || powerSupply.mode_raw === '1'))
+		return _('未充电（电源直供）');
 	if (value === true)
 		return _('充电中');
 	if (value === false)
@@ -473,14 +477,14 @@ function renderCredentialEntry(credentialsResult, onSave, onClear, notice) {
 	var passwordInput = E('input', {
 		'type': 'password',
 		'class': 'cbi-input-password',
-		'placeholder': _('U25S 管理密码'),
+		'placeholder': _('中兴设备管理密码'),
 		'autocomplete': 'new-password'
 	});
 	var children = [
 		row(_('凭据状态'), value.configured === true
 			? _('管理密码已保存') : _('未保存管理密码')),
 		E('div', { 'class': 'cbi-value' }, [
-			E('div', { 'class': 'cbi-value-title' }, _('U25S 管理登录')),
+			E('div', { 'class': 'cbi-value-title' }, _('中兴设备管理登录')),
 			E('div', { 'class': 'cbi-value-field' }, [
 				passwordInput,
 				E('button', {
@@ -506,7 +510,7 @@ function renderCredentialEntry(credentialsResult, onSave, onClear, notice) {
 				E('label', {}, [
 					clearConfirmation,
 					' ',
-					_('确认从路由器删除已保存的 U25S 管理密码')
+					_('确认从路由器删除已保存的中兴设备管理密码')
 				]),
 				E('button', {
 					'class': 'cbi-button cbi-button-remove',
@@ -532,6 +536,8 @@ function renderOverview(status, capabilities) {
 	var device = status.device && typeof status.device === 'object' ? status.device : {};
 	var cellular = device.cellular && typeof device.cellular === 'object' ? device.cellular : {};
 	var battery = device.battery && typeof device.battery === 'object' ? device.battery : {};
+	var powerSupply = device.power_supply && typeof device.power_supply === 'object'
+		? device.power_supply : {};
 	var network = status.network && typeof status.network === 'object' ? status.network : {};
 	var hasDevice = Object.keys(device).length > 0;
 
@@ -542,7 +548,7 @@ function renderOverview(status, capabilities) {
 		row(_('网络制式'), cellular.type),
 		row(_('运营商'), cellular.provider),
 		row(_('信号'), signalLabel(cellular)),
-		row(_('电池状态'), batteryLabel(battery)),
+		row(_('电池状态'), batteryLabel(battery, powerSupply)),
 		row(_('USB 上联'), uplinkLabel(network)),
 		row(_('默认出口'), yesNoLabel(network.is_default_route)),
 		row(_('状态快照时间'), updatedLabel(status.updated))
@@ -1074,7 +1080,7 @@ function renderDevice(status, capabilities, onAction, actionNotice, actionBusy,
 		row(_('电池存在'), yesNoLabel(battery.present)),
 		row(_('电量'), battery.percent === null || battery.percent === undefined ||
 			battery.percent === '' ? null : battery.percent + '%'),
-		row(_('充电状态'), chargingLabel(battery.charging)),
+		row(_('充电状态'), chargingLabel(battery.charging, powerSupply)),
 		row(_('供电模式'), powerSupplyModeLabel(powerSupply)),
 		row(_('温度级别'), battery.temperature_level)
 	];
@@ -1154,7 +1160,7 @@ function capabilityReadinessLabel(feature) {
 	if (access !== 'read' && access !== 'write')
 		return _('不可用');
 	if (implementation === 'native_console_only' && verification === 'native_console')
-		return _('仅支持在 U25S 原生控制台操作');
+		return _('仅支持在设备原生控制台操作');
 	if (implementation === 'not_implemented')
 		return _('尚未实现');
 	if (implementation !== 'implemented')
@@ -1173,7 +1179,7 @@ function renderCapabilityMatrix(capabilities) {
 		? capabilities.feature_status : null;
 	var definitions = [
 		[ 'cellular_read', _('移动网络状态') ],
-		[ 'wifi_read', _('U25S Wi-Fi 状态') ],
+		[ 'wifi_read', _('设备 Wi-Fi 状态') ],
 		[ 'clients_read', _('接入设备明细') ],
 		[ 'traffic_read', _('流量状态') ],
 		[ 'sms_read', _('短信收件箱') ],
@@ -1209,7 +1215,7 @@ function renderDiagnostics(status, capabilities) {
 		? power.recovery : {};
 	var hasDevice = Object.keys(device).length > 0;
 
-	return panelRoot('diagnostics', _('系统与诊断'), [
+	var children = [
 		row(_('设备适配器'), capabilities.adapter || device.adapter),
 		row(_('管理传输'), capabilities.transport === 'https' ? 'HTTPS' :
 			(capabilities.transport === 'http' ? 'HTTP' : null)),
@@ -1223,9 +1229,11 @@ function renderDiagnostics(status, capabilities) {
 		row(_('恢复服务可用'), yesNoLabel(recovery.service_available)),
 		E('div', { 'class': 'alert-message warning' },
 			_('USB 断电会中断数据连接，仅用于故障恢复。')),
-		E('h3', {}, _('能力与校准状态')),
-		renderCapabilityMatrix(capabilities)
-	]);
+		E('h3', {}, _('能力与校准状态'))
+	];
+
+	return panelRoot('diagnostics', _('系统与诊断'),
+		children.concat(renderCapabilityMatrix(capabilities)));
 }
 
 function renderLogs(logsResult) {
@@ -1403,7 +1411,7 @@ return view.extend({
 			if (!credentialValue) {
 				credentialNotice = {
 					level: 'error',
-					message: _('请输入 U25S 管理密码。')
+					message: _('请输入中兴设备管理密码。')
 				};
 				replace(renderCurrent());
 				return Promise.resolve();
@@ -1442,7 +1450,7 @@ return view.extend({
 			if (!confirmation || confirmation.checked !== true) {
 				credentialNotice = {
 					level: 'error',
-					message: _('请先确认清除路由器中保存的 U25S 管理密码。')
+					message: _('请先确认清除路由器中保存的中兴设备管理密码。')
 				};
 				replace(renderCurrent());
 				return Promise.resolve();
