@@ -847,9 +847,13 @@ process_actions() {
 		case $_zte_action_type in
 			set_apn|set_connection_mode|set_wifi|set_traffic_plan|reset_traffic)
 				_zte_action_result=''
-				if _zte_action_result=$(zte_execute_u30_setting \
+				_zte_action_executor_status=0
+				_zte_action_result=$(zte_execute_u30_setting \
 					"$host" '' "$COOKIE_FILE" "$_zte_action_type" \
-					"$_zte_action_record"); then
+					"$_zte_action_record") || _zte_action_executor_status=$?
+				_zte_action_record=''
+				_zte_action_payload=''
+				if [ "$_zte_action_executor_status" = 0 ]; then
 					_zte_action_state=succeeded
 					_zte_action_code=ok
 					_zte_action_event_level=info
@@ -981,10 +985,18 @@ process_actions() {
 				_zte_action_password=''
 				_zte_action_login_required=0
 				;;
-		esac
-	fi
+			esac
+		fi
+		_zte_action_record=''
+		_zte_action_payload=''
+		if [ "$_zte_action_state" = failed ] &&
+			[ "$_zte_action_code" = write_ambiguous ]; then
+			_zte_action_state=timed_out
+			_zte_action_event_level=warn
+			_zte_action_event_code=action_timed_out
+		fi
 
-	zte_action_finish \
+		zte_action_finish \
 		"$STATE_DIR" "$_zte_operation_id" "$_zte_action_state" \
 		"$_zte_action_code" "$_zte_action_time" || return 1
 	zte_action_prune_results \
@@ -1063,6 +1075,8 @@ process_verifying_actions() {
 			_zte_verify_code=verification_inconclusive
 		fi
 	fi
+	_zte_verify_record=''
+	_zte_verify_payload=''
 
 	zte_action_finish \
 		"$STATE_DIR" "$_zte_verify_operation" "$_zte_verify_state" \

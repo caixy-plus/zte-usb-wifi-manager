@@ -337,6 +337,7 @@ assert_success zte_adapter_apply_profile
         printf '%s\n%s\n%s\n' "$1" "$2" "$3" >"$post_log"
         printf '%s\n' '{"result":"success"}'
     }
+    zte_http_post_classified() { zte_http_post "$@"; }
     zte_http_get() {
         printf '%s\n%s\n' "$1" "$2" >"$get_log"
         printf '%s\n' '{"power_supply_mode":"1"}'
@@ -357,6 +358,35 @@ assert_failure zte_adapter_set_power_supply_mode 192.168.0.1 invalid "$jar"
 # capability-gated until controlled real-device write/readback calibration.
 u30_action_log=$work/u30-actions
 : >"$u30_action_log"
+zte_http_post() {
+    printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$u30_action_log"
+    printf '%s\n' '{"result":"success"}'
+}
+
+# Production U30 setters must distinguish an accepted write, an ambiguous
+# transport/HTTP/response outcome, an explicit parsed device rejection, and a
+# pre-POST failure. The executor uses these statuses to avoid false success.
+zte_http_post() { return 28; }
+u30_post_status=0
+zte_adapter_u30_post_body 192.168.0.1 \
+    'isTest=false&goformId=SET_CONNECTION_MODE' "$jar" || u30_post_status=$?
+assert_eq 10 "$u30_post_status" 'transport failure after POST must be ambiguous'
+zte_http_post() { return 22; }
+u30_post_status=0
+zte_adapter_u30_post_body 192.168.0.1 \
+    'isTest=false&goformId=SET_CONNECTION_MODE' "$jar" || u30_post_status=$?
+assert_eq 10 "$u30_post_status" \
+    'curl status 22 covers every HTTP error and cannot prove explicit rejection'
+zte_http_post() { printf '%s\n' 'not-json'; }
+u30_post_status=0
+zte_adapter_u30_post_body 192.168.0.1 \
+    'isTest=false&goformId=SET_CONNECTION_MODE' "$jar" || u30_post_status=$?
+assert_eq 10 "$u30_post_status" 'malformed success response must be ambiguous'
+zte_http_post() { printf '%s\n' '{"result":"failure"}'; }
+u30_post_status=0
+zte_adapter_u30_post_body 192.168.0.1 \
+    'isTest=false&goformId=SET_CONNECTION_MODE' "$jar" || u30_post_status=$?
+assert_eq 11 "$u30_post_status" 'explicit device rejection must be distinguishable'
 zte_http_post() {
     printf '%s|%s|%s\n' "$1" "$2" "$3" >>"$u30_action_log"
     printf '%s\n' '{"result":"success"}'
@@ -439,6 +469,13 @@ assert_eq \
     "$(cut -d'|' -f2 "$u30_action_log")"
 assert_failure zte_adapter_send_sms \
     192.168.0.1 'bad;number' 'fixture' "$jar"
+zte_adapter_sms_time() { return 1; }
+u30_sms_status=0
+zte_adapter_send_sms 192.168.0.1 '+12025550123' fixture "$jar" ||
+    u30_sms_status=$?
+assert_eq 12 "$u30_sms_status" \
+    'SMS timestamp failure must be classified before POST'
+zte_adapter_sms_time() { printf '%s\n' '26;08;03;14;05;09;+8'; }
 : >"$u30_action_log"
 assert_success zte_adapter_set_wifi \
     192.168.0.1 0 '' '' '' '' '' "$jar"
@@ -486,6 +523,15 @@ assert_eq \
 assert_failure zte_adapter_set_apn 192.168.0.1 'bad&apn' none '' '' "$jar"
 assert_eq '{"apn":"old.apn","auth":"none","username":""}' \
     "$(zte_adapter_fetch_apn_setting 192.168.0.1 "$jar")"
+zte_http_get() { return 28; }
+: >"$u30_action_log"
+u30_apn_status=0
+zte_adapter_set_apn 192.168.0.1 internet none '' '' "$jar" ||
+    u30_apn_status=$?
+assert_eq 12 "$u30_apn_status" \
+    'APN context failure must be classified as not sent'
+assert_eq 0 "$(wc -l <"$u30_action_log" | tr -d ' ')" \
+    'APN context failure must not issue a POST'
 u30_raw=$(
     zte_http_get() {
         printf '%s\n' "$1" >"$u30_url_log"

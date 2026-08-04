@@ -378,13 +378,9 @@ zte_adapter_set_power_supply_mode() {
 	_zte_power_jar=$3
 	_zte_power_raw=$(zte_adapter_power_supply_raw_mode \
 		"$_zte_power_target") || return 1
-	_zte_power_origin=$(zte_adapter_origin "$_zte_power_host") || return 1
-	_zte_power_response=$(zte_http_post \
-		"$_zte_power_origin/goform/goform_set_cmd_process" \
+	zte_adapter_u30_post_body "$_zte_power_host" \
 		"isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=$_zte_power_raw" \
-		"$_zte_power_jar") || return 1
-	zte_json_is_flat_object "$_zte_power_response" || return 1
-	[ "$(zte_json_flat_get "$_zte_power_response" result)" = success ]
+		"$_zte_power_jar"
 }
 
 zte_adapter_fetch_power_supply_mode() {
@@ -406,13 +402,25 @@ zte_adapter_fetch_power_supply_mode() {
 }
 
 zte_adapter_u30_post_body() {
-	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
-	_zte_u30_post_origin=$(zte_adapter_origin "$1") || return 1
-	_zte_u30_post_response=$(zte_http_post \
+	# Stable failure statuses consumed by the non-retrying action executor:
+	# 10 = POST outcome ambiguous, 11 = explicitly rejected, 12 = not sent.
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 12
+	_zte_u30_post_origin=$(zte_adapter_origin "$1") || return 12
+	if _zte_u30_post_response=$(zte_http_post_classified \
 		"$_zte_u30_post_origin/goform/goform_set_cmd_process" \
-		"$2" "$3") || return 1
-	zte_json_is_flat_object "$_zte_u30_post_response" || return 1
-	[ "$(zte_json_flat_get "$_zte_u30_post_response" result)" = success ]
+		"$2" "$3"); then
+		:
+	else
+		_zte_u30_post_status=$?
+		case $_zte_u30_post_status in
+			10|11|12) return "$_zte_u30_post_status" ;;
+			*) return 10 ;;
+		esac
+	fi
+	zte_json_is_flat_object "$_zte_u30_post_response" || return 10
+	zte_json_flat_has "$_zte_u30_post_response" result || return 10
+	[ "$(zte_json_flat_get "$_zte_u30_post_response" result)" = success ] ||
+		return 11
 }
 
 zte_adapter_set_connection_mode() {
@@ -509,12 +517,12 @@ zte_adapter_set_apn() (
 		*) return 1 ;;
 	esac
 	_zte_apn_set_context=$(zte_adapter_fetch_apn_context \
-		"$_zte_apn_set_host" "$_zte_apn_set_jar") || return 1
+		"$_zte_apn_set_host" "$_zte_apn_set_jar") || return 12
 	_zte_apn_set_index=$(zte_json_flat_get \
 		"$_zte_apn_set_context" index)
 	_zte_apn_set_profile=$(zte_json_flat_get \
 		"$_zte_apn_set_context" profile_name)
-	[ -n "$_zte_apn_set_profile" ] || return 1
+	[ -n "$_zte_apn_set_profile" ] || return 12
 	_zte_apn_set_form="isTest=false&goformId=APN_PROC&apn_action=set_default&$(zte_form_pair index "$_zte_apn_set_index")&apn_mode=manual&$(zte_form_pair profile_name "$_zte_apn_set_profile")&$(zte_form_pair apn_wan_apn "$_zte_apn_set_apn")&dns_mode=auto&prefer_dns_manual=&w_standby_dns_manual=&$(zte_form_pair apn_ppp_username "$_zte_apn_set_username")&$(zte_form_pair apn_ppp_passwd "$_zte_apn_set_password")&$(zte_form_pair apn_ppp_auth_mode "$_zte_apn_set_auth")&apn_select=manual&$(zte_form_pair apn_wan_dial '*99#')&apn_pdp_type=PPP&apn_pdp_select=auto&apn_pdp_addr=&set_default_flag=1"
 	if zte_adapter_u30_post_body "$_zte_apn_set_host" \
 		"$_zte_apn_set_form" "$_zte_apn_set_jar"; then
@@ -891,22 +899,26 @@ zte_adapter_sms_time() {
 }
 
 zte_adapter_send_sms() (
-	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 12
 	_zte_sms_send_host=$1
 	_zte_sms_send_number=$2
 	_zte_sms_send_content=$3
 	_zte_sms_send_jar=$4
 	if ! zte_adapter_payload_phone "$_zte_sms_send_number" ||
 		! zte_adapter_sms_payload_valid "$_zte_sms_send_content"; then
-		return 1
+		return 12
 	fi
 	_zte_sms_send_encoded=$(zte_adapter_sms_encode \
-		"$_zte_sms_send_content") || return 1
+		"$_zte_sms_send_content") || return 12
 	_zte_sms_send_type=${_zte_sms_send_encoded%%|*}
 	_zte_sms_send_encoded_rest=${_zte_sms_send_encoded#*|}
 	_zte_sms_send_body=${_zte_sms_send_encoded_rest%|*}
-	_zte_sms_send_time=$(zte_adapter_sms_time) || return 1
-	_zte_sms_send_form="isTest=false&goformId=SEND_SMS&notCallback=true&$(zte_form_pair Number "$_zte_sms_send_number")&$(zte_form_pair sms_time "$_zte_sms_send_time")&MessageBody=$_zte_sms_send_body&ID=-1&encode_type=$_zte_sms_send_type"
+	_zte_sms_send_time=$(zte_adapter_sms_time) || return 12
+	_zte_sms_send_number_pair=$(zte_form_pair Number \
+		"$_zte_sms_send_number") || return 12
+	_zte_sms_send_time_pair=$(zte_form_pair sms_time \
+		"$_zte_sms_send_time") || return 12
+	_zte_sms_send_form="isTest=false&goformId=SEND_SMS&notCallback=true&$_zte_sms_send_number_pair&$_zte_sms_send_time_pair&MessageBody=$_zte_sms_send_body&ID=-1&encode_type=$_zte_sms_send_type"
 	if zte_adapter_u30_post_body "$_zte_sms_send_host" \
 		"$_zte_sms_send_form" "$_zte_sms_send_jar"; then
 		_zte_sms_send_status=0
@@ -918,6 +930,8 @@ zte_adapter_send_sms() (
 	_zte_sms_send_encoded=''
 	_zte_sms_send_encoded_rest=''
 	_zte_sms_send_body=''
+	_zte_sms_send_number_pair=''
+	_zte_sms_send_time_pair=''
 	_zte_sms_send_form=''
 	return "$_zte_sms_send_status"
 )

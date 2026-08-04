@@ -9,6 +9,7 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/http.sh
 . "$lib"
 if command -v zte_http_get >/dev/null 2>&1; then pass; else fail 'zte_http_get missing'; fi
 if command -v zte_http_post >/dev/null 2>&1; then pass; else fail 'zte_http_post missing'; fi
+if command -v zte_http_post_classified >/dev/null 2>&1; then pass; else fail 'zte_http_post_classified missing'; fi
 assert_eq 'plain-._~AZaz09' "$(zte_form_encode 'plain-._~AZaz09')"
 assert_eq 'a%20b%26c%3Dd%2Be%25' "$(zte_form_encode 'a b&c=d+e%')"
 assert_eq '%E4%B8%AD%E6%96%87' "$(zte_form_encode '中文')"
@@ -32,6 +33,8 @@ cat >"$work/bin/curl" <<'EOF'
 read_stdin=0
 previous=
 cookie_jar=
+output_file=
+write_out=
 for argument do
     printf '%s\n' "$argument" >>"$ZTE_TEST_CURL_ARGV"
     if [ "$previous" = '--data-binary' ] && [ "$argument" = '@-' ]; then
@@ -39,6 +42,12 @@ for argument do
     fi
     if [ "$previous" = '-c' ]; then
         cookie_jar=$argument
+    fi
+    if [ "$previous" = '-o' ]; then
+        output_file=$argument
+    fi
+    if [ "$previous" = '--write-out' ]; then
+        write_out=$argument
     fi
     previous=$argument
 done
@@ -50,7 +59,14 @@ if [ "$read_stdin" -eq 1 ]; then
 else
     : >"$ZTE_TEST_CURL_STDIN"
 fi
-printf '%s' "${ZTE_TEST_CURL_RESPONSE-}"
+if [ -n "$output_file" ]; then
+    printf '%s' "${ZTE_TEST_CURL_RESPONSE-}" >"$output_file"
+else
+    printf '%s' "${ZTE_TEST_CURL_RESPONSE-}"
+fi
+if [ -n "$write_out" ]; then
+    printf '%s' "${ZTE_TEST_CURL_HTTP_CODE-200}"
+fi
 exit "${ZTE_TEST_CURL_EXIT-0}"
 EOF
 chmod +x "$work/bin/curl"
@@ -65,6 +81,8 @@ ZTE_TEST_CURL_STDIN=$work/stdin
 ZTE_TEST_CURL_RESPONSE='GET response body'
 ZTE_TEST_CURL_EXIT=0
 export ZTE_TEST_CURL_ARGV ZTE_TEST_CURL_STDIN ZTE_TEST_CURL_RESPONSE ZTE_TEST_CURL_EXIT
+ZTE_TEST_CURL_HTTP_CODE=200
+export ZTE_TEST_CURL_HTTP_CODE
 
 cookie_jar=$work/cookie-jar
 get_url='http://192.168.0.1/goform/goform_get_cmd_process?cmd=LD&isTest=false'
@@ -177,6 +195,67 @@ fi
 assert_eq 22 "$post_exit" 'POST did not preserve curl exit status 22'
 assert_eq 600 "$(test_file_mode "$cookie_jar")" \
     'POST failure must still restrict the cookie jar to mode 600'
+
+ZTE_TEST_CURL_EXIT=0
+ZTE_TEST_CURL_RESPONSE=classified-success
+ZTE_TEST_CURL_HTTP_CODE=200
+export ZTE_TEST_CURL_EXIT ZTE_TEST_CURL_RESPONSE ZTE_TEST_CURL_HTTP_CODE
+assert_eq classified-success \
+    "$(zte_http_post_classified "$post_url" "$form_body" "$cookie_jar")"
+ZTE_TEST_CURL_RESPONSE=classified-denied
+ZTE_TEST_CURL_HTTP_CODE=403
+export ZTE_TEST_CURL_RESPONSE ZTE_TEST_CURL_HTTP_CODE
+classified_status=0
+zte_http_post_classified "$post_url" "$form_body" "$cookie_jar" ||
+    classified_status=$?
+assert_eq 11 "$classified_status" 'HTTP 4xx must be a definite rejection'
+ZTE_TEST_CURL_HTTP_CODE=500
+export ZTE_TEST_CURL_HTTP_CODE
+classified_status=0
+zte_http_post_classified "$post_url" "$form_body" "$cookie_jar" ||
+    classified_status=$?
+assert_eq 10 "$classified_status" 'HTTP 5xx must remain ambiguous'
+ZTE_TEST_CURL_EXIT=28
+ZTE_TEST_CURL_HTTP_CODE=000
+export ZTE_TEST_CURL_EXIT ZTE_TEST_CURL_HTTP_CODE
+classified_status=0
+zte_http_post_classified "$post_url" "$form_body" "$cookie_jar" ||
+    classified_status=$?
+assert_eq 10 "$classified_status" 'transport timeout must remain ambiguous'
+if find "$work" -name 'cookie-jar.response.*' -print | grep . >/dev/null; then
+    fail 'status-aware POST left a response temporary file behind'
+else
+    pass
+fi
+
+secure_call_count=$work/secure-call-count
+zte_http_secure_cookie_jar() {
+    count=$(cat "$secure_call_count")
+    count=$((count + 1))
+    printf '%s\n' "$count" >"$secure_call_count"
+    [ "$count" -eq 1 ]
+}
+assert_post_cleanup_failure() {
+    expected=$1
+    http_code=$2
+    curl_exit=$3
+    printf '%s\n' 0 >"$secure_call_count"
+    ZTE_TEST_CURL_HTTP_CODE=$http_code
+    ZTE_TEST_CURL_EXIT=$curl_exit
+    export ZTE_TEST_CURL_HTTP_CODE ZTE_TEST_CURL_EXIT
+    classified_status=0
+    zte_http_post_classified "$post_url" "$form_body" "$cookie_jar" ||
+        classified_status=$?
+    assert_eq "$expected" "$classified_status"
+}
+assert_post_cleanup_failure 10 200 0
+assert_post_cleanup_failure 11 403 0
+assert_post_cleanup_failure 10 000 28
+if find "$work" -name 'cookie-jar.response.*' -print | grep . >/dev/null; then
+    fail 'cleanup failure left a response temporary file behind'
+else
+    pass
+fi
 
 PATH=$saved_path
 export PATH

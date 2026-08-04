@@ -113,3 +113,53 @@ zte_http_post() {
 	zte_http_secure_cookie_jar "$_zte_http_jar" || return 1
     return "$_zte_http_status"
 }
+
+# POST one device action while retaining enough HTTP status information to
+# distinguish a definite client rejection from an outcome that may have been
+# applied. Prints only a successful 2xx body. Stable return codes:
+# 10 = transport/5xx/invalid status ambiguity, 11 = definite HTTP 4xx reject,
+# 12 = request could not be prepared locally.
+zte_http_post_classified() (
+	umask 077
+	_zte_classified_url=$1
+	_zte_classified_body=$2
+	_zte_classified_jar=$3
+	_zte_classified_referer=$(zte_http_referer \
+		"$_zte_classified_url") || return 12
+	zte_http_secure_cookie_jar "$_zte_classified_jar" || return 12
+	_zte_classified_response=$(mktemp \
+		"$_zte_classified_jar.response.XXXXXX") || return 12
+	trap 'rm -f "$_zte_classified_response"' EXIT HUP INT TERM
+	set -- -sS --max-time "$ZTE_HTTP_TIMEOUT" \
+		-b "$_zte_classified_jar" -c "$_zte_classified_jar" \
+		-H "Referer: $_zte_classified_referer" \
+		-H 'X-Requested-With: XMLHttpRequest' \
+		-H 'Content-Type: application/x-www-form-urlencoded' \
+		--data-binary @- -o "$_zte_classified_response" \
+		--write-out '%{http_code}'
+	if [ "${ZTE_DEVICE_TLS_INSECURE:-0}" = 1 ]; then
+		set -- "$@" --insecure
+	fi
+	if [ -n "${ZTE_HTTP_INTERFACE:-}" ]; then
+		set -- "$@" --interface "$ZTE_HTTP_INTERFACE"
+	fi
+	if _zte_classified_code=$(printf '%s' "$_zte_classified_body" | \
+		curl "$@" "$_zte_classified_url"); then
+		_zte_classified_curl_ok=1
+	else
+		_zte_classified_curl_ok=0
+	fi
+	_zte_classified_body=''
+	_zte_classified_cookie_ok=1
+	zte_http_secure_cookie_jar "$_zte_classified_jar" ||
+		_zte_classified_cookie_ok=0
+	[ "$_zte_classified_curl_ok" = 1 ] || return 10
+	case $_zte_classified_code in
+		2[0-9][0-9])
+			[ "$_zte_classified_cookie_ok" = 1 ] || return 10
+			cat "$_zte_classified_response"
+			;;
+		4[0-9][0-9]) return 11 ;;
+		*) return 10 ;;
+	esac
+)

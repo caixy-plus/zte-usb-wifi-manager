@@ -44,15 +44,21 @@ tested.
 
 ## Execution rule
 
-The action executor may report success only after all of the following:
+The executor issues the POST exactly once. A reviewed success marker is still
+followed by an exact GET readback; the successful GET also proves that the USB
+management interface remains reachable.
 
-1. the POST returns the reviewed success marker;
-2. a new GET returns the requested mode;
-3. the USB management interface remains reachable.
+Transport timeout, HTTP 5xx, an empty response or malformed JSON after the POST
+is ambiguous and must never trigger a second POST. An exact, successful GET of
+the requested mode may safely resolve that ambiguity as success because the
+mode is fully readable. If bounded readback cannot prove the requested mode,
+the operation remains `timed_out/write_ambiguous` and automatic charging is
+suspended until a later trusted poll.
 
-Transport timeout or malformed response after the POST is ambiguous. The
-executor must not repeat the write automatically. A readback mismatch is a
-failure and leaves automatic charging suspended until a later trusted poll.
+HTTP 4xx or a valid response containing an explicit non-success result is a
+definite `device_rejected` outcome. A prior matching state must not convert a
+definite rejection into success. Settings containing write-only secrets are
+stricter: password-free readback cannot resolve an ambiguous password change.
 
 ## Calibration gate
 

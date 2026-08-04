@@ -239,7 +239,7 @@ assert_eq 1 "$(wc -l <"$power_read_log" | tr -d ' ')"
 
 zte_adapter_set_power_supply_mode() {
     printf '%s\n' attempted >>"$power_write_log"
-    return 1
+    return 10
 }
 : >"$power_write_log"
 zte_adapter_fetch_power_supply_mode() {
@@ -284,6 +284,35 @@ assert_eq readback_mismatch "$(zte_execute_power_supply_mode \
     192.168.0.1 '' "$work/cookies" direct_supply)"
 assert_eq invalid_target "$(zte_execute_power_supply_mode \
     192.168.0.1 '' "$work/cookies" invalid)"
+rejected_power_read_log=$work/rejected-power-reads
+: >"$rejected_power_read_log"
+zte_adapter_set_power_supply_mode() { return 11; }
+zte_adapter_fetch_power_supply_mode() {
+    printf '%s\n' read >>"$rejected_power_read_log"
+    return 1
+}
+assert_eq device_rejected "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" direct_supply)"
+assert_eq 0 "$(wc -l <"$rejected_power_read_log" | tr -d ' ')" \
+    'an explicitly rejected power write must not run readback'
+zte_adapter_set_power_supply_mode() { return 12; }
+assert_eq preflight_failed "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" direct_supply)"
+power_password_lifetime_log=$work/power-password-lifetime
+: >"$power_password_lifetime_log"
+ZTE_LOGIN_REQUIRED=1
+zte_session_login() { return 0; }
+zte_adapter_set_power_supply_mode() {
+    [ -z "${_zte_power_execute_password-}" ] ||
+        printf '%s\n' retained >>"$power_password_lifetime_log"
+}
+zte_adapter_fetch_power_supply_mode() { printf '%s\n' direct_supply; }
+assert_eq ok "$(zte_execute_power_supply_mode \
+    192.168.0.1 PLACEHOLDER "$work/cookies" direct_supply)"
+assert_eq 0 "$(wc -l <"$power_password_lifetime_log" | tr -d ' ')" \
+    'power executor must clear login credentials before the device write'
+# shellcheck disable=SC2034
+ZTE_LOGIN_REQUIRED=0
 
 # Non-destructive U30 settings use one non-retriable POST followed by bounded,
 # safe GET readback. The queued record remains the only payload source.
@@ -303,11 +332,57 @@ assert_eq 'connection|automatic' "$(cat "$setting_write_log")"
 zte_adapter_fetch_connection_mode() { printf '%s\n' 'manual|off'; }
 assert_eq readback_mismatch "$(zte_execute_u30_setting 192.168.0.1 '' \
     "$work/cookies" set_connection_mode "$connection_record")"
-zte_adapter_set_connection_mode() { return 1; }
+setting_ambiguous_write_log=$work/setting-ambiguous-writes
+setting_ambiguous_read_log=$work/setting-ambiguous-reads
+: >"$setting_ambiguous_write_log"
+: >"$setting_ambiguous_read_log"
+zte_adapter_set_connection_mode() {
+    printf '%s\n' attempted >>"$setting_ambiguous_write_log"
+    return 10
+}
+zte_adapter_fetch_connection_mode() {
+    printf '%s\n' read >>"$setting_ambiguous_read_log"
+    printf '%s\n' 'automatic|off'
+}
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_connection_mode "$connection_record")" \
+    'an ambiguous setting POST must still succeed after exact safe readback'
+assert_eq 1 "$(wc -l <"$setting_ambiguous_write_log" | tr -d ' ')" \
+    'an ambiguous setting POST must never be retried'
+assert_eq 1 "$(wc -l <"$setting_ambiguous_read_log" | tr -d ' ')" \
+    'an ambiguous setting POST must trigger safe readback'
+zte_adapter_fetch_connection_mode() {
+    printf '%s\n' 'automatic|off'
+    return 1
+}
+assert_eq write_ambiguous "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_connection_mode "$connection_record")" \
+    'matching stdout from a failed readback must never prove success'
+rejected_setting_read_log=$work/rejected-setting-reads
+: >"$rejected_setting_read_log"
+zte_adapter_set_connection_mode() { return 11; }
+zte_adapter_fetch_connection_mode() {
+    printf '%s\n' read >>"$rejected_setting_read_log"
+    return 1
+}
+assert_eq device_rejected "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_connection_mode "$connection_record")"
+assert_eq 0 "$(wc -l <"$rejected_setting_read_log" | tr -d ' ')" \
+    'explicitly rejected writes must not run readback'
+zte_adapter_set_connection_mode() { return 12; }
+assert_eq preflight_failed "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_connection_mode "$connection_record")"
+zte_adapter_set_connection_mode() { return 10; }
+zte_adapter_fetch_connection_mode() { printf '%s\n' 'manual|off'; }
 assert_eq write_ambiguous "$(zte_execute_u30_setting 192.168.0.1 '' \
     "$work/cookies" set_connection_mode "$connection_record")"
 
+setting_secret_lifetime_log=$work/setting-secret-lifetime
+: >"$setting_secret_lifetime_log"
 zte_adapter_set_apn() {
+    case ${_zte_setting_record-} in
+        *fixture-pass*) printf '%s\n' record-retained >>"$setting_secret_lifetime_log" ;;
+    esac
     printf 'apn|%s|%s|%s|%s\n' "$2" "$3" "$4" "$5" \
         >>"$setting_write_log"
 }
@@ -319,11 +394,20 @@ assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
     set_apn "$apn_record")"
 assert_file_contains "$setting_write_log" \
     'apn|internet|chap|fixture-user|fixture-pass'
+assert_eq 0 "$(wc -l <"$setting_secret_lifetime_log" | tr -d ' ')" \
+    'executor must clear the password-bearing record before invoking a setter'
 zte_adapter_fetch_apn_setting() {
     printf '%s\n' '{"apn":"other","auth":"chap","username":"fixture-user"}'
 }
 assert_eq readback_mismatch "$(zte_execute_u30_setting 192.168.0.1 '' \
     "$work/cookies" set_apn "$apn_record")"
+zte_adapter_set_apn() { return 10; }
+zte_adapter_fetch_apn_setting() {
+    printf '%s\n' '{"apn":"internet","auth":"chap","username":"fixture-user"}'
+}
+assert_eq write_ambiguous "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_apn "$apn_record")" \
+    'an ambiguous APN password write cannot be proven by password-free readback'
 
 zte_adapter_set_traffic_plan() {
     printf 'traffic|%s|%s|%s|%s|%s\n' "$2" "$3" "$4" "$5" "$6" \
@@ -333,12 +417,32 @@ zte_adapter_fetch_traffic_plan() { printf '%s\n' '1|data|10737418240|90|1|1|0'; 
 traffic_record='{"payload":{"action":"set_traffic_plan","enabled":true,"limit_bytes":10737418240,"alert_percent":90,"cycle_day":1,"disconnect":false}}'
 assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
     set_traffic_plan "$traffic_record")"
+traffic_ambiguous_writes=$work/traffic-ambiguous-writes
+: >"$traffic_ambiguous_writes"
+zte_adapter_set_traffic_plan() {
+    printf '%s\n' attempted >>"$traffic_ambiguous_writes"
+    return 10
+}
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
+    set_traffic_plan "$traffic_record")" \
+    'an ambiguous traffic-plan POST may be resolved by complete readback'
+assert_eq 1 "$(wc -l <"$traffic_ambiguous_writes" | tr -d ' ')"
 
 zte_adapter_reset_traffic() { printf '%s\n' reset >>"$setting_write_log"; }
 zte_adapter_fetch_traffic_counters() { printf '%s\n' '0|0|0'; }
 reset_record='{"payload":{"action":"reset_traffic","confirm":true}}'
 assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
     reset_traffic "$reset_record")"
+reset_ambiguous_writes=$work/reset-ambiguous-writes
+: >"$reset_ambiguous_writes"
+zte_adapter_reset_traffic() {
+    printf '%s\n' attempted >>"$reset_ambiguous_writes"
+    return 10
+}
+assert_eq ok "$(zte_execute_u30_setting 192.168.0.1 '' "$work/cookies" \
+    reset_traffic "$reset_record")" \
+    'an ambiguous counter reset may be resolved by complete zero readback'
+assert_eq 1 "$(wc -l <"$reset_ambiguous_writes" | tr -d ' ')"
 assert_eq invalid_action "$(zte_execute_u30_setting 192.168.0.1 '' \
     "$work/cookies" reboot_device '{"payload":{}}')"
 
@@ -356,6 +460,13 @@ assert_file_contains "$setting_write_log" 'wifi|1|2g|Fixture WiFi|wpa2_psk|fixtu
 zte_adapter_fetch_wifi_setting() { printf '%s\n' '{"enabled":false}'; }
 assert_eq readback_mismatch "$(zte_execute_u30_setting 192.168.0.1 '' \
     "$work/cookies" set_wifi "$wifi_record")"
+zte_adapter_set_wifi() { return 10; }
+zte_adapter_fetch_wifi_setting() {
+    printf '%s\n' '{"enabled":true,"band":"2g","ssid":"Fixture WiFi","security":"wpa2_psk"}'
+}
+assert_eq write_ambiguous "$(zte_execute_u30_setting 192.168.0.1 '' \
+    "$work/cookies" set_wifi "$wifi_record")" \
+    'an ambiguous Wi-Fi password write cannot be proven by password-free readback'
 
 # SMS delete/read actions must be confirmed from a fresh inbox read. Device
 # reboot requires an observed outage followed by recovery; shutdown requires
@@ -383,6 +494,27 @@ succeeded'
 delete_record='{"payload":{"action":"delete_sms","message_id":"42","confirm":true}}'
 assert_eq ok "$(zte_execute_u30_sms_action 192.168.0.1 '' "$work/cookies" \
     delete_sms "$delete_record")"
+delete_fetch_count=$work/delete-fetch-count
+printf '%s\n' 0 >"$delete_fetch_count"
+zte_adapter_delete_sms() { return 10; }
+zte_adapter_fetch_sms_message_state() {
+    count=$(cat "$delete_fetch_count")
+    count=$((count + 1))
+    printf '%s\n' "$count" >"$delete_fetch_count"
+    if [ "$count" -eq 1 ]; then
+        printf '%s\n' 1
+    else
+        printf '%s\n' absent
+        return 1
+    fi
+}
+sequence_set "$sms_status_sequence" 'pending
+succeeded'
+assert_eq write_ambiguous "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" delete_sms "$delete_record")" \
+    'failed exact-message GET must not resolve an ambiguous delete'
+zte_adapter_delete_sms() { return 0; }
+zte_adapter_fetch_sms_message_state() { sequence_next "$sms_state_sequence"; }
 sequence_set "$sms_state_sequence" '1
 0'
 read_record='{"payload":{"action":"mark_sms_read","message_id":"42"}}'
@@ -422,6 +554,25 @@ zte_adapter_send_sms() { return 1; }
 sequence_set "$sms_status_sequence" pending
 assert_eq write_ambiguous "$(zte_execute_u30_sms_action 192.168.0.1 '' \
     "$work/cookies" send_sms "$send_record")"
+zte_adapter_send_sms() { return 10; }
+sequence_set "$sms_status_sequence" 'pending
+succeeded'
+assert_eq write_ambiguous "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" send_sms "$send_record")" \
+    'global SMS success cannot resolve an ambiguous send'
+sequence_set "$sms_status_sequence" 'pending
+failed'
+assert_eq write_ambiguous "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" send_sms "$send_record")" \
+    'global SMS failure cannot reject an ambiguous send'
+zte_adapter_send_sms() { return 11; }
+sequence_set "$sms_status_sequence" pending
+assert_eq device_rejected "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" send_sms "$send_record")"
+zte_adapter_send_sms() { return 12; }
+sequence_set "$sms_status_sequence" pending
+assert_eq preflight_failed "$(zte_execute_u30_sms_action 192.168.0.1 '' \
+    "$work/cookies" send_sms "$send_record")"
 
 device_probe_count=0
 zte_adapter_device_command() { return 0; }
@@ -444,6 +595,12 @@ assert_eq ok "$(zte_execute_u30_device_action 192.168.0.1 '' \
 zte_adapter_probe_status() { return 0; }
 zte_adapter_device_command() { return 1; }
 assert_eq write_ambiguous "$(zte_execute_u30_device_action 192.168.0.1 '' \
+    "$work/cookies" reboot_device)"
+zte_adapter_device_command() { return 11; }
+assert_eq device_rejected "$(zte_execute_u30_device_action 192.168.0.1 '' \
+    "$work/cookies" reboot_device)"
+zte_adapter_device_command() { return 12; }
+assert_eq preflight_failed "$(zte_execute_u30_device_action 192.168.0.1 '' \
     "$work/cookies" reboot_device)"
 device_command_log=$work/device-commands
 : >"$device_command_log"

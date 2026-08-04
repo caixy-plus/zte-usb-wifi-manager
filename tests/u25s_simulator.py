@@ -24,8 +24,25 @@ SCENARIOS = (
     "write-denied",
     "write-timeout",
     "write-expire-once",
+    "u30-power-success",
+    "u30-power-reject",
+    "u30-power-timeout-before-apply",
+    "u30-power-apply-then-timeout",
+    "u30-power-malformed-applied",
+    "u30-power-malformed-unapplied",
+    "u30-power-empty-applied",
+    "u30-power-empty-unapplied",
+    "u30-power-delayed-convergence",
+    "u30-power-readback-mismatch",
+    "u30-power-readback-missing",
+    "u30-power-readback-malformed",
+    "u30-power-readback-timeout",
+    "u30-power-readback-invalid-mode",
 )
 PROFILES = ("u25s", "u30")
+U30_POWER_SCENARIOS = {
+    scenario for scenario in SCENARIOS if scenario.startswith("u30-power-")
+}
 FIXTURE_STATE_PATH = "/fixture/action_state"
 FIXTURE_ACTIONS = {
     "FIXTURE_SWITCH_SIM",
@@ -155,6 +172,8 @@ class SimulatorState:
         request_log,
         allow_fixture_writes=False,
         profile="u25s",
+        allow_u30_power_writes=False,
+        u30_power_mode=None,
     ):
         self.scenario = scenario
         self.login_secret = login_secret
@@ -168,6 +187,15 @@ class SimulatorState:
         self.allow_fixture_writes = allow_fixture_writes
         self.profile = validate_profile(profile)
         self.last_action = None
+        self.allow_u30_power_writes = allow_u30_power_writes
+        self.u30_power_mode = (
+            str(u30_power_mode)
+            if u30_power_mode is not None
+            else str(json.loads(self.fixture).get("power_supply_mode", "0"))
+        )
+        self.u30_power_pending_mode = None
+        self.u30_power_post_count = 0
+        self.u30_power_read_count = 0
         self.active_sim_slot = str(
             json.loads(self.fixture).get("simcard_active_slot_temp", "")
         )
@@ -214,6 +242,53 @@ class SimulatorState:
     def apply_sim_switch(self, index):
         with self.lock:
             self.active_sim_slot = index
+
+    def record_u30_power_post(self, mode, result, apply=False, delayed=False):
+        with self.lock:
+            self.u30_power_post_count += 1
+            if delayed:
+                self.u30_power_pending_mode = mode
+            elif apply:
+                self.u30_power_mode = mode
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"POST U30_POWER {result} requested={mode} "
+                    f"count={self.u30_power_post_count}\n"
+                )
+
+    def u30_power_readback(self):
+        with self.lock:
+            self.u30_power_read_count += 1
+            if (
+                self.scenario == "u30-power-delayed-convergence"
+                and self.u30_power_pending_mode is not None
+                and self.u30_power_read_count >= 3
+            ):
+                self.u30_power_mode = self.u30_power_pending_mode
+                self.u30_power_pending_mode = None
+
+            if self.scenario == "u30-power-readback-missing":
+                payload = "{}"
+                result = "MISSING"
+            elif self.scenario == "u30-power-readback-malformed":
+                payload = "not-json"
+                result = "MALFORMED"
+            elif self.scenario == "u30-power-readback-invalid-mode":
+                payload = '{"power_supply_mode":"2"}'
+                result = "INVALID_MODE"
+            else:
+                mode = self.u30_power_mode
+                if self.scenario == "u30-power-readback-mismatch":
+                    mode = "0" if mode == "1" else "1"
+                payload = json.dumps(
+                    {"power_supply_mode": mode}, separators=(",", ":")
+                )
+                result = f"200 mode={mode}"
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"GET U30_POWER {result} count={self.u30_power_read_count}\n"
+                )
+            return payload
 
     def status_payload(self):
         with self.lock:
@@ -301,6 +376,29 @@ class U25SHandler(BaseHTTPRequestHandler):
         if self.state.profile == "u30":
             query = parse_qs(request.query)
             if (
+                self.state.scenario in U30_POWER_SCENARIOS
+                and command == "power_supply_mode"
+            ):
+                expected_referer = f"http://{self.headers.get('Host', '')}/"
+                if (
+                    self.headers.get("Referer") != expected_referer
+                    or query.get("isTest", [""])[0] != "false"
+                    or "multi_data" in query
+                ):
+                    self.state.record("GET U30_POWER INVALID_REQUEST")
+                    self.send_payload(400, '{"result":"invalid_request"}')
+                    return
+                payload = self.state.u30_power_readback()
+                if self.state.scenario == "u30-power-readback-timeout":
+                    time.sleep(2)
+                content_type = (
+                    "text/plain"
+                    if self.state.scenario == "u30-power-readback-malformed"
+                    else "application/json"
+                )
+                self.send_payload(200, payload, content_type)
+                return
+            if (
                 self.headers.get("Referer") != "https://192.168.0.1/"
                 or query.get("isTest", [""])[0] != "false"
                 or query.get("multi_data", [""])[0] != "1"
@@ -341,6 +439,74 @@ class U25SHandler(BaseHTTPRequestHandler):
             return
 
         action = form.get("goformId", [""])[0]
+        if self.state.profile == "u30" and action == "POWER_SUPPLY_SETTING":
+            mode_values = form.get("power_supply_mode", [""])
+            mode = mode_values[0]
+            safe_mode = (
+                mode if mode in {"0", "1"} and len(mode_values) == 1
+                else "<invalid>"
+            )
+            if not self.state.allow_u30_power_writes:
+                self.state.record(f"POST U30_POWER 403 requested={safe_mode}")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            expected_referer = f"http://{self.headers.get('Host', '')}/"
+            if (
+                self.state.scenario not in U30_POWER_SCENARIOS
+                or mode not in {"0", "1"}
+                or form.get("isTest", [""])[0] != "false"
+                or self.headers.get("Referer") != expected_referer
+                or self.headers.get("X-Requested-With") != "XMLHttpRequest"
+                or self.headers.get("Content-Type")
+                != "application/x-www-form-urlencoded"
+                or set(form)
+                != {"isTest", "goformId", "power_supply_mode"}
+                or any(len(values) != 1 for values in form.values())
+            ):
+                self.state.record_u30_power_post(safe_mode, "400")
+                self.send_payload(400, '{"result":"invalid_request"}')
+                return
+
+            scenario = self.state.scenario
+            if scenario == "u30-power-reject":
+                self.state.record_u30_power_post(mode, "403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            if scenario == "u30-power-timeout-before-apply":
+                self.state.record_u30_power_post(mode, "TIMEOUT_BEFORE_APPLY")
+                time.sleep(2)
+                self.send_payload(200, '{"result":"success"}')
+                return
+            if scenario == "u30-power-apply-then-timeout":
+                self.state.record_u30_power_post(
+                    mode, "APPLY_THEN_TIMEOUT", apply=True
+                )
+                time.sleep(2)
+                self.send_payload(200, '{"result":"success"}')
+                return
+
+            applied = scenario not in {
+                "u30-power-malformed-unapplied",
+                "u30-power-empty-unapplied",
+            }
+            delayed = scenario == "u30-power-delayed-convergence"
+            self.state.record_u30_power_post(
+                mode, "200", apply=applied and not delayed, delayed=delayed
+            )
+            if scenario in {
+                "u30-power-malformed-applied",
+                "u30-power-malformed-unapplied",
+            }:
+                self.send_payload(200, "not-json", "text/plain")
+            elif scenario in {
+                "u30-power-empty-applied",
+                "u30-power-empty-unapplied",
+            }:
+                self.send_payload(200, "")
+            else:
+                self.send_payload(200, '{"result":"success"}')
+            return
+
         if action != "LOGIN":
             if not self.state.allow_fixture_writes:
                 self.state.record("POST WRITE 403")
@@ -418,6 +584,8 @@ def parse_args():
     parser.add_argument("--request-log", type=Path, required=True)
     parser.add_argument("--login-secret", required=True)
     parser.add_argument("--allow-fixture-writes", action="store_true")
+    parser.add_argument("--allow-u30-power-writes", action="store_true")
+    parser.add_argument("--u30-power-mode", choices=("0", "1"))
     return parser.parse_args()
 
 
@@ -440,6 +608,8 @@ def main():
         args.request_log,
         args.allow_fixture_writes,
         args.profile,
+        args.allow_u30_power_writes,
+        args.u30_power_mode,
     )
     server = SimulatorServer((host, args.port), U25SHandler)
     server.simulator_state = state

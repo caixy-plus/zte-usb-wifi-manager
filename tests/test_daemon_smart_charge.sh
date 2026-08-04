@@ -21,6 +21,8 @@ assert_failure zte_smart_charge_epoch_valid 9999999999
 assert_success zte_smart_charge_error_valid attempt_in_progress
 assert_success zte_smart_charge_error_valid attempt_charging
 assert_success zte_smart_charge_error_valid attempt_direct_supply
+assert_success zte_smart_charge_error_valid device_rejected
+assert_success zte_smart_charge_error_valid preflight_failed
 
 extract_daemon_function() {
     sed -n "/^$1() {$/,/^}$/p" "$daemon"
@@ -142,6 +144,26 @@ assert_eq keep "$power_action"
 assert_eq 'charging
 direct_supply
 direct_supply' "$(cat "$execute_log")"
+
+# Automatic charging preserves the executor's stable rejection/preflight
+# classification in cooldown state instead of degrading it to executor_failed.
+zte_adapter_action_supported() { [ "$1" = set_power_supply_mode ]; }
+for expected_error in device_rejected preflight_failed; do
+    zte_execute_power_supply_mode() {
+        printf '%s\n' "$expected_error"
+        return 1
+    }
+    smart_charge_retry_after=0
+    smart_charge_last_error=''
+    assert_success apply_smart_charge_policy
+    assert_eq WRITE_FAILED "$policy_state"
+    assert_eq "$expected_error" "$smart_charge_last_error"
+    assert_eq "1722345980 $expected_error" \
+        "$(cat "$STATE_DIR/smart-charge-cooldown")"
+    assert_success zte_smart_charge_cooldown_clear "$STATE_DIR"
+done
+smart_charge_retry_after=0
+smart_charge_last_error=''
 
 # A failed/ambiguous POST enters a bounded cooldown, preventing a write storm.
 zte_adapter_action_supported() { [ "$1" = set_power_supply_mode ]; }

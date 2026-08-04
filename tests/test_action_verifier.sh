@@ -76,16 +76,32 @@ zte_adapter_fetch_apn_setting() {
 }
 verify_failure readback_mismatch set_apn \
     '{"action":"set_apn","apn":"fixture","auth":"none"}'
+zte_adapter_fetch_apn_setting() {
+    printf '%s\n' '{"apn":"fixture","auth":"chap","username":"fixture-user"}'
+}
+verify_failure verification_inconclusive set_apn \
+    '{"action":"set_apn","apn":"fixture","auth":"chap","username":"fixture-user","password":"PLACEHOLDER"}'
 
 zte_adapter_fetch_connection_mode() { printf '%s\n' 'manual|off'; }
 verify_success set_connection_mode \
+    '{"action":"set_connection_mode","mode":"manual"}'
+zte_adapter_fetch_connection_mode() {
+    printf '%s\n' 'manual|off'
+    return 1
+}
+verify_failure readback_failed set_connection_mode \
     '{"action":"set_connection_mode","mode":"manual"}'
 
 zte_adapter_fetch_wifi_setting() {
     printf '%s\n' '{"enabled":true,"band":"2g","ssid":"fixture","security":"wpa2_psk"}'
 }
-verify_success set_wifi \
+verify_failure verification_inconclusive set_wifi \
     '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"fixture","security":"wpa2_psk","password":"DUMMY_WIFI_PASSWORD","channel":"auto"}'
+zte_adapter_fetch_wifi_setting() {
+    printf '%s\n' '{"enabled":true,"band":"2g","ssid":"fixture","security":"open"}'
+}
+verify_success set_wifi \
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"fixture","security":"open","channel":"auto"}'
 zte_adapter_fetch_wifi_setting() { return 1; }
 verify_failure readback_failed set_wifi \
     '{"action":"set_wifi","enabled":false}'

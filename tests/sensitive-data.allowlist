@@ -1,7 +1,7 @@
 # Exact entries only: path:line:TYPE
 docs/plans/2026-07-29-phase1-read-only.md:257:SECRET_ASSIGNMENT
 package/zte-usb-wifi-manager/files/usr/libexec/rpcd/zte_usb_wifi:21:SECRET_ASSIGNMENT
-tests/test_http.sh:119:SECRET_ASSIGNMENT
+tests/test_http.sh:137:SECRET_ASSIGNMENT
 tests/test_rpcd.sh:64:SECRET_ASSIGNMENT
 tests/test_session.sh:255:SECRET_ASSIGNMENT
 tests/test_sensitive_data.sh:41:HTTP_COOKIE
@@ -18,11 +18,11 @@ tests/test_sensitive_data.sh:124:15_DIGIT_IDENTIFIER
 tests/test_sensitive_data.sh:124:ICCID
 tests/test_sensitive_data.sh:144:PHONE_NUMBER
 tests/test_sensitive_data.sh:145:PHONE_NUMBER
-tests/test_adapter.sh:599:MAC_ADDRESS
-tests/test_adapter.sh:600:MAC_ADDRESS
-tests/test_adapter.sh:658:MAC_ADDRESS
-tests/test_action_executor.sh:317:SECRET_ASSIGNMENT
-tests/test_action_executor.sh:352:SECRET_ASSIGNMENT
+tests/test_adapter.sh:645:MAC_ADDRESS
+tests/test_adapter.sh:646:MAC_ADDRESS
+tests/test_adapter.sh:704:MAC_ADDRESS
+tests/test_action_executor.sh:392:SECRET_ASSIGNMENT
+tests/test_action_executor.sh:456:SECRET_ASSIGNMENT
 tests/test_json.sh:75:MAC_ADDRESS
 tests/test_json.sh:76:MAC_ADDRESS
 tests/test_luci.js:1306:MAC_ADDRESS

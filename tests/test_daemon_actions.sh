@@ -245,6 +245,26 @@ case $(tail -n 1 "$execute_log") in
     192.168.0.1\|*\|set_connection_mode\|*'"mode":"automatic"'*) pass ;;
     *) fail 'daemon did not pass the validated queued setting to the executor' ;;
 esac
+# A POST whose outcome cannot be resolved by safe readback is not a proven
+# device failure. Preserve it as a timed-out operation so users do not retry a
+# potentially applied non-idempotent write blindly.
+: >"$event_log"
+zte_execute_u30_setting() {
+    printf '%s\n' write_ambiguous
+    return 1
+}
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1249 set_connection_mode \
+    '{"action":"set_connection_mode","mode":"automatic"}' 1722345684
+assert_success process_actions
+assert_eq \
+    '{"operation_id":"op-1722345684-1249","type":"set_connection_mode","state":"timed_out","code":"write_ambiguous","updated":1722345680}' \
+    "$(zte_action_get "$STATE_DIR" op-1722345684-1249)"
+assert_eq 'warn|action|action_timed_out|1722345680' "$(cat "$event_log")"
+zte_execute_u30_setting() {
+    printf '%s|%s|%s|%s\n' "$1" "$3" "$4" "$5" >>"$execute_log"
+    printf '%s\n' ok
+}
 # Revalidate the exact queued payload at execution time. A tampered record or
 # a destructive action without its confirmation must never reach an executor.
 execute_count=$(wc -l <"$execute_log" | tr -d ' ')
@@ -268,13 +288,50 @@ assert_success zte_action_enqueue \
 assert_success process_actions
 assert_eq succeeded "$(zte_json_top_get \
     "$(zte_action_get "$STATE_DIR" op-1722345684-1246)" state)"
+daemon_secret_lifetime_log=$work/daemon-secret-lifetime
+: >"$daemon_secret_lifetime_log"
+record_event() {
+    case ${_zte_action_record-}:${_zte_action_payload-}:\
+${_zte_verify_record-}:${_zte_verify_payload-} in
+        *PLACEHOLDER*)
+            printf '%s\n' record-retained >>"$daemon_secret_lifetime_log"
+            ;;
+    esac
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >>"$event_log"
+}
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1250 set_apn \
+    '{"action":"set_apn","apn":"fixture","auth":"chap","username":"fixture-user","password":"PLACEHOLDER"}' \
+    1722345684
+assert_success process_actions
+assert_eq 0 "$(wc -l <"$daemon_secret_lifetime_log" | tr -d ' ')" \
+    'daemon must clear password-bearing records before persistent bookkeeping'
+set_apn_enabled=0
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1251 set_apn \
+    '{"action":"set_apn","apn":"fixture","auth":"chap","username":"fixture-user","password":"PLACEHOLDER_DISABLED"}' \
+    1722345684
+assert_success process_actions
+set_apn_enabled=1
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1252 set_apn \
+    '{"action":"set_apn","apn":"fixture","auth":"chap","username":"fixture-user","password":"PLACEHOLDER_INVALID","extra":true}' \
+    1722345684
+assert_success process_actions
+zte_execute_u30_sms_action() { printf '%s\n' ok; }
+assert_success zte_action_enqueue \
+    "$STATE_DIR" op-1722345684-1253 send_sms \
+    '{"action":"send_sms","number":"+12025550123","content":"PLACEHOLDER_SMS"}' \
+    1722345684
+assert_success process_actions
+assert_eq 0 "$(wc -l <"$daemon_secret_lifetime_log" | tr -d ' ')" \
+    'daemon must clear disabled, invalid, and SMS records before bookkeeping'
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345684-1245 set_wifi \
     '{"action":"set_wifi","enabled":false}' 1722345684
 assert_success process_actions
 assert_eq succeeded "$(zte_json_top_get \
     "$(zte_action_get "$STATE_DIR" op-1722345684-1245)" state)"
-zte_execute_u30_sms_action() { printf '%s\n' ok; }
 assert_success zte_action_enqueue \
     "$STATE_DIR" op-1722345684-1244 send_sms \
     '{"action":"send_sms","number":"+12025550123","content":"fixture"}' 1722345684
@@ -318,7 +375,13 @@ make_verifying() {
         "$STATE_DIR" "$_test_operation_id" "$_test_action" \
         "$_test_payload" 1722345690
     zte_action_claim "$STATE_DIR" >/dev/null
+    _zte_action_record=''
+    _zte_action_payload=''
+    _zte_verify_record=''
+    _zte_verify_payload=''
     assert_success zte_action_recover_running "$STATE_DIR" 1722345691
+    _zte_action_record=''
+    _zte_action_payload=''
 }
 
 ZTE_DEVICE_PROFILE_ID=zte_u30
@@ -342,6 +405,13 @@ assert_eq \
 assert_eq set_connection_mode "$(cat "$verify_log")"
 assert_eq 'info|action|action_succeeded|1722345680' \
     "$(cat "$event_log")"
+
+: >"$verify_log"
+make_verifying op-1722345690-1304 set_apn \
+    '{"action":"set_apn","apn":"fixture","auth":"chap","username":"fixture-user","password":"PLACEHOLDER_RECOVERY"}'
+assert_success process_verifying_actions
+assert_eq 0 "$(wc -l <"$daemon_secret_lifetime_log" | tr -d ' ')" \
+    'restart bookkeeping must not retain a password-bearing record'
 
 : >"$verify_log"
 : >"$event_log"
