@@ -845,6 +845,7 @@ test('gates SIM switching by capability and reports asynchronous completion', as
 	assert.ok(confirmation);
 	assert.ok(actionButton);
 	assert.strictEqual(text(current).indexOf('当前版本仅开放只读能力'), -1);
+	assert.strictEqual(source.indexOf('只读状态总览'), -1);
 
 	await actionButton.attrs.click();
 	assert.strictEqual(submitted, null);
@@ -1644,7 +1645,7 @@ test('derives write availability only from exact action capabilities', function(
 	let tree = render({ state: 'ok' }, null, {
 		cellular_write: true, traffic_write: true, sms_write: true
 	});
-	assert.ok(text(tree).indexOf('未校准操作不会显示为可用控件') !== -1);
+	assert.ok(text(tree).indexOf('当前设备不支持的操作不会显示为可用控件') !== -1);
 	tree = render({ state: 'ok' }, null, { set_apn: true });
 	assert.ok(text(tree).indexOf('仅显示已通过实机校准并由管理员启用的写操作') !== -1);
 });

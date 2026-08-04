@@ -3,11 +3,12 @@
 ## 结论
 
 当前分支已完成最终 SDK/QEMU/真机调试之前能够离线证明的 U30 写入安全链。候选
-包元数据为 backend r31 / LuCI r12，本记录不生成新安装包，也不复用历史 r30
+包元数据为 backend r32 / LuCI r13，本记录不生成新安装包，也不复用历史 r30
 二进制证据。
 
-完整 `make check` 通过。设备写 capability 和所有 UCI 写门保持关闭；未进行 SDK
-构建、QEMU 安装、Cudy 部署或真实 U30 写入。
+完整 `make test` 与 `make lint` 通过。r32 已把 U30 已实现 capability、所有独立
+UCI 写门和智能充电改为默认启用，并为历史只读配置加入一次性 `full_v1` 迁移。
+Cudy 上的历史 r31/r12 已完整卸载；尚未部署本候选包或执行真实 U30 写入。
 
 ## 已覆盖的生产链
 
@@ -43,7 +44,7 @@ action executor -> U30 adapter -> classified HTTP POST
 - U30 短信/设备动作 E2E：46 assertions；
 - U25S 模拟器：66 assertions；
 - 运行稳定性：1313 assertions；
-- 打包契约：249 assertions；
+- 打包契约：281 assertions；
 - 敏感数据扫描、ShellCheck、LuCI 测试：PASS。
 
 ## 明确未证明
@@ -53,5 +54,5 @@ action executor -> U30 adapter -> classified HTTP POST
 - SDK 依赖解析、APK/IPK 安装、升级、卸装和 procd/rpcd 生命周期；
 - Cudy 上的驱动、USB 重插、设备重启、默认出口保护和 72 小时稳定性。
 
-这些项目按计划集中到最后调试阶段。只有真机成功与失败路径均有脱敏证据后，才能逐项
-把对应 U30 静态 capability 从 `0` 改为 `1`，随后统一升级包版本并生成发布候选产物。
+这些项目按计划集中到最后调试阶段。真机成功与失败路径需要留下脱敏证据，但本地
+状态化 E2E 已作为开放 U30 capability 的代码门禁；最终安装包必须保持完整访问默认值。

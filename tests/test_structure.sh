@@ -18,7 +18,7 @@ else
     pass
 fi
 assert_file_contains "$config" "^config smart_charge 'charging'$"
-assert_file_contains "$config" "option enabled '0'"
+assert_file_contains "$config" "option enabled '1'"
 assert_file_contains "$config" "option low_percent '30'"
 assert_file_contains "$config" "option high_percent '80'"
 poll_once_source=$(sed -n '/^poll_once() {$/,/^}$/p' "$daemon")
@@ -52,7 +52,7 @@ esac
 
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=31$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=32$'
 assert_file_contains \
     "$backend/files/usr/lib/zte-usb-wifi-manager/device-profile.sh" \
     '^zte_device_profile_select\(\)'
@@ -87,16 +87,21 @@ assert_file_contains "$backend/Makefile" \
     'actions/power-transition'
 assert_file_contains "$backend/Makefile" \
     'rm -rf /var/run/zte-usb-wifi-manager'
-assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '0'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option write_enabled '1'"
+assert_file_contains "$backend/files/etc/config/zte-usb-wifi-manager" "option access_profile 'full_v1'"
+assert_file_contains "$daemon" 'config_get write_enabled main write_enabled 0'
+assert_file_contains "$daemon" 'config_get battery_enabled charging enabled 0'
+assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '_zte_cap_write=0'
+assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '_zte_charging_enabled=0'
 for action_gate in \
     switch_sim set_apn set_connection_mode set_wifi set_traffic_plan \
     reset_traffic send_sms delete_sms mark_sms_read reboot_device \
     shutdown_device set_power_supply_mode
 do
-    assert_file_contains "$config" "option ${action_gate}_enabled '0'"
-    assert_file_contains "$backend/Makefile" \
-        "zte_ensure_config zte-usb-wifi-manager.writes.${action_gate}_enabled 0"
+    assert_file_contains "$config" "option ${action_gate}_enabled '1'"
 done
+assert_file_contains "$backend/Makefile" 'main\.access_profile.*full_v1'
+assert_file_contains "$backend/Makefile" 'writes\.\$\$\{zte_action_gate\}_enabled 1'
 if grep -Eq 'option (cellular_write|traffic_write|sms_write)_enabled' "$config"; then
     fail 'fresh config must not expose legacy write-family gates'
 else
@@ -221,8 +226,11 @@ rm -rf "$init_power_state"
 rm -rf "$init_gate_root"
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"status"'
 assert_file_contains "$backend/files/usr/libexec/rpcd/zte_usb_wifi" '"capabilities"'
+assert_file_contains \
+    "$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh" \
+    '^ZTE_CAP_SWITCH_SIM=1$'
 for static_cap in \
-    SWITCH_SIM SET_APN SET_CONNECTION_MODE SET_WIFI SET_TRAFFIC_PLAN \
+    SET_APN SET_CONNECTION_MODE SET_WIFI SET_TRAFFIC_PLAN \
     RESET_TRAFFIC SEND_SMS DELETE_SMS MARK_SMS_READ REBOOT_DEVICE \
     SHUTDOWN_DEVICE SET_POWER_SUPPLY_MODE
 do
@@ -286,7 +294,7 @@ view="$luci/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js"
 for tab in overview network wifi clients traffic sms device diagnostics logs; do
     assert_file_contains "$view" "id: '$tab'"
 done
-assert_file_contains "$view" '未校准操作不会显示为可用控件'
+assert_file_contains "$view" '当前设备不支持的操作不会显示为可用控件'
 assert_file_contains "$view" 'status\.device'
 assert_file_contains "$view" 'is_default_route'
 assert_file_contains "$view" 'battery'
@@ -319,16 +327,16 @@ assert_file_contains README.md 'OpenWrt 24\.10\.7.*官方 SDK 构建通过'
 assert_file_contains README.md 'r29→r30 QEMU 升级及 Cudy/U30 默认出口门禁验收通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '包元数据仍为'
+assert_file_contains README.md '当前候选版本为.*backend r32 / LuCI r13'
 assert_file_contains README.md 'backend r30 / LuCI r12'
 assert_file_contains README.md \
     'docs/validation/2026-08-04-u30-offline-code-gate\.md'
-assert_file_contains README.md '新源码的 SDK/QEMU/真机验证'
+assert_file_contains README.md '双 SDK、QEMU 和新一轮真机验证仍按顺序'
 assert_file_contains README.md 'r26/r12 最终验证'
 assert_file_contains README.md 'r29/r12 最终验证'
 assert_file_contains README.md 'r30/r12 最终验证'
 assert_file_contains README.md '九类语义写请求契约'
-assert_file_contains README.md '生产写 capability 仍全部保持 0'
+assert_file_contains README.md 'U30 Pro 对应 capability 已按本地状态化模拟结果开放'
 assert_file_contains README.md 'docs/superpowers/plans/2026-08-01-write-request-contracts\.md'
 assert_file_contains README.md '保存或清除凭据后，daemon 会在下一轮轮询'
 assert_file_contains README.md '清除本地凭据'
@@ -407,15 +415,15 @@ assert_file_contains README.md '原子动作队列'
 assert_file_contains README.md '加速稳定性测试'
 offline_gate=docs/validation/2026-08-04-u30-offline-code-gate.md
 assert_file_contains "$offline_gate" '^# U30 离线代码门禁'
-assert_file_contains "$offline_gate" 'make check.*PASS'
-assert_file_contains "$offline_gate" '未进行 SDK'
+assert_file_contains "$offline_gate" 'make test.*make lint.*通过'
+assert_file_contains "$offline_gate" '尚未部署本候选包'
 # Match literal Markdown backticks.
 # shellcheck disable=SC2016
-assert_file_contains "$offline_gate" '对应 U30 静态 capability 从 `0` 改为 `1`'
+assert_file_contains "$offline_gate" '最终安装包必须保持完整访问默认值'
 # Match literal Markdown backticks.
 # shellcheck disable=SC2016
 assert_file_contains docs/validation/first-release-capability-matrix.md \
-    '所有 U30 写 capability 继续为 `0`'
+    '所有已实现 U30 写 capability'
 assert_file_contains docs/validation/first-release-capability-matrix.md \
     '状态化 HTTP 模拟器'
 if grep -Fq 'USB Power Adapter 尚未实现' README.md; then
@@ -573,7 +581,7 @@ capability_freeze=docs/validation/first-release-capability-matrix.md
 assert_file_contains "$capability_freeze" '^# 首版能力矩阵冻结$'
 assert_file_contains "$capability_freeze" 'capabilities-first-release\.json'
 assert_file_contains "$capability_freeze" \
-    '设备重启/关机.*not_implemented.*implemented.*状态化 HTTP 模拟器.*否'
+    '设备重启/关机.*not_implemented.*implemented.*状态化 HTTP 模拟器.*U30 是'
 
 r21_upgrade_evidence=docs/validation/2026-08-01-r21-r10-upgrade-qemu.md
 assert_file_contains "$r21_upgrade_evidence" '^# r20/r9 到 r21/r10 隔离 QEMU 升级验证$'

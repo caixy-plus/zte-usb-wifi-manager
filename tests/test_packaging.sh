@@ -12,7 +12,7 @@ expected_2512='25.12.5|apk|openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_
 expected_2410='24.10.7|ipk|openwrt-sdk-24.10.7-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst|996d71f9eab7df2e8acb0bb2c9726426f05c10d419e5f9600d59b14d871f2acb|openwrt-24.10.7-x86-64-generic-ext4-combined.img.gz|3caea69f186b2bce80938d265e5e2a3dfd0f8713aed101df35d60b88d7270d1f|fa4ae9a869c3bc76c5d89dc6f6532194a4d1df8e7a99d6f441aeff085124c148'
 
 release_metadata=scripts/project-release-metadata.js
-assert_eq '0.1.0_rc1|31|13|v0.1.0-rc1-r31|prerelease' \
+assert_eq '0.1.0_rc1|32|13|v0.1.0-rc1-r32|prerelease' \
     "$(node "$release_metadata")"
 stable_root=$work/stable-release-root
 mkdir -p "$stable_root/package/zte-usb-wifi-manager" \
@@ -59,6 +59,41 @@ backend_package_definition="$work/backend-package-definition"
 sed -n '/^define Package\/zte-usb-wifi-manager$/,/^endef$/p' \
     package/zte-usb-wifi-manager/Makefile >"$backend_package_definition"
 assert_file_contains "$backend_package_definition" '  PKGARCH:=all'
+
+# Release packages are writable products, not read-only preview builds. A
+# fresh install must expose every shipped action gate and smart charging; an
+# individual user may still disable a feature later through UCI/LuCI.
+release_config=package/zte-usb-wifi-manager/files/etc/config/zte-usb-wifi-manager
+for full_default in \
+    "option write_enabled '1'" \
+    "option switch_sim_enabled '1'" \
+    "option set_apn_enabled '1'" \
+    "option set_connection_mode_enabled '1'" \
+    "option set_wifi_enabled '1'" \
+    "option set_traffic_plan_enabled '1'" \
+    "option reset_traffic_enabled '1'" \
+    "option send_sms_enabled '1'" \
+    "option delete_sms_enabled '1'" \
+    "option mark_sms_read_enabled '1'" \
+    "option reboot_device_enabled '1'" \
+    "option shutdown_device_enabled '1'" \
+    "option set_power_supply_mode_enabled '1'"
+do
+    assert_file_contains "$release_config" "$full_default"
+done
+assert_file_contains "$release_config" "option access_profile 'full_v1'"
+assert_file_contains "$release_config" "config smart_charge 'charging'"
+assert_file_contains "$release_config" "option enabled '1'"
+
+metadata_file=package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
+assert_file_contains "$metadata_file" '^ZTE_U25S_CAP_SWITCH_SIM=1$'
+for u30_capability in \
+    SET_APN SET_CONNECTION_MODE SET_WIFI SET_TRAFFIC_PLAN RESET_TRAFFIC \
+    SEND_SMS DELETE_SMS MARK_SMS_READ REBOOT_DEVICE SHUTDOWN_DEVICE \
+    SET_POWER_SUPPLY_MODE
+do
+    assert_file_contains "$metadata_file" "^ZTE_U30_CAP_${u30_capability}=1$"
+done
 if grep -Fq 'zte-u25s-sim-calibrate recover' \
     package/zte-usb-wifi-manager/Makefile; then
     fail 'package hooks must not automatically run real SIM recovery'
@@ -121,6 +156,12 @@ case $1:$2 in
         key=$3
         cat "$(key_file "$key")"
         ;;
+    set:zte-usb-wifi-manager.charging.enabled=*)
+        [ -f "$(key_file zte-usb-wifi-manager.charging)" ] || exit 1
+        assignment=$2
+        key=${assignment%%=*}
+        printf '%s\n' "${assignment#*=}" >"$(key_file "$key")"
+        ;;
     set:*)
         assignment=$2
         key=${assignment%%=*}
@@ -166,7 +207,9 @@ for hook_format in apk ipk; do
     assert_eq auto "$(cat "$postinst_uci/zte-usb-wifi-manager_usb_control_path")"
     assert_eq zte_u25s "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
     assert_eq smart_charge "$(cat "$postinst_uci/zte-usb-wifi-manager_charging")"
-    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_enabled")"
+    assert_eq full_v1 "$(cat "$postinst_uci/zte-usb-wifi-manager_main_access_profile")"
+    assert_eq 1 "$(cat "$postinst_uci/zte-usb-wifi-manager_main_write_enabled")"
+    assert_eq 1 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_enabled")"
     assert_eq 30 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_low_percent")"
     assert_eq 80 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_high_percent")"
     assert_eq 300 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_retry_seconds")"
@@ -175,7 +218,7 @@ for hook_format in apk ipk; do
         reset_traffic send_sms delete_sms mark_sms_read reboot_device \
         shutdown_device set_power_supply_mode
     do
-        assert_eq 0 "$(cat \
+        assert_eq 1 "$(cat \
             "$postinst_uci/zte-usb-wifi-manager_writes_${action_gate}_enabled")"
     done
     assert_eq commit "$(cat "$postinst_uci/commits")"
@@ -195,7 +238,7 @@ for hook_format in apk ipk; do
         set_apn set_connection_mode set_traffic_plan reset_traffic \
         send_sms delete_sms mark_sms_read
     do
-        assert_eq 0 "$(cat \
+        assert_eq 1 "$(cat \
             "$postinst_uci/zte-usb-wifi-manager_writes_${action_gate}_enabled")"
     done
 
@@ -207,7 +250,7 @@ for hook_format in apk ipk; do
     assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
         PATH="$postinst_bin:$PATH" sh "$hook_postinst"
     assert_eq zte_u25s "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
-    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_set_power_supply_mode_enabled")"
+    assert_eq 1 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_set_power_supply_mode_enabled")"
     assert_eq commit "$(cat "$postinst_uci/commits")"
 
     # A current config is not rewritten: explicit adapter selection and custom
@@ -223,6 +266,9 @@ for hook_format in apk ipk; do
     done
     printf '%s\n' 1 >"$postinst_uci/zte-usb-wifi-manager_writes_set_apn_enabled"
     printf '%s\n' smart_charge >"$postinst_uci/zte-usb-wifi-manager_charging"
+    printf '%s\n' core >"$postinst_uci/zte-usb-wifi-manager_main"
+    printf '%s\n' actions >"$postinst_uci/zte-usb-wifi-manager_writes"
+    printf '%s\n' full_v1 >"$postinst_uci/zte-usb-wifi-manager_main_access_profile"
     printf '%s\n' 1 >"$postinst_uci/zte-usb-wifi-manager_charging_enabled"
     printf '%s\n' 25 >"$postinst_uci/zte-usb-wifi-manager_charging_low_percent"
     printf '%s\n' 75 >"$postinst_uci/zte-usb-wifi-manager_charging_high_percent"
@@ -236,6 +282,22 @@ for hook_format in apk ipk; do
     assert_eq 75 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_high_percent")"
     assert_eq 600 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_retry_seconds")"
     assert_eq '' "$(cat "$postinst_uci/commits")"
+
+    # An existing unknown/future marker is not an old preview install. It must
+    # never be treated as permission to elevate explicitly disabled writes.
+    reset_postinst_fixture
+    printf '%s\n' core >"$postinst_uci/zte-usb-wifi-manager_main"
+    printf '%s\n' actions >"$postinst_uci/zte-usb-wifi-manager_writes"
+    printf '%s\n' smart_charge >"$postinst_uci/zte-usb-wifi-manager_charging"
+    printf '%s\n' future_v2 >"$postinst_uci/zte-usb-wifi-manager_main_access_profile"
+    printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_set_apn_enabled"
+    printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_charging_enabled"
+    assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
+        PATH="$postinst_bin:$PATH" sh "$hook_postinst"
+    assert_eq future_v2 "$(cat "$postinst_uci/zte-usb-wifi-manager_main_access_profile")"
+    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_main_write_enabled")"
+    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_set_apn_enabled")"
+    assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_enabled")"
 
     for negative_gate in board control_path backend calibrated write_enabled root
     do
@@ -483,7 +545,7 @@ case $(basename "$package_file") in
         ;;
     *)
         package_name=zte-usb-wifi-manager
-        package_version=0.1.0_rc1-r31
+        package_version=0.1.0_rc1-r32
         ;;
 esac
 [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] || package_name=wrong-package
@@ -506,7 +568,7 @@ SCRIPT
                 ;;
             *)
                 package_name=zte-usb-wifi-manager
-                package_version=0.1.0_rc1-r31
+                package_version=0.1.0_rc1-r32
                 ;;
         esac
         [ "${FAKE_WRONG_METADATA:-0}" -eq 0 ] ||
@@ -567,9 +629,9 @@ case " $* " in
         [ ! -e package/feeds/packages/curl ] || exit 1
         [ "$(cat .fake-defconfig-count)" -eq 2 ] || exit 1
         printf 'apk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r31.apk
+            >bin/packages/fixture/zte-usb-wifi-manager-0.1.0_rc1-r32.apk
         printf 'ipk-backend\n' \
-            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r31_all.ipk
+            >bin/packages/fixture/zte-usb-wifi-manager_0.1.0_rc1-r32_all.ipk
         ;;
     *' package/luci-app-zte-usb-wifi-manager/compile '*)
         printf 'apk-luci\n' \
@@ -622,9 +684,9 @@ assert_failure env PATH="$fake_bin:$PATH" \
 
 mkdir -p "$work/incoming/packages-25.12.5" \
     "$work/incoming/packages-24.10.7"
-printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r31.apk"
+printf apk-backend >"$work/incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r32.apk"
 printf apk-luci >"$work/incoming/packages-25.12.5/luci-app-zte-usb-wifi-manager-0.1.0_rc1-r13.apk"
-printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r31_all.ipk"
+printf ipk-backend >"$work/incoming/packages-24.10.7/zte-usb-wifi-manager_0.1.0_rc1-r32_all.ipk"
 printf ipk-luci >"$work/incoming/packages-24.10.7/luci-app-zte-usb-wifi-manager_0.1.0_rc1-r13_all.ipk"
 node - "$work/incoming" <<'NODE'
 const crypto = require('crypto');
@@ -698,12 +760,12 @@ if (manifest.project_ref !== "main" || manifest.project_tag !== null ||
 ' "$work/dist" "$source_sha"
 
 assert_success node scripts/assemble-openwrt-packages.js \
-    "$work/incoming" "$work/dist-r24-tag" "$source_sha" v0.1.0-rc1-r31
+    "$work/incoming" "$work/dist-r24-tag" "$source_sha" v0.1.0-rc1-r32
 assert_success node -e '
 const fs = require("fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[1]));
-if (manifest.project_ref !== "v0.1.0-rc1-r31" ||
-    manifest.project_tag !== "v0.1.0-rc1-r31")
+if (manifest.project_ref !== "v0.1.0-rc1-r32" ||
+    manifest.project_tag !== "v0.1.0-rc1-r32")
     process.exit(1);
 ' "$work/dist-r24-tag/build-manifest.json"
 assert_failure node scripts/assemble-openwrt-packages.js \
@@ -717,7 +779,7 @@ assert_failure node scripts/assemble-openwrt-packages.js \
 
 rm "$work/incoming/packages-25.12.5/unexpected.txt"
 cp -R "$work/incoming" "$work/wrong-version-incoming"
-mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r31.apk" \
+mv "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-0.1.0_rc1-r32.apk" \
     "$work/wrong-version-incoming/packages-25.12.5/zte-usb-wifi-manager-9.9.9-r1.apk"
 node - "$work/wrong-version-incoming/packages-25.12.5/build-manifest.json" <<'NODE'
 const fs = require('fs');

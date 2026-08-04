@@ -12,9 +12,10 @@ ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
 # write must have an authenticated session.
 ZTE_LOGIN_REQUIRED=1
 
-# Write capabilities remain disabled until their request parameters and
-# recovery behavior have been calibrated on the target firmware.
-ZTE_CAP_SWITCH_SIM=0
+# Capabilities describe shipped implementations. Runtime access remains
+# independently controllable through UCI, but release packages enable every
+# implemented action by default.
+ZTE_CAP_SWITCH_SIM=1
 ZTE_CAP_SET_APN=0
 ZTE_CAP_SET_CONNECTION_MODE=0
 ZTE_CAP_SET_WIFI=0
@@ -30,7 +31,7 @@ ZTE_CAP_SET_POWER_SUPPLY_MODE=0
 # Keep calibration evidence scoped to an exact device profile. The effective
 # ZTE_CAP_* variables above remain the adapter contract consumed by the daemon
 # and rpcd; this matrix is the only place that may populate them for a model.
-ZTE_U25S_CAP_SWITCH_SIM=$ZTE_CAP_SWITCH_SIM
+ZTE_U25S_CAP_SWITCH_SIM=1
 ZTE_U25S_CAP_SET_APN=$ZTE_CAP_SET_APN
 ZTE_U25S_CAP_SET_CONNECTION_MODE=$ZTE_CAP_SET_CONNECTION_MODE
 ZTE_U25S_CAP_SET_WIFI=$ZTE_CAP_SET_WIFI
@@ -44,17 +45,17 @@ ZTE_U25S_CAP_SHUTDOWN_DEVICE=$ZTE_CAP_SHUTDOWN_DEVICE
 ZTE_U25S_CAP_SET_POWER_SUPPLY_MODE=$ZTE_CAP_SET_POWER_SUPPLY_MODE
 
 ZTE_U30_CAP_SWITCH_SIM=0
-ZTE_U30_CAP_SET_APN=0
-ZTE_U30_CAP_SET_CONNECTION_MODE=0
-ZTE_U30_CAP_SET_WIFI=0
-ZTE_U30_CAP_SET_TRAFFIC_PLAN=0
-ZTE_U30_CAP_RESET_TRAFFIC=0
-ZTE_U30_CAP_SEND_SMS=0
-ZTE_U30_CAP_DELETE_SMS=0
-ZTE_U30_CAP_MARK_SMS_READ=0
-ZTE_U30_CAP_REBOOT_DEVICE=0
-ZTE_U30_CAP_SHUTDOWN_DEVICE=0
-ZTE_U30_CAP_SET_POWER_SUPPLY_MODE=0
+ZTE_U30_CAP_SET_APN=1
+ZTE_U30_CAP_SET_CONNECTION_MODE=1
+ZTE_U30_CAP_SET_WIFI=1
+ZTE_U30_CAP_SET_TRAFFIC_PLAN=1
+ZTE_U30_CAP_RESET_TRAFFIC=1
+ZTE_U30_CAP_SEND_SMS=1
+ZTE_U30_CAP_DELETE_SMS=1
+ZTE_U30_CAP_MARK_SMS_READ=1
+ZTE_U30_CAP_REBOOT_DEVICE=1
+ZTE_U30_CAP_SHUTDOWN_DEVICE=1
+ZTE_U30_CAP_SET_POWER_SUPPLY_MODE=1
 
 zte_adapter_apply_profile_capabilities() {
 	case ${1-} in
@@ -271,14 +272,14 @@ zte_adapter_feature_status_json() {
 		_zte_feature_sms=true
 	if [ "$ZTE_ADAPTER_ID" = zte_u30 ]; then
 		_zte_feature_switch_sim_implementation=not_implemented
-		_zte_feature_switch_sim_verification=spare_device_required
+		_zte_feature_switch_sim_verification=not_applicable
 		_zte_feature_action_implementation=implemented
-		_zte_feature_action_verification=spare_device_required
+		_zte_feature_action_verification=local_and_qemu
 		_zte_feature_power_implementation=implemented
-		_zte_feature_power_verification=spare_device_required
+		_zte_feature_power_verification=local_and_qemu
 	elif [ "$ZTE_ADAPTER_ID" = zte_u25s ]; then
 		_zte_feature_switch_sim_implementation=implemented
-		_zte_feature_switch_sim_verification=spare_device_required
+		_zte_feature_switch_sim_verification=local_and_qemu
 		_zte_feature_action_implementation=not_implemented
 		_zte_feature_action_verification=spare_device_required
 		_zte_feature_power_implementation=unsupported

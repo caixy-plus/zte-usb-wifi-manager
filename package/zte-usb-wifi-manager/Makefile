@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=31
+PKG_RELEASE:=32
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
@@ -43,26 +43,21 @@ define Package/zte-usb-wifi-manager/postinst
 		zte_config_changed=1
 	}
 
-	# Conffiles are intentionally preserved by APK/IPK upgrades. Add every new
-	# gate with its fail-closed default so an older config cannot silently omit
-	# controls introduced by a newer package.
-	zte_ensure_config zte-usb-wifi-manager.writes.switch_sim_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.set_apn_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.set_connection_mode_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.set_wifi_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.set_traffic_plan_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.reset_traffic_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.send_sms_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.delete_sms_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.mark_sms_read_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.reboot_device_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.shutdown_device_enabled 0
-	zte_ensure_config zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 0
+	zte_set_config() {
+		zte_config_key=$$1
+		zte_config_value=$$2
+		[ "$$(uci -q get "$$zte_config_key" 2>/dev/null)" = \
+			"$$zte_config_value" ] && return 0
+		uci set "$$zte_config_key=$$zte_config_value" || exit 1
+		zte_config_changed=1
+	}
+
+	# Historical conffiles may predate one or more named sections. Create the
+	# section before assigning any option within it; real UCI rejects an option
+	# write whose parent section does not exist.
+	zte_ensure_config zte-usb-wifi-manager.main core
+	zte_ensure_config zte-usb-wifi-manager.writes actions
 	zte_ensure_config zte-usb-wifi-manager.charging smart_charge
-	zte_ensure_config zte-usb-wifi-manager.charging.enabled 0
-	zte_ensure_config zte-usb-wifi-manager.charging.low_percent 30
-	zte_ensure_config zte-usb-wifi-manager.charging.high_percent 80
-	zte_ensure_config zte-usb-wifi-manager.charging.retry_seconds 300
 
 	if [ "$$(cat /tmp/sysinfo/board_name 2>/dev/null)" = \
 		cudy,tr3000-v1-ubootmod ] &&
@@ -75,6 +70,26 @@ define Package/zte-usb-wifi-manager/postinst
 		uci set zte-usb-wifi-manager.usb.control_path=auto || exit 1
 		zte_config_changed=1
 	fi
+
+	# r32 is the first full-access release. Migrate historical preview installs
+	# exactly once; after the marker exists, explicit user changes are preserved.
+	if ! uci -q get zte-usb-wifi-manager.main.access_profile \
+		>/dev/null 2>&1; then
+		zte_set_config zte-usb-wifi-manager.main.write_enabled 1
+		for zte_action_gate in \
+			switch_sim set_apn set_connection_mode set_wifi \
+			set_traffic_plan reset_traffic send_sms delete_sms \
+			mark_sms_read reboot_device shutdown_device \
+			set_power_supply_mode; do
+			zte_set_config \
+				zte-usb-wifi-manager.writes.$${zte_action_gate}_enabled 1
+		done
+		zte_set_config zte-usb-wifi-manager.charging.enabled 1
+		zte_set_config zte-usb-wifi-manager.main.access_profile full_v1
+	fi
+	zte_ensure_config zte-usb-wifi-manager.charging.low_percent 30
+	zte_ensure_config zte-usb-wifi-manager.charging.high_percent 80
+	zte_ensure_config zte-usb-wifi-manager.charging.retry_seconds 300
 
 	[ "$$zte_config_changed" = 0 ] ||
 		uci commit zte-usb-wifi-manager || exit 1

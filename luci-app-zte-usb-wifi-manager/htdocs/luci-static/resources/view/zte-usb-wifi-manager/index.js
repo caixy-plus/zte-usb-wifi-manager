@@ -541,7 +541,7 @@ function renderOverview(status, capabilities) {
 	var network = status.network && typeof status.network === 'object' ? status.network : {};
 	var hasDevice = Object.keys(device).length > 0;
 
-	return panelRoot('overview', _('只读状态总览'), [
+	return panelRoot('overview', _('设备状态总览'), [
 		row(_('设备型号'), device.model || status.model || capabilities.model),
 		row(_('设备在线'), onlineLabel(status)),
 		row(_('后端状态'), stateLabel(status.state, hasDevice)),
@@ -1355,7 +1355,7 @@ function renderStatus(data, selectedTab, onSelect, onCredentialSave,
 			E('div', { 'class': 'alert-message warning' },
 				writesAvailable
 					? _('仅显示已通过实机校准并由管理员启用的写操作；详细能力状态见“系统与诊断”。')
-					: _('详细能力状态见“系统与诊断”；未校准操作不会显示为可用控件。'))
+					: _('详细能力状态见“系统与诊断”；当前设备不支持的操作不会显示为可用控件。'))
 		]);
 }
 

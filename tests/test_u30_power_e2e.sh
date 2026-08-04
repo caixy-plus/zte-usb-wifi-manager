@@ -112,8 +112,8 @@ assert_success zte_adapter_apply_profile
 assert_eq zte_u30 "$ZTE_ADAPTER_ID"
 assert_eq http "$ZTE_ADAPTER_TRANSPORT"
 assert_failure zte_adapter_login_required
-assert_eq 0 "$ZTE_CAP_SET_POWER_SUPPLY_MODE"
-assert_failure zte_adapter_action_supported set_power_supply_mode
+assert_eq 1 "$ZTE_CAP_SET_POWER_SUPPLY_MODE"
+assert_success zte_adapter_action_supported set_power_supply_mode
 
 ZTE_HTTP_TIMEOUT=0.2
 ZTE_POWER_SUPPLY_READBACK_INTERVAL=0

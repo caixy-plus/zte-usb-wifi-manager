@@ -18,12 +18,12 @@ tests/test_sensitive_data.sh:124:15_DIGIT_IDENTIFIER
 tests/test_sensitive_data.sh:124:ICCID
 tests/test_sensitive_data.sh:144:PHONE_NUMBER
 tests/test_sensitive_data.sh:145:PHONE_NUMBER
-tests/test_adapter.sh:645:MAC_ADDRESS
 tests/test_adapter.sh:646:MAC_ADDRESS
-tests/test_adapter.sh:704:MAC_ADDRESS
+tests/test_adapter.sh:647:MAC_ADDRESS
+tests/test_adapter.sh:705:MAC_ADDRESS
 tests/test_action_executor.sh:392:SECRET_ASSIGNMENT
 tests/test_action_executor.sh:456:SECRET_ASSIGNMENT
 tests/test_json.sh:75:MAC_ADDRESS
 tests/test_json.sh:76:MAC_ADDRESS
-tests/test_luci.js:1312:MAC_ADDRESS
-tests/test_luci.js:1505:MAC_ADDRESS
+tests/test_luci.js:1313:MAC_ADDRESS
+tests/test_luci.js:1506:MAC_ADDRESS
