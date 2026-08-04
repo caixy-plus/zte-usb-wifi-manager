@@ -1,6 +1,6 @@
 # 首版能力矩阵冻结
 
-当前源码基线：backend r30 之后的开发分支 / LuCI r12（2026-08-04）。历史 r30
+当前源码基线：backend r31 / LuCI r12（2026-08-04）。历史 r30
 包的 SDK/QEMU/只读真机证据不能替代当前源码的最终构建和真机验收。
 
 机器可读 U25S 基线位于 `tests/fixtures/u25s/capabilities-first-release.json`；动态
