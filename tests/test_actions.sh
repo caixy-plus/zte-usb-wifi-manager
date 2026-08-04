@@ -1,5 +1,6 @@
 #!/bin/sh
-# shellcheck disable=SC2329
+# Test doubles intentionally replace commands/functions after earlier test cases.
+# shellcheck disable=SC2218,SC2317,SC2329
 set -eu
 
 TEST_NAME=test_actions
