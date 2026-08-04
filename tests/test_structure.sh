@@ -319,7 +319,11 @@ assert_file_contains README.md 'OpenWrt 24\.10\.7.*官方 SDK 构建通过'
 assert_file_contains README.md 'r29→r30 QEMU 升级及 Cudy/U30 默认出口门禁验收通过'
 assert_file_contains README.md '当前 backend r15 / LuCI r4 已完成本地检查'
 assert_file_contains README.md '已发布的 r15 / LuCI r4 通过了双 SDK 与 QEMU 复验'
-assert_file_contains README.md '源码 backend r30 / LuCI r12'
+assert_file_contains README.md '包元数据仍为'
+assert_file_contains README.md 'backend r30 / LuCI r12'
+assert_file_contains README.md \
+    'docs/validation/2026-08-04-u30-offline-code-gate\.md'
+assert_file_contains README.md '新源码的 SDK/QEMU/真机验证'
 assert_file_contains README.md 'r26/r12 最终验证'
 assert_file_contains README.md 'r29/r12 最终验证'
 assert_file_contains README.md 'r30/r12 最终验证'
@@ -401,6 +405,19 @@ assert_file_contains README.md '\-\-max-failures 3'
 assert_file_contains README.md '\-\-max-action-results 50'
 assert_file_contains README.md '原子动作队列'
 assert_file_contains README.md '加速稳定性测试'
+offline_gate=docs/validation/2026-08-04-u30-offline-code-gate.md
+assert_file_contains "$offline_gate" '^# U30 离线代码门禁'
+assert_file_contains "$offline_gate" 'make check.*PASS'
+assert_file_contains "$offline_gate" '未进行 SDK'
+# Match literal Markdown backticks.
+# shellcheck disable=SC2016
+assert_file_contains "$offline_gate" '对应 U30 静态 capability 从 `0` 改为 `1`'
+# Match literal Markdown backticks.
+# shellcheck disable=SC2016
+assert_file_contains docs/validation/first-release-capability-matrix.md \
+    '所有 U30 写 capability 继续为 `0`'
+assert_file_contains docs/validation/first-release-capability-matrix.md \
+    '状态化 HTTP 模拟器'
 if grep -Fq 'USB Power Adapter 尚未实现' README.md; then
     fail 'README must not claim the implemented Power Adapter is missing'
 else
@@ -555,7 +572,8 @@ assert_file_contains "$r21_qemu_evidence" '没有连接 Cudy 路由器'
 capability_freeze=docs/validation/first-release-capability-matrix.md
 assert_file_contains "$capability_freeze" '^# 首版能力矩阵冻结$'
 assert_file_contains "$capability_freeze" 'capabilities-first-release\.json'
-assert_file_contains "$capability_freeze" '设备重启.*not_implemented.*spare_device_required.*否'
+assert_file_contains "$capability_freeze" \
+    '设备重启/关机.*not_implemented.*implemented.*状态化 HTTP 模拟器.*否'
 
 r21_upgrade_evidence=docs/validation/2026-08-01-r21-r10-upgrade-qemu.md
 assert_file_contains "$r21_upgrade_evidence" '^# r20/r9 到 r21/r10 隔离 QEMU 升级验证$'
