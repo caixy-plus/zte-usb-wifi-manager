@@ -7,12 +7,14 @@ ZTE_USB_WIFI_LIB_DIR=${ZTE_USB_WIFI_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 . "$ZTE_USB_WIFI_LIB_DIR/credentials.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/actions.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/event-log.sh"
+. "$ZTE_USB_WIFI_LIB_DIR/charging-transaction.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/adapter-zte-u25s-metadata.sh"
 
 STATUS_FILE=${ZTE_USB_WIFI_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
 SMS_FILE=${ZTE_USB_WIFI_SMS_FILE:-/var/run/zte-usb-wifi-manager/sms.json}
 STATE_DIR=${ZTE_USB_WIFI_STATE_DIR:-/var/run/zte-usb-wifi-manager}
 CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/credentials}
+SERVICE_INIT=${ZTE_USB_WIFI_SERVICE_INIT:-/etc/init.d/zte-usb-wifi-manager}
 
 list_methods() {
 	printf '%s\n' \
@@ -160,22 +162,17 @@ set_charging_settings() {
 		printf '%s\n' '{"ok":false,"error":"invalid_settings"}'
 		return
 	fi
-	if ! uci -q set \
-		"zte-usb-wifi-manager.charging.enabled=$_zte_charging_enabled_raw" ||
-		! uci -q set \
-		"zte-usb-wifi-manager.charging.low_percent=$_zte_charging_low" ||
-		! uci -q set \
-		"zte-usb-wifi-manager.charging.high_percent=$_zte_charging_high" ||
-		! uci -q commit zte-usb-wifi-manager; then
-		uci -q revert zte-usb-wifi-manager >/dev/null 2>&1 || :
-		printf '%s\n' '{"ok":false,"error":"settings_write_failed"}'
+	_zte_charging_result=$(zte_charging_transaction_apply \
+		"$STATE_DIR" "$SERVICE_INIT" "$_zte_charging_enabled_raw" \
+		"$_zte_charging_low" "$_zte_charging_high")
+	if [ "$_zte_charging_result" != ok ]; then
+		case $_zte_charging_result in
+			transaction_busy|transaction_recovery_failed|settings_snapshot_failed|settings_write_failed|settings_rollback_failed|service_reload_failed|service_restore_failed)
+				;;
+			*) _zte_charging_result=transaction_recovery_failed ;;
+		esac
+		printf '{"ok":false,"error":"%s"}\n' "$_zte_charging_result"
 		return
-	fi
-	if [ -x /etc/init.d/zte-usb-wifi-manager ]; then
-		/etc/init.d/zte-usb-wifi-manager reload >/dev/null 2>&1 || {
-			printf '%s\n' '{"ok":false,"error":"service_reload_failed"}'
-			return
-		}
 	fi
 	printf '{"ok":true,"enabled":%s,"low_percent":%s,"high_percent":%s}\n' \
 		"$_zte_charging_enabled" "$_zte_charging_low" \

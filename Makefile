@@ -23,6 +23,7 @@ test:
 		tests/test_u30_power_calibration.sh \
 		tests/test_daemon_actions.sh \
 		tests/test_daemon_smart_charge.sh \
+		tests/test_charging_transaction.sh \
 		tests/test_daemon_power_cycle.sh \
 		tests/test_power_adapter.sh \
 		tests/test_power_restore.sh \

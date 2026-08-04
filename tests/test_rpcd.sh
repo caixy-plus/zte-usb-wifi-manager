@@ -44,6 +44,8 @@ rpcd_call() {
     ZTE_USB_WIFI_SMS_FILE=$sms_file \
     ZTE_USB_WIFI_STATE_DIR=$state_dir \
     ZTE_USB_WIFI_CREDENTIAL_FILE=$credential_file \
+    ZTE_USB_WIFI_SERVICE_INIT=${RPCD_TEST_SERVICE_INIT:-/etc/init.d/zte-usb-wifi-manager} \
+    ZTE_TEST_RELOAD_LOG=${ZTE_TEST_RELOAD_LOG:-$work/reload-default} \
     PATH="$test_bin:$PATH" \
         sh "$rpcd" "$@"
 }
@@ -221,6 +223,15 @@ for library in validation.sh json.sh credentials.sh actions.sh event-log.sh; do
     ln -s "$(pwd)/package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager/$library" \
         "$write_lib/$library"
 done
+# Transaction mechanics have a dedicated stateful suite. This rpcd suite uses
+# a narrow result stub to verify request validation and public error mapping.
+# The generated stub expands this variable when it executes, not here.
+# shellcheck disable=SC2016
+printf '%s\n' \
+    '#!/bin/sh' \
+    'zte_charging_transaction_apply() {' \
+    '  printf "%s\n" "${ZTE_TEST_CHARGING_TX_RESULT:-ok}"' \
+    '}' >"$write_lib/charging-transaction.sh"
 sed \
     -e 's/^ZTE_CAP_SWITCH_SIM=0$/ZTE_CAP_SWITCH_SIM=1/' \
     -e 's/^ZTE_CAP_SET_APN=0$/ZTE_CAP_SET_APN=1/' \
@@ -241,6 +252,11 @@ sed \
 # shellcheck disable=SC2016
 printf '%s\n' \
     '#!/bin/sh' \
+    'log_mutation() {' \
+    '  printf "%s\n" "$*" >>"${ZTE_TEST_UCI_LOG:?}"' \
+    '  mutation_count=$(wc -l <"${ZTE_TEST_UCI_LOG}" | tr -d " ")' \
+    '  [ "$mutation_count" != "${ZTE_TEST_UCI_FAIL_AT:-0}" ]' \
+    '}' \
     'case "$*" in' \
     '  "-q get zte-usb-wifi-manager.main.write_enabled") value=${ZTE_TEST_WRITE_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.switch_sim_enabled") value=${ZTE_TEST_SWITCH_SIM_ENABLED:-0} ;;' \
@@ -256,15 +272,35 @@ printf '%s\n' \
     '  "-q get zte-usb-wifi-manager.writes.set_power_supply_mode_enabled") value=${ZTE_TEST_SET_POWER_SUPPLY_MODE_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.set_apn_enabled") value=${ZTE_TEST_SET_APN_ENABLED:-0} ;;' \
     '  "-q get zte-usb-wifi-manager.writes.set_connection_mode_enabled") value=${ZTE_TEST_SET_CONNECTION_MODE_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.charging.enabled") value=${ZTE_TEST_CHARGING_ENABLED:-0} ;;' \
-    '  "-q get zte-usb-wifi-manager.charging.low_percent") value=${ZTE_TEST_CHARGING_LOW:-30} ;;' \
-    '  "-q get zte-usb-wifi-manager.charging.high_percent") value=${ZTE_TEST_CHARGING_HIGH:-80} ;;' \
-    '  -q\ set\ zte-usb-wifi-manager.charging.*|-q\ commit\ zte-usb-wifi-manager)' \
-    '    printf "%s\n" "$*" >>"${ZTE_TEST_UCI_LOG:?}"; exit 0 ;;' \
+    '  "-q get zte-usb-wifi-manager.charging.enabled")' \
+    '    [ "${ZTE_TEST_OLD_ENABLED_PRESENT:-1}" = 1 ] || exit 1' \
+    '    value=${ZTE_TEST_OLD_ENABLED:-${ZTE_TEST_CHARGING_ENABLED:-0}} ;;' \
+    '  "-q get zte-usb-wifi-manager.charging.low_percent")' \
+    '    [ "${ZTE_TEST_OLD_LOW_PRESENT:-1}" = 1 ] || exit 1' \
+    '    value=${ZTE_TEST_OLD_LOW:-${ZTE_TEST_CHARGING_LOW:-30}} ;;' \
+    '  "-q get zte-usb-wifi-manager.charging.high_percent")' \
+    '    [ "${ZTE_TEST_OLD_HIGH_PRESENT:-1}" = 1 ] || exit 1' \
+    '    value=${ZTE_TEST_OLD_HIGH:-${ZTE_TEST_CHARGING_HIGH:-80}} ;;' \
+    '  -q\ set\ zte-usb-wifi-manager.charging.*|-q\ delete\ zte-usb-wifi-manager.charging.*|-q\ commit\ zte-usb-wifi-manager|-q\ revert\ zte-usb-wifi-manager)' \
+    '    log_mutation "$@" || exit 1; exit 0 ;;' \
     '  *) exit 1 ;;' \
     'esac' \
     'printf "%s\n" "$value"' >"$test_bin/uci"
 chmod +x "$test_bin/uci"
+service_init=$test_bin/zte-usb-wifi-manager-init
+# The generated service stub expands these variables when it executes.
+# shellcheck disable=SC2016
+printf '%s\n' \
+    '#!/bin/sh' \
+    'printf "%s\n" "$*" >>"${ZTE_TEST_RELOAD_LOG:?}"' \
+    'reload_count=$(wc -l <"${ZTE_TEST_RELOAD_LOG}" | tr -d " ")' \
+    'case ,${ZTE_TEST_RELOAD_FAIL_CALLS:-}, in' \
+    '  *,"$reload_count",*) exit 1 ;;' \
+    'esac' \
+    'exit 0' >"$service_init"
+chmod +x "$service_init"
+RPCD_TEST_SERVICE_INIT=$service_init
+export RPCD_TEST_SERVICE_INIT
 RPCD_TEST_LIB_DIR=$write_lib
 export RPCD_TEST_LIB_DIR
 
@@ -361,16 +397,31 @@ uci_write_log=$work/uci-writes
 : >"$uci_write_log"
 charging_saved=$(printf '%s\n' \
     '{"enabled":true,"low_percent":30,"high_percent":80}' |
-    ZTE_TEST_UCI_LOG=$uci_write_log rpcd_call call set_charging_settings)
+    rpcd_call call set_charging_settings)
 assert_eq '{"ok":true,"enabled":true,"low_percent":30,"high_percent":80}' \
     "$charging_saved"
-assert_eq '-q set zte-usb-wifi-manager.charging.enabled=1
--q set zte-usb-wifi-manager.charging.low_percent=30
--q set zte-usb-wifi-manager.charging.high_percent=80
--q commit zte-usb-wifi-manager' "$(cat "$uci_write_log")"
 assert_eq '{"ok":false,"error":"invalid_settings"}' "$(printf '%s\n' \
     '{"enabled":true,"low_percent":80,"high_percent":30}' |
     ZTE_TEST_UCI_LOG=$uci_write_log rpcd_call call set_charging_settings)"
+
+charging_request='{"enabled":true,"low_percent":30,"high_percent":80}'
+for transaction_result in \
+    transaction_busy transaction_recovery_failed settings_snapshot_failed \
+    settings_write_failed settings_rollback_failed service_reload_failed \
+    service_restore_failed; do
+    transaction_reply=$(printf '%s\n' "$charging_request" |
+        ZTE_TEST_CHARGING_TX_RESULT=$transaction_result \
+            rpcd_call call set_charging_settings)
+    assert_eq \
+        "{\"ok\":false,\"error\":\"$transaction_result\"}" \
+        "$transaction_reply"
+done
+unknown_transaction_reply=$(printf '%s\n' "$charging_request" |
+    ZTE_TEST_CHARGING_TX_RESULT=unexpected_internal_result \
+        rpcd_call call set_charging_settings)
+assert_eq '{"ok":false,"error":"transaction_recovery_failed"}' \
+    "$unknown_transaction_reply" \
+    'rpcd must fail closed for an unknown transaction result'
 
 effective_capabilities=$(
     ZTE_TEST_WRITE_ENABLED=1 \

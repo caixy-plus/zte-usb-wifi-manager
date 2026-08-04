@@ -15,6 +15,7 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
 . /usr/lib/zte-usb-wifi-manager/recovery-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/event-log.sh
+. /usr/lib/zte-usb-wifi-manager/charging-transaction.sh
 . /usr/lib/zte-usb-wifi-manager/actions.sh
 . /usr/lib/zte-usb-wifi-manager/action-executor.sh
 . /usr/lib/zte-usb-wifi-manager/snapshot.sh
@@ -777,6 +778,23 @@ record_event() {
 		"$_zte_event_code" "$_zte_event_time" "$EVENT_LOG_MAX_BYTES"
 }
 
+# rpcd leaves a durable UCI marker until a successful service reload has made
+# the committed values active. Daemon startup can prove that fact from the
+# values it just loaded and finalize the marker without recursively reloading
+# itself. Any ambiguity disables automatic charging writes for this process.
+recover_charging_transaction() {
+	_zte_charging_tx_result=$(zte_charging_transaction_daemon_finalize \
+		"$STATE_DIR" "$battery_enabled" "$battery_low" "$battery_high") ||
+		_zte_charging_tx_result=transaction_recovery_failed
+	[ "$_zte_charging_tx_result" = ok ] && return 0
+	battery_enabled=0
+	logger -t zte-usb-wifi-manager \
+		'charging_transaction_recovery_failed; automatic charging disabled'
+	record_event error smart_charge charging_transaction_recovery_failed \
+		"$(date +%s)" || :
+	return 0
+}
+
 record_state_change() {
 	_zte_new_state=$1
 	_zte_state_time=$2
@@ -1535,6 +1553,7 @@ main() {
 	}
 	load_config
 	init_state
+	recover_charging_transaction
 	if ! configure_device_profile; then
 		_zte_profile_updated=$(date +%s)
 		_zte_profile_status=$(zte_snapshot_compose \

@@ -111,6 +111,20 @@ backend=device_power_supply
 
 连续运行数天观察决策，无误判后才允许真实执行。
 
+LuCI 保存智能充电阈值时采用可恢复 UCI 事务：rpcd 以非阻塞 `flock` 串行化
+“旧值快照、私有 UCI savedir 提交、服务 reload、失败补偿”全过程，并把事务 ID、
+新值、旧值和 `reload_pending`/`restore_pending` 状态与配置一次提交。daemon 不获取
+事务锁也不清除标记；它只验证刚加载的配置与标记状态，原子写入 mode-0600 的运行时
+ACK。rpcd 在仍持锁时验证 ACK 的事务 ID、状态和值，并在 reload 前、接受 ACK 时和
+清除标记前重新核对 committed 配置的 raw 值及 option presence；匹配后才清除标记。
+下一次写请求会先清理安全的孤立 ACK、消费当前 ACK 或恢复未完成事务。锁、标记、
+ACK、配置漂移或清理状态有任何歧义时拒绝新写入，
+daemon 则继续只读运行并关闭该进程的自动充电写入。`tests/test_charging_transaction.sh`
+使用有 committed/staged 状态的 UCI 模拟器覆盖并发锁争用、信号中断、SIGKILL 遗留
+savedir 回收、ACK 缺失/延迟/畸形、配置漂移，以及通过预置 durable marker 模拟的
+initial commit 后和 restore commit 后恢复入口；它不宣称用真实 SIGKILL 命中每条
+commit/reload/marker-clear 指令之间的微小时间窗。
+
 U30 Pro 的正式 72 小时验收必须指定 `--adapter zte_u30`。验证器允许设备在
 `charging` 和 `direct_supply` 之间切换，但任何板级 VBUS 关闭、`eth2` 消失、适配器
 变化、连续失败计数超过 3 或动作结果文件超过守护进程上限 50，只要被内部监测捕获

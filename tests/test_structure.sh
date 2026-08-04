@@ -625,6 +625,7 @@ assert_file_contains Makefile 'tests/test_actions.sh'
 assert_file_contains Makefile 'tests/test_action_executor.sh'
 assert_file_contains Makefile 'tests/test_action_verifier.sh'
 assert_file_contains Makefile 'tests/test_daemon_actions.sh'
+assert_file_contains Makefile 'tests/test_charging_transaction.sh'
 assert_file_contains Makefile 'tests/test_power_adapter.sh'
 assert_file_contains Makefile 'tests/test_event_log.sh'
 assert_file_contains Makefile 'tests/test_recovery_inhibit.sh'
@@ -698,6 +699,10 @@ eval "$(extract_daemon_function remove_pid_file)"
 eval "$(extract_daemon_function write_sms_cache)"
 eval "$(extract_daemon_function record_event)"
 eval "$(extract_daemon_function record_state_change)"
+assert_file_contains "$daemon" 'charging-transaction\.sh'
+assert_file_contains "$daemon" '^recover_charging_transaction\(\) \{$'
+assert_file_contains "$daemon" '^\trecover_charging_transaction$'
+assert_file_contains "$backend/Makefile" 'DEPENDS:=.*\+flock'
 handle_planned_power_off() { return 1; }
 # Smart-charge behavior has a dedicated orchestration suite. These legacy
 # polling assertions keep their historical snapshot expectation isolated.
@@ -1591,6 +1596,7 @@ early_safety_restore() {
     printf '%s\n' safety >>"$startup_order"
 }
 init_state() { :; }
+recover_charging_transaction() { :; }
 configure_device_profile() { ZTE_ADAPTER_MODEL=U25S; }
 main_poll_count=0
 main_action_order=$work/main-action-order

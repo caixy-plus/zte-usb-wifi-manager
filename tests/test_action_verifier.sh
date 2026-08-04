@@ -85,7 +85,7 @@ zte_adapter_fetch_wifi_setting() {
     printf '%s\n' '{"enabled":true,"band":"2g","ssid":"fixture","security":"wpa2_psk"}'
 }
 verify_success set_wifi \
-    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"fixture","security":"wpa2_psk","password":"fixture-pass","channel":"auto"}'
+    '{"action":"set_wifi","enabled":true,"band":"2g","ssid":"fixture","security":"wpa2_psk","password":"DUMMY_WIFI_PASSWORD","channel":"auto"}'
 zte_adapter_fetch_wifi_setting() { return 1; }
 verify_failure readback_failed set_wifi \
     '{"action":"set_wifi","enabled":false}'
