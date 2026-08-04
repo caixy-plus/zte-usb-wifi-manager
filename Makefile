@@ -17,6 +17,7 @@ test:
 		tests/test_adapter.sh \
 		tests/test_u25s_simulator.sh \
 		tests/test_u30_power_e2e.sh \
+		tests/test_u30_settings_e2e.sh \
 		tests/test_actions.sh \
 		tests/test_action_executor.sh \
 		tests/test_action_verifier.sh \

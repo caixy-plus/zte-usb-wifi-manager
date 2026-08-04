@@ -38,10 +38,36 @@ SCENARIOS = (
     "u30-power-readback-malformed",
     "u30-power-readback-timeout",
     "u30-power-readback-invalid-mode",
+    "u30-setting-success",
+    "u30-setting-reject",
+    "u30-setting-timeout-before-apply",
+    "u30-setting-apply-then-timeout",
+    "u30-setting-malformed-applied",
+    "u30-setting-malformed-unapplied",
+    "u30-setting-empty-applied",
+    "u30-setting-empty-unapplied",
 )
 PROFILES = ("u25s", "u30")
 U30_POWER_SCENARIOS = {
     scenario for scenario in SCENARIOS if scenario.startswith("u30-power-")
+}
+U30_SETTING_SCENARIOS = {
+    scenario for scenario in SCENARIOS if scenario.startswith("u30-setting-")
+}
+U30_SETTING_ACTIONS = {
+    "SET_CONNECTION_MODE",
+    "APN_PROC",
+    "setAccessPointInfo",
+    "switchWiFiModule",
+    "DATA_LIMIT_SETTING",
+    "RESET_DATA_COUNTER",
+}
+U30_SETTING_COMMANDS = {
+    "ConnectionMode,autoConnectWhenRoaming",
+    "index,profile_name,apn_wan_apn,apn_ppp_auth_mode,apn_ppp_username",
+    "wifi_onoff_state,wifi_chip1_ssid1_switch_onoff,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode",
+    "flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect",
+    "flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time",
 }
 FIXTURE_STATE_PATH = "/fixture/action_state"
 FIXTURE_ACTIONS = {
@@ -174,6 +200,7 @@ class SimulatorState:
         profile="u25s",
         allow_u30_power_writes=False,
         u30_power_mode=None,
+        allow_u30_setting_writes=False,
     ):
         self.scenario = scenario
         self.login_secret = login_secret
@@ -196,6 +223,32 @@ class SimulatorState:
         self.u30_power_pending_mode = None
         self.u30_power_post_count = 0
         self.u30_power_read_count = 0
+        self.allow_u30_setting_writes = allow_u30_setting_writes
+        self.u30_setting_post_count = 0
+        self.u30_setting_read_count = 0
+        self.u30_settings = {
+            "ConnectionMode": "auto_dial",
+            "autoConnectWhenRoaming": "off",
+            "index": "1",
+            "profile_name": "Default",
+            "apn_wan_apn": "default",
+            "apn_ppp_auth_mode": "none",
+            "apn_ppp_username": "",
+            "wifi_onoff_state": "1",
+            "wifi_chip1_ssid1_switch_onoff": "1",
+            "wifi_chip1_ssid1_ssid": "Initial WiFi",
+            "wifi_chip1_ssid1_auth_mode": "WPA2PSK",
+            "flux_data_volume_limit_switch": "0",
+            "flux_data_volume_limit_unit": "data",
+            "flux_data_volume_limit_size": "0",
+            "flux_data_volume_alert_percent": "0",
+            "flux_auto_clear_flow_data_switch": "0",
+            "flux_clear_date": "1",
+            "flux_limited_disconnect": "0",
+            "flux_monthly_tx_bytes": "1024",
+            "flux_monthly_rx_bytes": "2048",
+            "flux_monthly_time": "60",
+        }
         self.active_sim_slot = str(
             json.loads(self.fixture).get("simcard_active_slot_temp", "")
         )
@@ -290,6 +343,181 @@ class SimulatorState:
                 )
             return payload
 
+    def u30_setting_patch(self, action, form):
+        """Validate one frozen production form and return its state delta."""
+        if any(len(values) != 1 for values in form.values()):
+            return None
+        if form.get("isTest") != ["false"] or form.get("goformId") != [action]:
+            return None
+
+        def value(key):
+            return form.get(key, [""])[0]
+
+        if action == "SET_CONNECTION_MODE":
+            if set(form) != {
+                "isTest", "goformId", "ConnectionMode",
+                "dial_roam_setting_option",
+            } or value("ConnectionMode") not in {
+                "auto_dial", "manual_dial", "on_demand",
+            } or value("dial_roam_setting_option") != "off":
+                return None
+            return {
+                "ConnectionMode": value("ConnectionMode"),
+                "autoConnectWhenRoaming": "off",
+            }
+
+        if action == "APN_PROC":
+            expected = {
+                "isTest", "goformId", "apn_action", "index", "apn_mode",
+                "profile_name", "apn_wan_apn", "dns_mode",
+                "prefer_dns_manual", "w_standby_dns_manual",
+                "apn_ppp_username", "apn_ppp_passwd", "apn_ppp_auth_mode",
+                "apn_select", "apn_wan_dial", "apn_pdp_type",
+                "apn_pdp_select", "apn_pdp_addr", "set_default_flag",
+            }
+            if set(form) != expected or value("apn_action") != "set_default" \
+                    or value("index") != self.u30_settings["index"] \
+                    or value("profile_name") != self.u30_settings["profile_name"] \
+                    or value("apn_mode") != "manual" \
+                    or value("dns_mode") != "auto" \
+                    or value("apn_select") != "manual" \
+                    or value("apn_wan_dial") != "*99#" \
+                    or value("apn_pdp_type") != "PPP" \
+                    or value("apn_pdp_select") != "auto" \
+                    or value("set_default_flag") != "1" \
+                    or value("prefer_dns_manual") != "" \
+                    or value("w_standby_dns_manual") != "" \
+                    or value("apn_pdp_addr") != "" \
+                    or value("apn_ppp_auth_mode") not in {
+                        "none", "pap", "chap", "pap_chap",
+                    }:
+                return None
+            if value("apn_ppp_auth_mode") == "none" and (
+                value("apn_ppp_username") != ""
+                or value("apn_ppp_passwd") != ""
+            ):
+                return None
+            return {
+                "apn_wan_apn": value("apn_wan_apn"),
+                "apn_ppp_auth_mode": value("apn_ppp_auth_mode"),
+                "apn_ppp_username": value("apn_ppp_username"),
+            }
+
+        if action == "switchWiFiModule":
+            if set(form) != {"isTest", "goformId", "SwitchOption"} \
+                    or value("SwitchOption") != "0":
+                return None
+            return {
+                "wifi_onoff_state": "0",
+                "wifi_chip1_ssid1_switch_onoff": "0",
+            }
+
+        if action == "setAccessPointInfo":
+            expected = {
+                "isTest", "goformId", "ChipIndex", "AccessPointIndex",
+                "AccessPointSwitchStatus", "SSID", "ApIsolate", "AuthMode",
+                "ApBroadcastDisabled", "EncrypType",
+            }
+            if set(form) not in (expected, expected | {"Password"}) \
+                    or value("ChipIndex") != "0" \
+                    or value("AccessPointIndex") != "0" \
+                    or value("AccessPointSwitchStatus") != "1" \
+                    or value("ApIsolate") != "0" \
+                    or value("ApBroadcastDisabled") != "0" \
+                    or value("AuthMode") not in {
+                        "OPEN", "WPA2PSK", "WPA3PSK", "WPA2PSKWPA3PSK",
+                    }:
+                return None
+            if value("AuthMode") == "OPEN":
+                if "Password" in form or value("EncrypType") != "NONE":
+                    return None
+            elif "Password" not in form or value("EncrypType") != "CCMP":
+                return None
+            return {
+                "wifi_onoff_state": "1",
+                "wifi_chip1_ssid1_switch_onoff": "1",
+                "wifi_chip1_ssid1_ssid": value("SSID"),
+                "wifi_chip1_ssid1_auth_mode": value("AuthMode"),
+            }
+
+        if action == "DATA_LIMIT_SETTING":
+            if value("flux_data_volume_limit_switch") == "0":
+                if set(form) != {
+                    "isTest", "goformId", "flux_data_volume_limit_switch",
+                    "notify_deviceui_enable",
+                } or value("notify_deviceui_enable") != "0":
+                    return None
+                return {
+                    "flux_data_volume_limit_switch": "0",
+                    "flux_data_volume_limit_unit": "data",
+                    "flux_data_volume_limit_size": "0",
+                    "flux_data_volume_alert_percent": "0",
+                    "flux_auto_clear_flow_data_switch": "0",
+                    "flux_clear_date": "1",
+                    "flux_limited_disconnect": "0",
+                }
+            expected = {
+                "isTest", "goformId", "flux_data_volume_limit_unit",
+                "flux_data_volume_limit_size", "flux_data_volume_alert_percent",
+                "flux_auto_clear_flow_data_switch", "flux_clear_date",
+                "flux_limited_disconnect", "flux_data_volume_limit_switch",
+                "notify_deviceui_enable",
+            }
+            if set(form) != expected \
+                    or value("flux_data_volume_limit_switch") != "1" \
+                    or value("flux_data_volume_limit_unit") != "data" \
+                    or value("flux_auto_clear_flow_data_switch") != "1" \
+                    or value("notify_deviceui_enable") != "0" \
+                    or value("flux_limited_disconnect") not in {"0", "1"}:
+                return None
+            return {
+                key: value(key) for key in (
+                    "flux_data_volume_limit_switch",
+                    "flux_data_volume_limit_unit",
+                    "flux_data_volume_limit_size",
+                    "flux_data_volume_alert_percent",
+                    "flux_auto_clear_flow_data_switch",
+                    "flux_clear_date",
+                    "flux_limited_disconnect",
+                )
+            }
+
+        if action == "RESET_DATA_COUNTER":
+            if set(form) != {"isTest", "goformId"}:
+                return None
+            return {
+                "flux_monthly_tx_bytes": "0",
+                "flux_monthly_rx_bytes": "0",
+                "flux_monthly_time": "0",
+            }
+        return None
+
+    def record_u30_setting_post(self, action, result, patch=None):
+        with self.lock:
+            self.u30_setting_post_count += 1
+            if patch is not None:
+                self.u30_settings.update(patch)
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"POST U30_SETTING {action} {result} "
+                    f"count={self.u30_setting_post_count}\n"
+                )
+
+    def u30_setting_readback(self, command):
+        with self.lock:
+            self.u30_setting_read_count += 1
+            payload = {
+                key: self.u30_settings[key]
+                for key in command.split(",")
+                if key in self.u30_settings
+            }
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"GET U30_SETTING {command} 200 "
+                    f"count={self.u30_setting_read_count}\n"
+                )
+            return json.dumps(payload, separators=(",", ":"))
+
     def status_payload(self):
         with self.lock:
             payload = json.loads(self.fixture)
@@ -367,7 +595,10 @@ class U25SHandler(BaseHTTPRequestHandler):
             return
 
         requested_fields = command.split(",") if command else []
-        if not requested_fields or any(field not in READ_FIELDS for field in requested_fields):
+        if not requested_fields or (
+            command not in U30_SETTING_COMMANDS
+            and any(field not in READ_FIELDS for field in requested_fields)
+        ):
             self.state.record("GET UNKNOWN 404")
             self.send_payload(404, '{"error":"not_found"}')
             return
@@ -397,6 +628,21 @@ class U25SHandler(BaseHTTPRequestHandler):
                     else "application/json"
                 )
                 self.send_payload(200, payload, content_type)
+                return
+            if (
+                self.state.scenario in U30_SETTING_SCENARIOS
+                and command in U30_SETTING_COMMANDS
+            ):
+                expected_referer = f"http://{self.headers.get('Host', '')}/"
+                if (
+                    self.headers.get("Referer") != expected_referer
+                    or query.get("isTest", [""])[0] != "false"
+                    or query.get("multi_data", [""])[0] != "1"
+                ):
+                    self.state.record("GET U30_SETTING INVALID_REQUEST")
+                    self.send_payload(400, '{"result":"invalid_request"}')
+                    return
+                self.send_payload(200, self.state.u30_setting_readback(command))
                 return
             if (
                 self.headers.get("Referer") != "https://192.168.0.1/"
@@ -507,6 +753,64 @@ class U25SHandler(BaseHTTPRequestHandler):
                 self.send_payload(200, '{"result":"success"}')
             return
 
+        if self.state.profile == "u30" and action in U30_SETTING_ACTIONS:
+            expected_referer = f"http://{self.headers.get('Host', '')}/"
+            patch = self.state.u30_setting_patch(action, form)
+            if not self.state.allow_u30_setting_writes:
+                self.state.record_u30_setting_post(action, "403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            if (
+                self.state.scenario not in U30_SETTING_SCENARIOS
+                or patch is None
+                or self.headers.get("Referer") != expected_referer
+                or self.headers.get("X-Requested-With") != "XMLHttpRequest"
+                or self.headers.get("Content-Type")
+                != "application/x-www-form-urlencoded"
+            ):
+                self.state.record_u30_setting_post(action, "400")
+                self.send_payload(400, '{"result":"invalid_request"}')
+                return
+
+            scenario = self.state.scenario
+            if scenario == "u30-setting-reject":
+                self.state.record_u30_setting_post(action, "403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            if scenario == "u30-setting-timeout-before-apply":
+                self.state.record_u30_setting_post(action, "TIMEOUT_BEFORE_APPLY")
+                time.sleep(2)
+                self.send_payload(200, '{"result":"success"}')
+                return
+            if scenario == "u30-setting-apply-then-timeout":
+                self.state.record_u30_setting_post(
+                    action, "APPLY_THEN_TIMEOUT", patch
+                )
+                time.sleep(2)
+                self.send_payload(200, '{"result":"success"}')
+                return
+
+            applied = scenario not in {
+                "u30-setting-malformed-unapplied",
+                "u30-setting-empty-unapplied",
+            }
+            self.state.record_u30_setting_post(
+                action, "200", patch if applied else None
+            )
+            if scenario in {
+                "u30-setting-malformed-applied",
+                "u30-setting-malformed-unapplied",
+            }:
+                self.send_payload(200, "not-json", "text/plain")
+            elif scenario in {
+                "u30-setting-empty-applied",
+                "u30-setting-empty-unapplied",
+            }:
+                self.send_payload(200, "")
+            else:
+                self.send_payload(200, '{"result":"success"}')
+            return
+
         if action != "LOGIN":
             if not self.state.allow_fixture_writes:
                 self.state.record("POST WRITE 403")
@@ -585,6 +889,7 @@ def parse_args():
     parser.add_argument("--login-secret", required=True)
     parser.add_argument("--allow-fixture-writes", action="store_true")
     parser.add_argument("--allow-u30-power-writes", action="store_true")
+    parser.add_argument("--allow-u30-setting-writes", action="store_true")
     parser.add_argument("--u30-power-mode", choices=("0", "1"))
     return parser.parse_args()
 
@@ -610,6 +915,7 @@ def main():
         args.profile,
         args.allow_u30_power_writes,
         args.u30_power_mode,
+        args.allow_u30_setting_writes,
     )
     server = SimulatorServer((host, args.port), U25SHandler)
     server.simulator_state = state
