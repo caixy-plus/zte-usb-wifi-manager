@@ -442,9 +442,10 @@ zte_charging_tx_cleanup_orphans() {
 zte_charging_tx_begin_fail() {
 	case ${zte_charging_tx_savedir:-} in
 		"$_zte_charging_tx_savedir_root"/charging-uci.*)
-			[ -d "$zte_charging_tx_savedir" ] &&
-				[ ! -L "$zte_charging_tx_savedir" ] &&
+			if [ -d "$zte_charging_tx_savedir" ] &&
+				[ ! -L "$zte_charging_tx_savedir" ]; then
 				rm -rf "$zte_charging_tx_savedir" || :
+			fi
 			;;
 	esac
 	"${ZTE_CHARGING_FLOCK_BIN:-flock}" -u 9 >/dev/null 2>&1 || :
@@ -499,8 +500,11 @@ zte_charging_transaction_apply() (
 		while [ ! -f "$ZTE_CHARGING_TX_AFTER_LOCK_BARRIER.release" ]; do sleep 0.05; done
 	fi
 	zte_charging_tx_recover_locked "$_zte_charging_tx_service" || { printf '%s\n' transaction_recovery_failed; return; }
-	[ ! -e "$zte_charging_tx_ack_file" ] &&
-		[ ! -L "$zte_charging_tx_ack_file" ] || { printf '%s\n' transaction_recovery_failed; return; }
+	if [ -e "$zte_charging_tx_ack_file" ] ||
+		[ -L "$zte_charging_tx_ack_file" ]; then
+		printf '%s\n' transaction_recovery_failed
+		return
+	fi
 	zte_charging_tx_snapshot || { printf '%s\n' settings_snapshot_failed; return; }
 	_zte_charging_tx_nonce=$(zte_charging_tx_nonce) || { printf '%s\n' settings_write_failed; return; }
 	# This transaction intentionally runs in a function-level subshell.
@@ -577,15 +581,22 @@ zte_charging_tx_daemon_savedir_prepare() {
 
 zte_charging_transaction_daemon_finalize() (
 	_zte_charging_tx_state_dir=$1; _zte_loaded_enabled=$2; _zte_loaded_low=$3; _zte_loaded_high=$4
-	[ -d "$_zte_charging_tx_state_dir" ] && [ ! -L "$_zte_charging_tx_state_dir" ] || { printf '%s\n' transaction_recovery_failed; return; }
+	if [ ! -d "$_zte_charging_tx_state_dir" ] ||
+		[ -L "$_zte_charging_tx_state_dir" ]; then
+		printf '%s\n' transaction_recovery_failed
+		return
+	fi
 	zte_charging_tx_daemon_savedir_prepare "$_zte_charging_tx_state_dir" || { printf '%s\n' transaction_recovery_failed; return; }
 	if zte_charging_tx_marker_read; then printf '%s\n' ok; return; else _zte_marker_status=$?; fi
 	[ "$_zte_marker_status" = 1 ] || { printf '%s\n' transaction_recovery_failed; return; }
 	zte_charging_tx_current_matches_marker_state || { printf '%s\n' transaction_recovery_failed; return; }
 	zte_charging_tx_expected
-	[ "$_zte_loaded_enabled" = "$zte_charging_tx_expected_enabled" ] &&
-		[ "$_zte_loaded_low" = "$zte_charging_tx_expected_low" ] &&
-		[ "$_zte_loaded_high" = "$zte_charging_tx_expected_high" ] || { printf '%s\n' transaction_recovery_failed; return; }
+	if [ "$_zte_loaded_enabled" != "$zte_charging_tx_expected_enabled" ] ||
+		[ "$_zte_loaded_low" != "$zte_charging_tx_expected_low" ] ||
+		[ "$_zte_loaded_high" != "$zte_charging_tx_expected_high" ]; then
+		printf '%s\n' transaction_recovery_failed
+		return
+	fi
 	# marker_read assigns this value in the current daemon-finalize subshell.
 	# shellcheck disable=SC2031
 	zte_charging_tx_ack_write "$_zte_charging_tx_state_dir/charging-transaction.ack" \
