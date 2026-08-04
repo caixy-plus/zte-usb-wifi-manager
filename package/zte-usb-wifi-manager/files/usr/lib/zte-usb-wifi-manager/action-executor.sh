@@ -228,11 +228,11 @@ zte_verify_action_after_restart() (
 			;;
 		*) ;;
 	esac
-	[ "$_zte_verify_read_ok" = 1 ] &&
-		[ -n "$_zte_verify_observed" ] || {
+	if [ "$_zte_verify_read_ok" != 1 ] ||
+		[ -z "$_zte_verify_observed" ]; then
 		printf '%s\n' readback_failed
 		return 1
-	}
+	fi
 	if [ "$_zte_verify_action" = switch_sim ]; then
 		zte_json_is_flat_object "$_zte_verify_observed" || {
 			printf '%s\n' readback_failed
