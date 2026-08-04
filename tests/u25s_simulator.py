@@ -46,6 +46,10 @@ SCENARIOS = (
     "u30-setting-malformed-unapplied",
     "u30-setting-empty-applied",
     "u30-setting-empty-unapplied",
+    "u30-action-success",
+    "u30-action-reject",
+    "u30-action-timeout-before-apply",
+    "u30-action-apply-then-timeout",
 )
 PROFILES = ("u25s", "u30")
 U30_POWER_SCENARIOS = {
@@ -68,6 +72,16 @@ U30_SETTING_COMMANDS = {
     "wifi_onoff_state,wifi_chip1_ssid1_switch_onoff,wifi_chip1_ssid1_ssid,wifi_chip1_ssid1_auth_mode",
     "flux_data_volume_limit_switch,flux_data_volume_limit_unit,flux_data_volume_limit_size,flux_data_volume_alert_percent,flux_auto_clear_flow_data_switch,flux_clear_date,flux_limited_disconnect",
     "flux_monthly_tx_bytes,flux_monthly_rx_bytes,flux_monthly_time",
+}
+U30_ACTION_SCENARIOS = {
+    scenario for scenario in SCENARIOS if scenario.startswith("u30-action-")
+}
+U30_ACTIONS = {
+    "SEND_SMS",
+    "DELETE_SMS",
+    "SET_MSG_READ",
+    "REBOOT_DEVICE",
+    "SHUTDOWN_DEVICE",
 }
 FIXTURE_STATE_PATH = "/fixture/action_state"
 FIXTURE_ACTIONS = {
@@ -201,6 +215,7 @@ class SimulatorState:
         allow_u30_power_writes=False,
         u30_power_mode=None,
         allow_u30_setting_writes=False,
+        allow_u30_action_writes=False,
     ):
         self.scenario = scenario
         self.login_secret = login_secret
@@ -249,6 +264,12 @@ class SimulatorState:
             "flux_monthly_rx_bytes": "2048",
             "flux_monthly_time": "60",
         }
+        self.allow_u30_action_writes = allow_u30_action_writes
+        self.u30_action_post_count = 0
+        self.u30_sms_status = {"4": "0", "6": "0"}
+        self.u30_messages = {"42": "1"}
+        self.u30_device_command = None
+        self.u30_device_probe_count = 0
         self.active_sim_slot = str(
             json.loads(self.fixture).get("simcard_active_slot_temp", "")
         )
@@ -518,6 +539,125 @@ class SimulatorState:
                 )
             return json.dumps(payload, separators=(",", ":"))
 
+    def u30_action_valid(self, action, form):
+        if any(len(values) != 1 for values in form.values()):
+            return False
+        if form.get("isTest") != ["false"] or form.get("goformId") != [action]:
+            return False
+        value = lambda key: form.get(key, [""])[0]
+        if action == "SEND_SMS":
+            if set(form) != {
+                "isTest", "goformId", "notCallback", "Number", "sms_time",
+                "MessageBody", "ID", "encode_type",
+            }:
+                return False
+            number = value("Number")
+            return (
+                value("notCallback") == "true"
+                and number.startswith("+")
+                and number[1:].isdigit()
+                and value("sms_time") != ""
+                and value("MessageBody") != ""
+                and all(char in "0123456789ABCDEF" for char in value("MessageBody"))
+                and value("ID") == "-1"
+                and value("encode_type") in {"GSM7_default", "UNICODE"}
+            )
+        if action == "DELETE_SMS":
+            message_id = value("msg_id")
+            return (
+                set(form) == {
+                    "isTest", "goformId", "msg_id", "notCallback",
+                }
+                and message_id.endswith(";")
+                and message_id[:-1].isdigit()
+                and value("notCallback") == "true"
+            )
+        if action == "SET_MSG_READ":
+            message_id = value("msg_id")
+            return (
+                set(form) == {"isTest", "goformId", "msg_id", "tag"}
+                and message_id.endswith(";")
+                and message_id[:-1].isdigit()
+                and value("tag") == "0"
+            )
+        if action in {"REBOOT_DEVICE", "SHUTDOWN_DEVICE"}:
+            return set(form) == {"isTest", "goformId"}
+        return False
+
+    def apply_u30_action(self, action, form):
+        with self.lock:
+            if action == "SEND_SMS":
+                self.u30_sms_status["4"] = "3"
+            elif action == "DELETE_SMS":
+                message_id = form["msg_id"][0][:-1]
+                self.u30_messages.pop(message_id, None)
+                self.u30_sms_status["6"] = "3"
+            elif action == "SET_MSG_READ":
+                message_id = form["msg_id"][0][:-1]
+                if message_id in self.u30_messages:
+                    self.u30_messages[message_id] = "0"
+            elif action == "REBOOT_DEVICE":
+                self.u30_device_command = "reboot"
+                self.u30_device_probe_count = 0
+            elif action == "SHUTDOWN_DEVICE":
+                self.u30_device_command = "shutdown"
+                self.u30_device_probe_count = 0
+
+    def record_u30_action_post(self, action, result):
+        with self.lock:
+            self.u30_action_post_count += 1
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    f"POST U30_ACTION {action} {result} "
+                    f"count={self.u30_action_post_count}\n"
+                )
+
+    def u30_sms_status_payload(self, command):
+        with self.lock:
+            result = self.u30_sms_status.get(command, "0")
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(f"GET U30_SMS_STATUS command={command} result={result}\n")
+            return json.dumps(
+                {"sms_cmd_status_result": result}, separators=(",", ":")
+            )
+
+    def u30_sms_messages_payload(self):
+        with self.lock:
+            messages = [
+                {"id": message_id, "tag": tag}
+                for message_id, tag in sorted(self.u30_messages.items())
+            ]
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(f"GET U30_SMS_MESSAGES count={len(messages)}\n")
+            return json.dumps({"messages": messages}, separators=(",", ":"))
+
+    def u30_device_probe_payload(self):
+        with self.lock:
+            if self.u30_device_command is None:
+                event = "preflight"
+                payload = '{"mc_modem_main_state":"connected"}'
+            else:
+                self.u30_device_probe_count += 1
+                count = self.u30_device_probe_count
+                if self.u30_device_command == "reboot" and count >= 3:
+                    event = "recovered"
+                    payload = '{"mc_modem_main_state":"connected"}'
+                elif self.u30_device_command == "reboot" and count == 2:
+                    event = "outage-qualified"
+                    payload = "{}"
+                elif self.u30_device_command == "shutdown" and count >= 4:
+                    event = "shutdown-offline"
+                    payload = "{}"
+                elif count == 2:
+                    event = "outage-qualified"
+                    payload = "{}"
+                else:
+                    event = "outage-start"
+                    payload = "{}"
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(f"GET U30_DEVICE {event} count={self.u30_device_probe_count}\n")
+            return payload
+
     def status_payload(self):
         with self.lock:
             payload = json.loads(self.fixture)
@@ -597,6 +737,7 @@ class U25SHandler(BaseHTTPRequestHandler):
         requested_fields = command.split(",") if command else []
         if not requested_fields or (
             command not in U30_SETTING_COMMANDS
+            and command != "sms_cmd_status_info"
             and any(field not in READ_FIELDS for field in requested_fields)
         ):
             self.state.record("GET UNKNOWN 404")
@@ -606,6 +747,30 @@ class U25SHandler(BaseHTTPRequestHandler):
 
         if self.state.profile == "u30":
             query = parse_qs(request.query)
+            if self.state.scenario in U30_ACTION_SCENARIOS:
+                expected_referer = f"http://{self.headers.get('Host', '')}/"
+                if (
+                    self.headers.get("Referer") != expected_referer
+                    or query.get("isTest", [""])[0] != "false"
+                ):
+                    self.state.record("GET U30_ACTION INVALID_REQUEST")
+                    self.send_payload(400, '{"result":"invalid_request"}')
+                    return
+                if command == "sms_cmd_status_info":
+                    sms_command = query.get("sms_cmd", [""])[0]
+                    if sms_command not in {"1", "2", "3", "4", "5", "6"}:
+                        self.send_payload(400, '{"result":"invalid_request"}')
+                        return
+                    self.send_payload(
+                        200, self.state.u30_sms_status_payload(sms_command)
+                    )
+                    return
+                if command == "sms_data_total":
+                    self.send_payload(200, self.state.u30_sms_messages_payload())
+                    return
+                if command == "mc_modem_main_state":
+                    self.send_payload(200, self.state.u30_device_probe_payload())
+                    return
             if (
                 self.state.scenario in U30_POWER_SCENARIOS
                 and command == "power_supply_mode"
@@ -811,6 +976,44 @@ class U25SHandler(BaseHTTPRequestHandler):
                 self.send_payload(200, '{"result":"success"}')
             return
 
+        if self.state.profile == "u30" and action in U30_ACTIONS:
+            expected_referer = f"http://{self.headers.get('Host', '')}/"
+            if not self.state.allow_u30_action_writes:
+                self.state.record_u30_action_post(action, "403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            if (
+                self.state.scenario not in U30_ACTION_SCENARIOS
+                or not self.state.u30_action_valid(action, form)
+                or self.headers.get("Referer") != expected_referer
+                or self.headers.get("X-Requested-With") != "XMLHttpRequest"
+                or self.headers.get("Content-Type")
+                != "application/x-www-form-urlencoded"
+            ):
+                self.state.record_u30_action_post(action, "400")
+                self.send_payload(400, '{"result":"invalid_request"}')
+                return
+
+            scenario = self.state.scenario
+            if scenario == "u30-action-reject":
+                self.state.record_u30_action_post(action, "403")
+                self.send_payload(403, '{"result":"denied"}')
+                return
+            if scenario == "u30-action-timeout-before-apply":
+                self.state.record_u30_action_post(action, "TIMEOUT_BEFORE_APPLY")
+                time.sleep(2)
+                self.send_payload(200, '{"result":"success"}')
+                return
+            self.state.apply_u30_action(action, form)
+            if scenario == "u30-action-apply-then-timeout":
+                self.state.record_u30_action_post(action, "APPLY_THEN_TIMEOUT")
+                time.sleep(2)
+                self.send_payload(200, '{"result":"success"}')
+                return
+            self.state.record_u30_action_post(action, "200")
+            self.send_payload(200, '{"result":"success"}')
+            return
+
         if action != "LOGIN":
             if not self.state.allow_fixture_writes:
                 self.state.record("POST WRITE 403")
@@ -890,6 +1093,7 @@ def parse_args():
     parser.add_argument("--allow-fixture-writes", action="store_true")
     parser.add_argument("--allow-u30-power-writes", action="store_true")
     parser.add_argument("--allow-u30-setting-writes", action="store_true")
+    parser.add_argument("--allow-u30-action-writes", action="store_true")
     parser.add_argument("--u30-power-mode", choices=("0", "1"))
     return parser.parse_args()
 
@@ -916,6 +1120,7 @@ def main():
         args.allow_u30_power_writes,
         args.u30_power_mode,
         args.allow_u30_setting_writes,
+        args.allow_u30_action_writes,
     )
     server = SimulatorServer((host, args.port), U25SHandler)
     server.simulator_state = state
