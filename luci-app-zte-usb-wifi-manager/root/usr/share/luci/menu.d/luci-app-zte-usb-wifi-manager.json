@@ -1,6 +1,6 @@
 {
   "admin/services/zte-usb-wifi-manager": {
-    "title": "中兴随身 WiFi",
+    "title": "中兴智能充电",
     "order": 60,
     "action": {
       "type": "view",

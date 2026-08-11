@@ -21,14 +21,12 @@ work=$(mktemp -d /tmp/zte-test-actions.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 state=$work/state
 
-for action in \
-    switch_sim set_apn set_connection_mode set_wifi set_traffic_plan \
-    reset_traffic send_sms delete_sms mark_sms_read reboot_device shutdown_device \
-    set_power_supply_mode
+for action in set_power_supply_mode
 do
     assert_success zte_action_type_valid "$action"
 done
-for action in '' factory_reset 'switch sim' '../switch_sim' SWITCH_SIM; do
+for action in '' factory_reset switch_sim set_apn set_wifi send_sms reboot_device \
+    'switch sim' '../switch_sim' SWITCH_SIM; do
     assert_failure zte_action_type_valid "$action"
 done
 
@@ -49,40 +47,40 @@ do
 done
 
 operation_id=op-1722345678-1234
-payload='{"target":"sim1"}'
+payload='{"mode":"charging"}'
 assert_success zte_action_enqueue \
-    "$state" "$operation_id" switch_sim "$payload" 1722345678
+    "$state" "$operation_id" set_power_supply_mode "$payload" 1722345678
 record=$state/actions/pending/$operation_id.json
 assert_eq 600 "$(test_file_mode "$record")"
-expected='{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"queued","payload":{"target":"sim1"},"created":1722345678}'
+expected='{"operation_id":"op-1722345678-1234","type":"set_power_supply_mode","state":"queued","payload":{"mode":"charging"},"created":1722345678}'
 assert_eq "$expected" "$(cat "$record")"
 assert_success zte_action_has_active "$state"
 assert_eq "$expected" "$(zte_action_get "$state" "$operation_id")"
 assert_eq \
-    '{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"queued","created":1722345678}' \
+    '{"operation_id":"op-1722345678-1234","type":"set_power_supply_mode","state":"queued","created":1722345678}' \
     "$(zte_action_public_status "$state" "$operation_id")"
 
 assert_failure zte_action_enqueue \
-    "$state" op-1722345679-1235 set_wifi '{"enabled":true}' 1722345679
+    "$state" op-1722345679-1235 set_power_supply_mode '{"mode":"charging"}' 1722345679
 assert_failure zte_action_enqueue \
     "$work/other" op-1722345680-1236 unknown '{}' 1722345680
 assert_failure zte_action_enqueue \
-    "$work/other" op-1722345680-1236 set_wifi '{"nested":{"value":1}}' 1722345680
+    "$work/other" op-1722345680-1236 set_power_supply_mode '{"nested":{"value":1}}' 1722345680
 assert_failure zte_action_get "$state" op-1722345681-1237
 
 running=$(zte_action_claim "$state")
-expected_running='{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"running","payload":{"target":"sim1"},"created":1722345678}'
+expected_running='{"operation_id":"op-1722345678-1234","type":"set_power_supply_mode","state":"running","payload":{"mode":"charging"},"created":1722345678}'
 assert_eq "$expected_running" "$running"
 assert_failure test -e "$record"
 assert_eq "$expected_running" \
     "$(cat "$state/actions/running/$operation_id.json")"
 assert_eq \
-    '{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"running","created":1722345678}' \
+    '{"operation_id":"op-1722345678-1234","type":"set_power_supply_mode","state":"running","created":1722345678}' \
     "$(zte_action_public_status "$state" "$operation_id")"
 
 assert_success zte_action_finish \
     "$state" "$operation_id" failed unsupported 1722345682
-expected_result='{"operation_id":"op-1722345678-1234","type":"switch_sim","state":"failed","code":"unsupported","updated":1722345682}'
+expected_result='{"operation_id":"op-1722345678-1234","type":"set_power_supply_mode","state":"failed","code":"unsupported","updated":1722345682}'
 assert_eq "$expected_result" "$(zte_action_get "$state" "$operation_id")"
 assert_eq "$expected_result" \
     "$(zte_action_public_status "$state" "$operation_id")"
@@ -92,11 +90,11 @@ assert_failure zte_action_finish \
 
 second_id=op-1722345684-1238
 assert_success zte_action_enqueue \
-    "$state" "$second_id" set_wifi '{"enabled":true}' 1722345684
+    "$state" "$second_id" set_power_supply_mode '{"mode":"direct_supply"}' 1722345684
 zte_action_claim "$state" >/dev/null
 assert_success zte_action_recover_running "$state" 1722345685
 assert_eq \
-    '{"operation_id":"op-1722345684-1238","type":"set_wifi","state":"verifying","payload":{"enabled":true},"created":1722345684}' \
+    '{"operation_id":"op-1722345684-1238","type":"set_power_supply_mode","state":"verifying","payload":{"mode":"direct_supply"},"created":1722345684}' \
     "$(zte_action_get "$state" "$second_id")"
 assert_failure test -e "$state/actions/running/$second_id.json"
 assert_success test -f "$state/actions/verifying/$second_id.json"
@@ -110,7 +108,7 @@ assert_eq "$verifying_before" \
 assert_success zte_action_finish \
     "$state" "$second_id" succeeded verified_after_restart 1722345687
 assert_eq \
-    '{"operation_id":"op-1722345684-1238","type":"set_wifi","state":"succeeded","code":"verified_after_restart","updated":1722345687}' \
+    '{"operation_id":"op-1722345684-1238","type":"set_power_supply_mode","state":"succeeded","code":"verified_after_restart","updated":1722345687}' \
     "$(zte_action_get "$state" "$second_id")"
 assert_failure zte_action_has_active "$state"
 
@@ -118,7 +116,7 @@ assert_failure zte_action_has_active "$state"
 # and a duplicate verifying destination stay fail-closed.
 corrupt_state=$work/corrupt-recovery
 assert_success zte_action_init "$corrupt_state"
-printf '%s\n' '{"operation_id":"wrong","type":"set_wifi","state":"running","payload":{"enabled":true},"created":1722345684}' \
+printf '%s\n' '{"operation_id":"wrong","type":"set_power_supply_mode","state":"running","payload":{"mode":"direct_supply"},"created":1722345684}' \
     >"$corrupt_state/actions/running/op-1722345688-1240.json"
 chmod 600 "$corrupt_state/actions/running/op-1722345688-1240.json"
 assert_failure zte_action_recover_running "$corrupt_state" 1722345689
@@ -128,7 +126,7 @@ assert_success test -f \
 duplicate_state=$work/duplicate-recovery
 duplicate_id=op-1722345690-1241
 assert_success zte_action_enqueue \
-    "$duplicate_state" "$duplicate_id" set_wifi '{"enabled":false}' 1722345690
+    "$duplicate_state" "$duplicate_id" set_power_supply_mode '{"mode":"charging"}' 1722345690
 zte_action_claim "$duplicate_state" >/dev/null
 cp "$duplicate_state/actions/running/$duplicate_id.json" \
     "$duplicate_state/actions/verifying/$duplicate_id.json"
@@ -147,8 +145,8 @@ assert_success test -f "$duplicate_state/actions/verifying/$duplicate_id.json"
 queued_window_state=$work/queued-window
 queued_window_id=op-1722345692-1242
 assert_success zte_action_enqueue \
-    "$queued_window_state" "$queued_window_id" set_wifi \
-    '{"enabled":false}' 1722345692
+    "$queued_window_state" "$queued_window_id" set_power_supply_mode \
+    '{"mode":"charging"}' 1722345692
 real_mv=$(command -v mv)
 mv_calls=$work/queued-window-mv-calls
 : >"$mv_calls"
@@ -179,8 +177,8 @@ assert_failure test -e \
 rename_window_state=$work/rename-window
 rename_window_id=op-1722345694-1244
 assert_success zte_action_enqueue \
-    "$rename_window_state" "$rename_window_id" set_wifi \
-    '{"enabled":true}' 1722345694
+    "$rename_window_state" "$rename_window_id" set_power_supply_mode \
+    '{"mode":"direct_supply"}' 1722345694
 zte_action_claim "$rename_window_state" >/dev/null
 : >"$mv_calls"
 mv() {
@@ -209,8 +207,8 @@ assert_eq verifying "$(zte_json_top_get \
 temp_window_state=$work/temp-window
 temp_window_id=op-1722345697-1245
 assert_success zte_action_enqueue \
-    "$temp_window_state" "$temp_window_id" set_wifi \
-    '{"enabled":true}' 1722345697
+    "$temp_window_state" "$temp_window_id" set_power_supply_mode \
+    '{"mode":"direct_supply"}' 1722345697
 zte_action_claim "$temp_window_state" >/dev/null
 real_chmod=$(command -v chmod)
 chmod() {
@@ -237,7 +235,7 @@ assert_eq verifying "$(zte_json_top_get \
 divergent_dual_state=$work/divergent-dual
 divergent_dual_id=op-1722345699-1249
 assert_success zte_action_enqueue \
-    "$divergent_dual_state" "$divergent_dual_id" set_wifi \
+    "$divergent_dual_state" "$divergent_dual_id" set_power_supply_mode \
     '{"enabled":false}' 1722345699
 zte_action_claim "$divergent_dual_state" >/dev/null
 sed -e 's/"state":"running"/"state":"verifying"/' \
@@ -305,7 +303,7 @@ unset -f wc 2>/dev/null || unset wc
 terminal_commit_state=$work/terminal-commit
 terminal_commit_id=op-1722345703-1253
 assert_success zte_action_enqueue \
-    "$terminal_commit_state" "$terminal_commit_id" set_wifi \
+    "$terminal_commit_state" "$terminal_commit_id" set_power_supply_mode \
     '{"enabled":false}' 1722345703
 zte_action_claim "$terminal_commit_state" >/dev/null
 assert_success zte_action_recover_running \
@@ -339,7 +337,7 @@ assert_failure zte_action_has_active "$terminal_commit_state"
 terminal_conflict_state=$work/terminal-conflict
 terminal_conflict_id=op-1722345707-1257
 assert_success zte_action_enqueue \
-    "$terminal_conflict_state" "$terminal_conflict_id" set_wifi \
+    "$terminal_conflict_state" "$terminal_conflict_id" set_power_supply_mode \
     '{"enabled":true}' 1722345707
 zte_action_claim "$terminal_conflict_state" >/dev/null
 assert_success zte_action_recover_running \
@@ -362,7 +360,7 @@ index=0
 while [ "$index" -lt 8 ]; do
     operation_id=op-17223457$((10 + index))-20$index
     assert_success zte_action_enqueue \
-        "$prune_state" "$operation_id" set_wifi '{"enabled":true}' \
+        "$prune_state" "$operation_id" set_power_supply_mode '{"mode":"charging"}' \
         "17223457$((10 + index))"
     zte_action_claim "$prune_state" >/dev/null
     assert_success zte_action_finish \
@@ -388,7 +386,7 @@ while [ "$index" -lt 20 ]; do
     (
         concurrent_id=op-$((1722349000 + index))-$((5000 + index))
         if zte_action_enqueue \
-            "$concurrent_state" "$concurrent_id" set_wifi \
+            "$concurrent_state" "$concurrent_id" set_power_supply_mode \
             '{"enabled":true}' "$((1722349000 + index))"; then
             : >"$success_dir/$index"
         fi
@@ -414,7 +412,7 @@ assert_success mkdir "$reconcile_state/actions/active"
 assert_success zte_action_reconcile_active "$reconcile_state"
 assert_failure test -e "$reconcile_state/actions/active"
 assert_success zte_action_enqueue \
-    "$reconcile_state" op-1722350000-6000 set_wifi \
+    "$reconcile_state" op-1722350000-6000 set_power_supply_mode \
     '{"enabled":true}' 1722350000
 if [ -d "$reconcile_state/actions/active" ]; then
     assert_success rmdir "$reconcile_state/actions/active"
@@ -428,13 +426,13 @@ transition_state=$work/power-transition
 assert_success zte_power_transition_claim "$transition_state"
 assert_success zte_power_transition_active "$transition_state"
 assert_failure zte_action_enqueue \
-    "$transition_state" op-1722351000-7000 switch_sim \
-    '{"target":"sim1"}' 1722351000
+    "$transition_state" op-1722351000-7000 set_power_supply_mode \
+    '{"mode":"charging"}' 1722351000
 assert_success zte_power_transition_release "$transition_state"
 assert_failure zte_power_transition_active "$transition_state"
 assert_success zte_action_enqueue \
-    "$transition_state" op-1722351000-7000 switch_sim \
-    '{"target":"sim1"}' 1722351000
+    "$transition_state" op-1722351000-7000 set_power_supply_mode \
+    '{"mode":"charging"}' 1722351000
 assert_failure zte_power_transition_claim "$transition_state"
 zte_action_claim "$transition_state" >/dev/null
 assert_success zte_action_finish \
@@ -618,7 +616,7 @@ assert_success zte_device_action_release "$cleanup_state"
 dual_state=$work/dual-recoverer
 dual_id=op-1722353000-7200
 assert_success zte_action_enqueue \
-    "$dual_state" "$dual_id" set_wifi '{"enabled":true}' 1722353000
+    "$dual_state" "$dual_id" set_power_supply_mode '{"mode":"charging"}' 1722353000
 zte_action_claim "$dual_state" >/dev/null
 assert_success zte_action_guard_claim "$dual_state"
 assert_failure zte_action_recover_running "$dual_state" 1722353001
@@ -636,7 +634,7 @@ assert_success zte_action_finish \
 finish_successor_state=$work/finish-successor
 finish_successor_id=op-1722353010-7210
 assert_success zte_action_enqueue \
-    "$finish_successor_state" "$finish_successor_id" set_wifi \
+    "$finish_successor_state" "$finish_successor_id" set_power_supply_mode \
     '{"enabled":false}' 1722353010
 zte_action_claim "$finish_successor_state" >/dev/null
 assert_success zte_action_recover_running "$finish_successor_state" 1722353011
@@ -659,12 +657,12 @@ manual_successor_state=$work/finish-manual-successor
 old_id=op-1722353020-7220
 new_id=op-1722353021-7221
 assert_success zte_action_enqueue \
-    "$manual_successor_state" "$old_id" set_wifi \
+    "$manual_successor_state" "$old_id" set_power_supply_mode \
     '{"enabled":true}' 1722353020
 zte_action_claim "$manual_successor_state" >/dev/null
 assert_success zte_action_recover_running "$manual_successor_state" 1722353021
 printf '%s\n' \
-    '{"operation_id":"op-1722353021-7221","type":"set_wifi","state":"queued","payload":{"enabled":false},"created":1722353021}' \
+    '{"operation_id":"op-1722353021-7221","type":"set_power_supply_mode","state":"queued","payload":{"mode":"charging"},"created":1722353021}' \
     >"$manual_successor_state/actions/pending/$new_id.json"
 chmod 600 "$manual_successor_state/actions/pending/$new_id.json"
 manual_successor_owner=$(cat "$manual_successor_state/actions/active")

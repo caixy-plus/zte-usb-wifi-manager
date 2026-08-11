@@ -1,11 +1,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=13
+PKG_RELEASE:=14
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
-LUCI_TITLE:=LuCI support for ZTE USB WiFi Manager
+LUCI_TITLE:=LuCI support for ZTE U30 smart charge manager
 LUCI_DEPENDS:=+zte-usb-wifi-manager
 LUCI_PKGARCH:=all
 

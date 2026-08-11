@@ -1,29 +1,20 @@
 config core 'main'
 	option enabled '1'
 	option write_enabled '1'
-	option access_profile 'full_v1'
+	option access_profile 'charge_v1'
 	option poll_interval '30'
 	option failure_threshold '3'
 
+# Only the daemon-driven smart-charge write remains. It is not exposed as a
+# manual LuCI action; the gate still protects set_power_supply_mode execution.
 config actions 'writes'
-	option switch_sim_enabled '1'
-	option set_apn_enabled '1'
-	option set_connection_mode_enabled '1'
-	option set_wifi_enabled '1'
-	option set_traffic_plan_enabled '1'
-	option reset_traffic_enabled '1'
-	option send_sms_enabled '1'
-	option delete_sms_enabled '1'
-	option mark_sms_read_enabled '1'
-	option reboot_device_enabled '1'
-	option shutdown_device_enabled '1'
 	option set_power_supply_mode_enabled '1'
 
 config device 'zte'
 	option host '192.168.0.1'
 	option interface 'usbwan'
 	option netdev 'eth2'
-	option adapter 'auto'
+	option adapter 'zte_u30'
 	option credential_file '/etc/zte-usb-wifi-manager/credentials'
 
 # U30 Pro device-side charging policy. This changes only the modem's
@@ -33,12 +24,3 @@ config smart_charge 'charging'
 	option low_percent '30'
 	option high_percent '80'
 	option retry_seconds '300'
-
-# USB control is retained only for fail-safe restoration and a future,
-# separately confirmed recovery action. It is never battery-policy driven.
-config power 'usb'
-	option backend 'unconfigured'
-	option control_path 'auto'
-	option calibrated '0'
-	option off_probe_interval '900'
-	option probe_settle_seconds '15'

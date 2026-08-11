@@ -15,29 +15,11 @@ test:
 		tests/test_session.sh \
 		tests/test_device_profile.sh \
 		tests/test_adapter.sh \
-		tests/test_u25s_simulator.sh \
-		tests/test_u30_power_e2e.sh \
-		tests/test_u30_settings_e2e.sh \
-		tests/test_u30_actions_e2e.sh \
 		tests/test_actions.sh \
 		tests/test_action_executor.sh \
-		tests/test_action_verifier.sh \
-		tests/test_sim_calibration.sh \
-		tests/test_u30_power_calibration.sh \
-		tests/test_daemon_actions.sh \
 		tests/test_daemon_smart_charge.sh \
 		tests/test_charging_transaction.sh \
-		tests/test_daemon_power_cycle.sh \
-		tests/test_power_adapter.sh \
-		tests/test_power_restore.sh \
-		tests/test_power_calibration.sh \
-		tests/test_soak_collector.sh \
 		tests/test_event_log.sh \
-		tests/test_recovery_inhibit.sh \
-		tests/test_recovery_adapter.sh \
-		tests/test_recovery_coordinator.sh \
-		tests/test_recovery_guard.sh \
-		tests/test_runtime_stability.sh \
 		tests/test_rpcd.sh \
 		tests/test_snapshot.sh \
 		tests/test_netifd.sh \
@@ -48,7 +30,6 @@ test:
 		"$$test_file"; \
 	done
 	@node tests/test_luci.js
-	@node tests/test_soak_validation.js
 	@set -e; \
 	find package scripts tests -type f \( -name '*.sh' -o -perm -u+x \) -print | \
 	while IFS= read -r shell_file; do \

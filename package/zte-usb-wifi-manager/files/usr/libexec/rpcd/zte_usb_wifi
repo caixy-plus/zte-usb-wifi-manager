@@ -5,20 +5,18 @@ ZTE_USB_WIFI_LIB_DIR=${ZTE_USB_WIFI_LIB_DIR:-/usr/lib/zte-usb-wifi-manager}
 . "$ZTE_USB_WIFI_LIB_DIR/validation.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/json.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/credentials.sh"
-. "$ZTE_USB_WIFI_LIB_DIR/actions.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/event-log.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/charging-transaction.sh"
 . "$ZTE_USB_WIFI_LIB_DIR/adapter-zte-u25s-metadata.sh"
 
 STATUS_FILE=${ZTE_USB_WIFI_STATUS_FILE:-/var/run/zte-usb-wifi-manager/status.json}
-SMS_FILE=${ZTE_USB_WIFI_SMS_FILE:-/var/run/zte-usb-wifi-manager/sms.json}
 STATE_DIR=${ZTE_USB_WIFI_STATE_DIR:-/var/run/zte-usb-wifi-manager}
 CREDENTIAL_FILE=${ZTE_USB_WIFI_CREDENTIAL_FILE:-/etc/zte-usb-wifi-manager/credentials}
 SERVICE_INIT=${ZTE_USB_WIFI_SERVICE_INIT:-/etc/init.d/zte-usb-wifi-manager}
 
 list_methods() {
 	printf '%s\n' \
-		'{"status":{},"sms_messages":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"operation_status":{"operation_id":"String"},"logs":{"limit":"Integer"},"cellular_action":{"action":"String","target":"String","confirm":"Boolean","apn":"String","auth":"String","username":"String","password":"String","mode":"String"},"wifi_action":{"action":"String","enabled":"Boolean","band":"String","ssid":"String","security":"String","password":"String","channel":"String"},"traffic_action":{"action":"String","enabled":"Boolean","limit_bytes":"Integer","alert_percent":"Integer","cycle_day":"Integer","disconnect":"Boolean","confirm":"Boolean"},"sms_action":{"action":"String","message_id":"String","number":"String","content":"String","confirm":"Boolean"},"device_action":{"action":"String","confirm":"Boolean"},"power_action":{"action":"String","mode":"String"}}'
+		'{"status":{},"capabilities":{},"charging_settings":{},"set_charging_settings":{"enabled":"Boolean","low_percent":"Integer","high_percent":"Integer"},"credential_status":{},"set_credentials":{"password":"String"},"clear_credentials":{},"logs":{"limit":"Integer"}}'
 }
 
 get_status() {
@@ -26,15 +24,6 @@ get_status() {
 		cat "$STATUS_FILE"
 	else
 		zte_adapter_framework_status_json
-	fi
-}
-
-get_sms_messages() {
-	if [ -s "$SMS_FILE" ]; then
-		cat "$SMS_FILE"
-	else
-		printf '%s\n' \
-			'{"available":false,"reason":"not_loaded","items":[]}'
 	fi
 }
 
@@ -57,6 +46,19 @@ apply_cached_profile_from_status() {
 			_zte_profile_cached_model=$(zte_json_path_get \
 				"$_zte_profile_status" device model 2>/dev/null) ||
 				_zte_profile_cached_model=''
+			# Product surface is U30-only. Ignore stale non-U30 cache.
+			case $_zte_profile_cached_adapter in
+				zte_u30|'')
+					;;
+				*)
+					_zte_profile_cached_adapter=zte_u30
+					_zte_profile_cached_model='U30 Pro'
+					;;
+			esac
+			[ -n "$_zte_profile_cached_adapter" ] ||
+				_zte_profile_cached_adapter=zte_u30
+			[ -n "$_zte_profile_cached_model" ] ||
+				_zte_profile_cached_model='U30 Pro'
 			zte_adapter_apply_cached_profile \
 				"$_zte_profile_cached_adapter" "$_zte_profile_cached_model"
 			return
@@ -67,55 +69,20 @@ apply_cached_profile_from_status() {
 
 get_capabilities() {
 	if ! apply_cached_profile_from_status; then
-		zte_adapter_unavailable_capabilities_json
-		return
+		# Default product profile before the first successful poll.
+		zte_adapter_apply_cached_profile zte_u30 'U30 Pro' ||
+			zte_adapter_apply_profile_capabilities zte_u30 || true
 	fi
 	_zte_cap_write=$(
 		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
 	) || _zte_cap_write=0
-	_zte_cap_switch_sim=$(uci -q get \
-		zte-usb-wifi-manager.writes.switch_sim_enabled 2>/dev/null) ||
-		_zte_cap_switch_sim=0
-	_zte_cap_set_apn=$(uci -q get \
-		zte-usb-wifi-manager.writes.set_apn_enabled 2>/dev/null) ||
-		_zte_cap_set_apn=0
-	_zte_cap_set_connection_mode=$(uci -q get \
-		zte-usb-wifi-manager.writes.set_connection_mode_enabled 2>/dev/null) ||
-		_zte_cap_set_connection_mode=0
-	_zte_cap_set_wifi=$(uci -q get \
-		zte-usb-wifi-manager.writes.set_wifi_enabled 2>/dev/null) ||
-		_zte_cap_set_wifi=0
-	_zte_cap_set_traffic_plan=$(uci -q get \
-		zte-usb-wifi-manager.writes.set_traffic_plan_enabled 2>/dev/null) ||
-		_zte_cap_set_traffic_plan=0
-	_zte_cap_reset_traffic=$(uci -q get \
-		zte-usb-wifi-manager.writes.reset_traffic_enabled 2>/dev/null) ||
-		_zte_cap_reset_traffic=0
-	_zte_cap_send_sms=$(uci -q get \
-		zte-usb-wifi-manager.writes.send_sms_enabled 2>/dev/null) ||
-		_zte_cap_send_sms=0
-	_zte_cap_delete_sms=$(uci -q get \
-		zte-usb-wifi-manager.writes.delete_sms_enabled 2>/dev/null) ||
-		_zte_cap_delete_sms=0
-	_zte_cap_mark_sms_read=$(uci -q get \
-		zte-usb-wifi-manager.writes.mark_sms_read_enabled 2>/dev/null) ||
-		_zte_cap_mark_sms_read=0
-	_zte_cap_reboot_device=$(uci -q get \
-		zte-usb-wifi-manager.writes.reboot_device_enabled 2>/dev/null) ||
-		_zte_cap_reboot_device=0
-	_zte_cap_shutdown_device=$(uci -q get \
-		zte-usb-wifi-manager.writes.shutdown_device_enabled 2>/dev/null) ||
-		_zte_cap_shutdown_device=0
 	_zte_cap_set_power_supply_mode=$(uci -q get \
 		zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 2>/dev/null) ||
 		_zte_cap_set_power_supply_mode=0
+	# Remaining gates are product-removed; always pass 0.
 	zte_adapter_effective_capabilities_json \
-		"$_zte_cap_write" "$_zte_cap_switch_sim" "$_zte_cap_set_apn" \
-		"$_zte_cap_set_connection_mode" "$_zte_cap_set_wifi" \
-		"$_zte_cap_set_traffic_plan" "$_zte_cap_reset_traffic" \
-		"$_zte_cap_send_sms" "$_zte_cap_delete_sms" \
-		"$_zte_cap_mark_sms_read" "$_zte_cap_reboot_device" \
-		"$_zte_cap_shutdown_device" "$_zte_cap_set_power_supply_mode"
+		"$_zte_cap_write" 0 0 0 0 0 0 0 0 0 0 0 \
+		"$_zte_cap_set_power_supply_mode"
 }
 
 get_charging_settings() {
@@ -223,125 +190,8 @@ get_logs() {
 		printf '%s\n' '{"ok":false,"error":"invalid_limit"}'
 		return
 	fi
-	zte_event_list "$STATE_DIR" "$_zte_log_limit"
-}
-
-get_operation_status() {
-	_zte_request='{}'
-	IFS= read -r _zte_request || :
-	if ! zte_json_is_flat_object "$_zte_request"; then
-		printf '%s\n' '{"ok":false,"error":"invalid_operation_id"}'
-		return
-	fi
-	_zte_operation_id=$(zte_json_flat_get "$_zte_request" operation_id)
-	if ! zte_operation_id_valid "$_zte_operation_id"; then
-		printf '%s\n' '{"ok":false,"error":"invalid_operation_id"}'
-		return
-	fi
-	if ! zte_action_public_status "$STATE_DIR" "$_zte_operation_id"; then
-		printf '%s\n' '{"ok":false,"error":"operation_not_found"}'
-	fi
-}
-
-action_matches_method() {
-	case $1:$2 in
-		cellular_action:switch_sim|\
-cellular_action:set_apn|\
-cellular_action:set_connection_mode|\
-wifi_action:set_wifi|\
-traffic_action:set_traffic_plan|\
-traffic_action:reset_traffic|\
-sms_action:send_sms|\
-sms_action:delete_sms|\
-sms_action:mark_sms_read)
-			return 0
-			;;
-		device_action:reboot_device|\
-		device_action:shutdown_device)
-			return 0
-			;;
-		power_action:set_power_supply_mode)
-			return 0
-			;;
-		*)
-			return 1
-			;;
-	esac
-}
-
-device_writes_enabled() {
-	command -v uci >/dev/null 2>&1 || return 1
-	_zte_write_enabled=$(
-		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null
-	) || return 1
-	[ "$_zte_write_enabled" = 1 ]
-}
-
-device_action_enabled() {
-	_zte_action=$1
-	device_writes_enabled || return 1
-	_zte_feature_option=$(
-		zte_adapter_action_feature_option "$_zte_action"
-	) || return 1
-	_zte_feature_enabled=$(
-		uci -q get \
-			"zte-usb-wifi-manager.writes.$_zte_feature_option" \
-			2>/dev/null
-	) || return 1
-	zte_adapter_action_effectively_enabled \
-		"$_zte_action" 1 "$_zte_feature_enabled"
-}
-
-handle_action() {
-	_zte_method=$1
-	_zte_request='{}'
-	IFS= read -r _zte_request || :
-	if ! zte_json_is_flat_object "$_zte_request"; then
-		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
-		return
-	fi
-	_zte_action=$(zte_json_flat_get "$_zte_request" action)
-	if ! zte_action_type_valid "$_zte_action" ||
-		! action_matches_method "$_zte_method" "$_zte_action"; then
-		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
-		return
-	fi
-	if ! apply_cached_profile_from_status; then
-		printf '%s\n' '{"ok":false,"error":"unsupported"}'
-		return
-	fi
-	if ! zte_adapter_action_supported "$_zte_action"; then
-		printf '%s\n' '{"ok":false,"error":"unsupported"}'
-		return
-	fi
-	if ! zte_adapter_action_payload_valid \
-		"$_zte_action" "$_zte_request"; then
-		printf '%s\n' '{"ok":false,"error":"invalid_action"}'
-		return
-	fi
-	if ! device_action_enabled "$_zte_action"; then
-		printf '%s\n' '{"ok":false,"error":"write_not_enabled"}'
-		return
-	fi
-	zte_action_init "$STATE_DIR" || {
-		printf '%s\n' '{"ok":false,"error":"queue_unavailable"}'
-		return
-	}
-	if zte_action_has_active "$STATE_DIR"; then
-		printf '%s\n' '{"ok":false,"error":"operation_busy"}'
-		return
-	fi
-
-	_zte_action_created=$(date +%s)
-	_zte_operation_id=op-$_zte_action_created-$$
-	if ! zte_action_enqueue \
-		"$STATE_DIR" "$_zte_operation_id" "$_zte_action" \
-		"$_zte_request" "$_zte_action_created"; then
-		printf '%s\n' '{"ok":false,"error":"queue_failed"}'
-		return
-	fi
-	printf '{"ok":true,"operation_id":"%s","state":"queued"}\n' \
-		"$_zte_operation_id"
+	# Product log surface: smart-charge events only.
+	zte_event_list_filtered "$STATE_DIR" "$_zte_log_limit" smart_charge
 }
 
 case ${1-} in
@@ -351,18 +201,13 @@ case ${1-} in
 	call)
 		case ${2-} in
 			status) get_status ;;
-			sms_messages) get_sms_messages ;;
 			capabilities) get_capabilities ;;
 			charging_settings) get_charging_settings ;;
 			set_charging_settings) set_charging_settings ;;
 			credential_status) get_credential_status ;;
 			set_credentials) set_credentials ;;
 			clear_credentials) clear_credentials ;;
-			operation_status) get_operation_status ;;
 			logs) get_logs ;;
-			cellular_action|wifi_action|traffic_action|sms_action|device_action|power_action)
-				handle_action "$2"
-				;;
 			*) exit 1 ;;
 		esac
 		;;

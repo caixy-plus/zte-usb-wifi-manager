@@ -1,15 +1,13 @@
 {
   "luci-app-zte-usb-wifi-manager": {
-    "description": "Read ZTE USB WiFi Manager status",
+    "description": "ZTE U30 smart charge manager",
     "read": {
       "ubus": {
         "zte_usb_wifi": [
           "status",
-          "sms_messages",
           "capabilities",
           "charging_settings",
           "credential_status",
-          "operation_status",
           "logs"
         ]
       }
@@ -19,13 +17,7 @@
         "zte_usb_wifi": [
           "set_credentials",
           "clear_credentials",
-          "set_charging_settings",
-          "cellular_action",
-          "wifi_action",
-          "traffic_action",
-          "sms_action",
-          "device_action",
-          "power_action"
+          "set_charging_settings"
         ]
       }
     }

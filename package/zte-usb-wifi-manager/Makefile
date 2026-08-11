@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=32
+PKG_RELEASE:=33
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 
@@ -11,14 +11,14 @@ include $(INCLUDE_DIR)/package.mk
 define Package/zte-usb-wifi-manager
   SECTION:=utils
   CATEGORY:=Utilities
-  TITLE:=ZTE USB WiFi Manager backend
+  TITLE:=ZTE U30 smart charge manager backend
   DEPENDS:=+coreutils-stat +curl +flock +jshn +jsonfilter +kmod-usb-net-cdc-ether +kmod-usb-net-cdc-ncm +rpcd +ubus +uci
   EXTRA_DEPENDS:=ip (>=1)
   PKGARCH:=all
 endef
 
 define Package/zte-usb-wifi-manager/description
-  ZTE U25S/U30 Pro console integration and safely gated actions for OpenWrt.
+  ZTE U30 Pro smart charging and read-only device status for OpenWrt.
 endef
 
 define Build/Compile
@@ -52,44 +52,36 @@ define Package/zte-usb-wifi-manager/postinst
 		zte_config_changed=1
 	}
 
-	# Historical conffiles may predate one or more named sections. Create the
-	# section before assigning any option within it; real UCI rejects an option
-	# write whose parent section does not exist.
 	zte_ensure_config zte-usb-wifi-manager.main core
 	zte_ensure_config zte-usb-wifi-manager.writes actions
 	zte_ensure_config zte-usb-wifi-manager.charging smart_charge
+	zte_ensure_config zte-usb-wifi-manager.zte device
 
-	if [ "$$(cat /tmp/sysinfo/board_name 2>/dev/null)" = \
-		cudy,tr3000-v1-ubootmod ] &&
-		[ "$$(uci -q get zte-usb-wifi-manager.usb.control_path 2>/dev/null)" = \
-		/sys/class/gpio/modem_power/value ] &&
-		[ "$$(uci -q get zte-usb-wifi-manager.usb.backend 2>/dev/null)" = \
-		unconfigured ] &&
-		[ "$$(uci -q get zte-usb-wifi-manager.usb.calibrated 2>/dev/null)" = 0 ] &&
-		[ "$$(uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null)" = 0 ]; then
-		uci set zte-usb-wifi-manager.usb.control_path=auto || exit 1
-		zte_config_changed=1
-	fi
-
-	# r32 is the first full-access release. Migrate historical preview installs
-	# exactly once; after the marker exists, explicit user changes are preserved.
-	if ! uci -q get zte-usb-wifi-manager.main.access_profile \
-		>/dev/null 2>&1; then
+	# charge_v1: smart-charge product only. Migrate once from full console
+	# installs; later explicit user changes are preserved.
+	if [ "$$(uci -q get zte-usb-wifi-manager.main.access_profile 2>/dev/null)" != \
+		charge_v1 ]; then
 		zte_set_config zte-usb-wifi-manager.main.write_enabled 1
+		zte_set_config zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 1
 		for zte_action_gate in \
 			switch_sim set_apn set_connection_mode set_wifi \
 			set_traffic_plan reset_traffic send_sms delete_sms \
-			mark_sms_read reboot_device shutdown_device \
-			set_power_supply_mode; do
-			zte_set_config \
-				zte-usb-wifi-manager.writes.$${zte_action_gate}_enabled 1
+			mark_sms_read reboot_device shutdown_device; do
+			if uci -q get \
+				"zte-usb-wifi-manager.writes.$${zte_action_gate}_enabled" \
+				>/dev/null 2>&1; then
+				zte_set_config \
+					"zte-usb-wifi-manager.writes.$${zte_action_gate}_enabled" 0
+			fi
 		done
 		zte_set_config zte-usb-wifi-manager.charging.enabled 1
-		zte_set_config zte-usb-wifi-manager.main.access_profile full_v1
+		zte_set_config zte-usb-wifi-manager.zte.adapter zte_u30
+		zte_set_config zte-usb-wifi-manager.main.access_profile charge_v1
 	fi
 	zte_ensure_config zte-usb-wifi-manager.charging.low_percent 30
 	zte_ensure_config zte-usb-wifi-manager.charging.high_percent 80
 	zte_ensure_config zte-usb-wifi-manager.charging.retry_seconds 300
+	zte_ensure_config zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 1
 
 	[ "$$zte_config_changed" = 0 ] ||
 		uci commit zte-usb-wifi-manager || exit 1
@@ -100,20 +92,6 @@ endef
 define Package/zte-usb-wifi-manager/prerm
 #!/bin/sh
 if [ -z "$${IPKG_INSTROOT}" ]; then
-	if [ -e /etc/zte-usb-wifi-manager/sim-calibration ] ||
-		[ -L /etc/zte-usb-wifi-manager/sim-calibration ] ||
-		[ -e /etc/zte-usb-wifi-manager/sim-calibration.lock ] ||
-		[ -L /etc/zte-usb-wifi-manager/sim-calibration.lock ] ||
-		[ -e /etc/zte-usb-wifi-manager/u30-power-calibration ] ||
-		[ -L /etc/zte-usb-wifi-manager/u30-power-calibration ] ||
-		[ -e /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] ||
-		[ -L /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] ||
-		[ -e /var/lock/zte-usb-power-calibration.lock ] ||
-		[ -L /var/lock/zte-usb-power-calibration.lock ] ||
-		[ -e /var/run/zte-usb-wifi-manager/calibration/inhibit-recovery ] ||
-		[ -L /var/run/zte-usb-wifi-manager/calibration/inhibit-recovery ]; then
-		exit 1
-	fi
 	/etc/init.d/zte-usb-wifi-manager stop >/dev/null 2>&1 || :
 	stop_attempt=0
 	while /etc/init.d/zte-usb-wifi-manager running \
@@ -123,8 +101,7 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 		stop_attempt=$$((stop_attempt + 1))
 	done
 	for pid_file in \
-		/var/run/zte-usb-wifi-manager/manager.pid \
-		/var/run/zte-usb-wifi-manager/coordinator.pid; do
+		/var/run/zte-usb-wifi-manager/manager.pid; do
 		[ -s "$${pid_file}" ] || continue
 		pid=$$(cat "$${pid_file}" 2>/dev/null) || exit 1
 		case "$${pid}" in
@@ -132,7 +109,6 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 		esac
 		kill -0 "$${pid}" 2>/dev/null && exit 1
 	done
-	/usr/libexec/zte-usb-power-restore || exit 1
 fi
 exit 0
 endef
@@ -140,22 +116,7 @@ endef
 define Package/zte-usb-wifi-manager/postrm
 #!/bin/sh
 if [ -z "$${IPKG_INSTROOT}" ]; then
-	if [ ! -e /var/run/zte-usb-wifi-manager/inhibit-recovery ] &&
-		[ ! -e /etc/zte-usb-wifi-manager/sim-calibration ] &&
-		[ ! -L /etc/zte-usb-wifi-manager/sim-calibration ] &&
-		[ ! -e /etc/zte-usb-wifi-manager/sim-calibration.lock ] &&
-		[ ! -L /etc/zte-usb-wifi-manager/sim-calibration.lock ] &&
-		[ ! -e /etc/zte-usb-wifi-manager/u30-power-calibration ] &&
-		[ ! -L /etc/zte-usb-wifi-manager/u30-power-calibration ] &&
-		[ ! -e /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] &&
-		[ ! -L /etc/zte-usb-wifi-manager/u30-power-calibration.lock ] &&
-		[ ! -e /var/lock/zte-usb-power-calibration.lock ] &&
-		[ ! -L /var/lock/zte-usb-power-calibration.lock ] &&
-		[ ! -e /var/run/zte-usb-wifi-manager/calibration/inhibit-recovery ] &&
-		[ ! -L /var/run/zte-usb-wifi-manager/calibration/inhibit-recovery ] &&
-		[ ! -d /var/run/zte-usb-wifi-manager/actions/power-transition ]; then
-		rm -rf /var/run/zte-usb-wifi-manager
-	fi
+	rm -rf /var/run/zte-usb-wifi-manager
 fi
 exit 0
 endef

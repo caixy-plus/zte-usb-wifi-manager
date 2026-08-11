@@ -12,10 +12,10 @@ ZTE_ADAPTER_TLS_VERIFICATION=not_applicable
 # write must have an authenticated session.
 ZTE_LOGIN_REQUIRED=1
 
-# Capabilities describe shipped implementations. Runtime access remains
-# independently controllable through UCI, but release packages enable every
-# implemented action by default.
-ZTE_CAP_SWITCH_SIM=1
+# Product scope is U30 smart charge only. Adapter-level write caps other than
+# set_power_supply_mode stay off even if legacy firmware endpoints remain in
+# the shared HTTP adapter implementation.
+ZTE_CAP_SWITCH_SIM=0
 ZTE_CAP_SET_APN=0
 ZTE_CAP_SET_CONNECTION_MODE=0
 ZTE_CAP_SET_WIFI=0
@@ -28,33 +28,33 @@ ZTE_CAP_REBOOT_DEVICE=0
 ZTE_CAP_SHUTDOWN_DEVICE=0
 ZTE_CAP_SET_POWER_SUPPLY_MODE=0
 
-# Keep calibration evidence scoped to an exact device profile. The effective
-# ZTE_CAP_* variables above remain the adapter contract consumed by the daemon
-# and rpcd; this matrix is the only place that may populate them for a model.
-ZTE_U25S_CAP_SWITCH_SIM=1
-ZTE_U25S_CAP_SET_APN=$ZTE_CAP_SET_APN
-ZTE_U25S_CAP_SET_CONNECTION_MODE=$ZTE_CAP_SET_CONNECTION_MODE
-ZTE_U25S_CAP_SET_WIFI=$ZTE_CAP_SET_WIFI
-ZTE_U25S_CAP_SET_TRAFFIC_PLAN=$ZTE_CAP_SET_TRAFFIC_PLAN
-ZTE_U25S_CAP_RESET_TRAFFIC=$ZTE_CAP_RESET_TRAFFIC
-ZTE_U25S_CAP_SEND_SMS=$ZTE_CAP_SEND_SMS
-ZTE_U25S_CAP_DELETE_SMS=$ZTE_CAP_DELETE_SMS
-ZTE_U25S_CAP_MARK_SMS_READ=$ZTE_CAP_MARK_SMS_READ
-ZTE_U25S_CAP_REBOOT_DEVICE=$ZTE_CAP_REBOOT_DEVICE
-ZTE_U25S_CAP_SHUTDOWN_DEVICE=$ZTE_CAP_SHUTDOWN_DEVICE
-ZTE_U25S_CAP_SET_POWER_SUPPLY_MODE=$ZTE_CAP_SET_POWER_SUPPLY_MODE
+# U25S is out of product scope. Caps remain zero so any accidental profile
+# selection cannot re-enable removed product actions.
+ZTE_U25S_CAP_SWITCH_SIM=0
+ZTE_U25S_CAP_SET_APN=0
+ZTE_U25S_CAP_SET_CONNECTION_MODE=0
+ZTE_U25S_CAP_SET_WIFI=0
+ZTE_U25S_CAP_SET_TRAFFIC_PLAN=0
+ZTE_U25S_CAP_RESET_TRAFFIC=0
+ZTE_U25S_CAP_SEND_SMS=0
+ZTE_U25S_CAP_DELETE_SMS=0
+ZTE_U25S_CAP_MARK_SMS_READ=0
+ZTE_U25S_CAP_REBOOT_DEVICE=0
+ZTE_U25S_CAP_SHUTDOWN_DEVICE=0
+ZTE_U25S_CAP_SET_POWER_SUPPLY_MODE=0
 
+# U30 product surface: daemon-driven smart charge only.
 ZTE_U30_CAP_SWITCH_SIM=0
-ZTE_U30_CAP_SET_APN=1
-ZTE_U30_CAP_SET_CONNECTION_MODE=1
-ZTE_U30_CAP_SET_WIFI=1
-ZTE_U30_CAP_SET_TRAFFIC_PLAN=1
-ZTE_U30_CAP_RESET_TRAFFIC=1
-ZTE_U30_CAP_SEND_SMS=1
-ZTE_U30_CAP_DELETE_SMS=1
-ZTE_U30_CAP_MARK_SMS_READ=1
-ZTE_U30_CAP_REBOOT_DEVICE=1
-ZTE_U30_CAP_SHUTDOWN_DEVICE=1
+ZTE_U30_CAP_SET_APN=0
+ZTE_U30_CAP_SET_CONNECTION_MODE=0
+ZTE_U30_CAP_SET_WIFI=0
+ZTE_U30_CAP_SET_TRAFFIC_PLAN=0
+ZTE_U30_CAP_RESET_TRAFFIC=0
+ZTE_U30_CAP_SEND_SMS=0
+ZTE_U30_CAP_DELETE_SMS=0
+ZTE_U30_CAP_MARK_SMS_READ=0
+ZTE_U30_CAP_REBOOT_DEVICE=0
+ZTE_U30_CAP_SHUTDOWN_DEVICE=0
 ZTE_U30_CAP_SET_POWER_SUPPLY_MODE=1
 
 zte_adapter_apply_profile_capabilities() {
@@ -200,11 +200,8 @@ zte_adapter_effective_capability_bool() {
 }
 
 zte_adapter_sim_switch_effective_bool() {
-	if [ "$ZTE_ADAPTER_ID" = zte_u25s ]; then
-		zte_adapter_effective_capability_bool "${1-}" "${2-}" "${3-}"
-	else
-		printf '%s' false
-	fi
+	# SIM switching is product-removed for all profiles.
+	printf '%s' false
 }
 
 zte_adapter_feature_status_json() {
@@ -271,19 +268,12 @@ zte_adapter_feature_status_json() {
 		[ "$_zte_feature_mark_sms_read" = true ] &&
 		_zte_feature_sms=true
 	if [ "$ZTE_ADAPTER_ID" = zte_u30 ]; then
-		_zte_feature_switch_sim_implementation=not_implemented
+		_zte_feature_switch_sim_implementation=unsupported
 		_zte_feature_switch_sim_verification=not_applicable
-		_zte_feature_action_implementation=implemented
-		_zte_feature_action_verification=local_and_qemu
+		_zte_feature_action_implementation=unsupported
+		_zte_feature_action_verification=not_applicable
 		_zte_feature_power_implementation=implemented
 		_zte_feature_power_verification=local_and_qemu
-	elif [ "$ZTE_ADAPTER_ID" = zte_u25s ]; then
-		_zte_feature_switch_sim_implementation=implemented
-		_zte_feature_switch_sim_verification=local_and_qemu
-		_zte_feature_action_implementation=not_implemented
-		_zte_feature_action_verification=spare_device_required
-		_zte_feature_power_implementation=unsupported
-		_zte_feature_power_verification=not_applicable
 	else
 		_zte_feature_switch_sim_implementation=unsupported
 		_zte_feature_switch_sim_verification=not_applicable
@@ -295,10 +285,10 @@ zte_adapter_feature_status_json() {
 
 	printf '%s' '{'
 	printf '%s' '"cellular_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
-	printf '%s' '"wifi_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
-	printf '%s' '"clients_read":{"implementation":"implemented","verification":"simulator_only","access":"read","enabled":true},'
-	printf '%s' '"traffic_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
-	printf '%s' '"sms_read":{"implementation":"implemented","verification":"simulator_only","access":"read","enabled":true},'
+	printf '%s' '"wifi_read":{"implementation":"unsupported","verification":"not_applicable","access":"read","enabled":false},'
+	printf '%s' '"clients_read":{"implementation":"unsupported","verification":"not_applicable","access":"read","enabled":false},'
+	printf '%s' '"traffic_read":{"implementation":"unsupported","verification":"not_applicable","access":"read","enabled":false},'
+	printf '%s' '"sms_read":{"implementation":"unsupported","verification":"not_applicable","access":"read","enabled":false},'
 	printf '%s' '"device_read":{"implementation":"implemented","verification":"local_and_qemu","access":"read","enabled":true},'
 	printf '"switch_sim":{"implementation":"%s","verification":"%s","access":"write","enabled":%s},' "$_zte_feature_switch_sim_implementation" "$_zte_feature_switch_sim_verification" "$_zte_feature_switch_sim"
 	for _zte_feature_name in set_apn set_connection_mode set_wifi set_traffic_plan reset_traffic send_sms delete_sms mark_sms_read reboot_device shutdown_device; do
@@ -442,8 +432,8 @@ zte_adapter_unavailable_capabilities_json() {
 zte_adapter_action_supported() {
 	case ${1-} in
 		switch_sim)
-			[ "$ZTE_ADAPTER_ID" = zte_u25s ] &&
-				[ "$ZTE_CAP_SWITCH_SIM" = 1 ]
+			# Product-removed; never authorize regardless of residual CAP bits.
+			return 1
 			;;
 		set_apn) [ "$ZTE_CAP_SET_APN" = 1 ] ;;
 		set_connection_mode) [ "$ZTE_CAP_SET_CONNECTION_MODE" = 1 ] ;;

@@ -21,7 +21,7 @@ for level in info warn error; do
     assert_success zte_event_level_valid "$level"
 done
 assert_failure zte_event_level_valid debug
-for type in service state action power error; do
+for type in service state action power error smart_charge; do
     assert_success zte_event_type_valid "$type"
 done
 assert_failure zte_event_type_valid polling
@@ -63,5 +63,24 @@ assert_failure zte_event_write \
 assert_failure zte_event_list "$state" 0
 assert_failure zte_event_list "$state" 201
 assert_eq '{"events":[]}' "$(zte_event_list "$work/missing" 20)"
+
+filter_state=$work/filter
+assert_success zte_event_init "$filter_state"
+assert_success zte_event_write \
+    "$filter_state" info service service_started 1722345700 4096
+assert_success zte_event_write \
+    "$filter_state" info smart_charge smart_charge_applied 1722345701 4096
+assert_success zte_event_write \
+    "$filter_state" warn smart_charge write_failed_cooldown 1722345702 4096
+assert_success zte_event_write \
+    "$filter_state" error action action_failed 1722345703 4096
+filtered=$(zte_event_list_filtered "$filter_state" 20 smart_charge)
+assert_success node -e '
+const events = JSON.parse(process.argv[1]).events;
+if (events.length !== 2) process.exit(1);
+if (events[0].code !== "smart_charge_applied") process.exit(1);
+if (events[1].code !== "write_failed_cooldown") process.exit(1);
+' "$filtered"
+assert_failure zte_event_list_filtered "$filter_state" 20 polling
 
 finish

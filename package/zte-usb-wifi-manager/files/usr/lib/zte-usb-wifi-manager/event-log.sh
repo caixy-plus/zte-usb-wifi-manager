@@ -16,7 +16,7 @@ zte_event_level_valid() {
 
 zte_event_type_valid() {
 	case ${1-} in
-		service|state|action|power|error) return 0 ;;
+		service|state|action|power|error|smart_charge) return 0 ;;
 		*) return 1 ;;
 	esac
 }
@@ -105,5 +105,52 @@ zte_event_list() {
 			printf "%s", $0
 		}
 		END { print "]}" }
+	'
+}
+
+# List newest events whose type matches the given filter. Scans the full
+# rotated log set so product UIs can show only smart_charge history.
+zte_event_list_filtered() {
+	_zte_event_root=$1
+	_zte_event_limit=$2
+	_zte_event_type_filter=$3
+	_zte_event_is_uint "$_zte_event_limit" || return 1
+	[ "$_zte_event_limit" -ge 1 ] &&
+		[ "$_zte_event_limit" -le 200 ] || return 1
+	zte_event_type_valid "$_zte_event_type_filter" || return 1
+
+	{
+		for _zte_event_file in \
+			"$_zte_event_root/logs/events.2.jsonl" \
+			"$_zte_event_root/logs/events.1.jsonl" \
+			"$_zte_event_root/logs/events.jsonl"
+		do
+			[ -f "$_zte_event_file" ] && cat "$_zte_event_file"
+		done
+	} | awk -v want="$_zte_event_type_filter" '
+		BEGIN { n = 0 }
+		{
+			line = $0
+			if (match(line, /"type":"[^"]+"/)) {
+				type = substr(line, RSTART + 8, RLENGTH - 9)
+				if (type == want) {
+					n++
+					buf[n] = line
+				}
+			}
+		}
+		END {
+			start = n - '"$_zte_event_limit"' + 1
+			if (start < 1)
+				start = 1
+			printf "{\"events\":["
+			out = 0
+			for (i = start; i <= n; i++) {
+				if (out++)
+					printf ","
+				printf "%s", buf[i]
+			}
+			print "]}"
+		}
 	'
 }
