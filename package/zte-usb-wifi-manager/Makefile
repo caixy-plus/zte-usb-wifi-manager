@@ -12,7 +12,7 @@ define Package/zte-usb-wifi-manager
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=ZTE U30 smart charge manager backend
-  DEPENDS:=+coreutils-stat +curl +flock +jshn +jsonfilter +kmod-usb-net-cdc-ether +kmod-usb-net-cdc-ncm +rpcd +ubus +uci
+  DEPENDS:=+coreutils-stat +curl +flock +jshn +jsonfilter +kmod-usb-net-cdc-ncm +rpcd +ubus +uci
   EXTRA_DEPENDS:=ip (>=1)
   PKGARCH:=all
 endef
@@ -26,67 +26,6 @@ endef
 
 define Package/zte-usb-wifi-manager/conffiles
 /etc/config/zte-usb-wifi-manager
-endef
-
-define Package/zte-usb-wifi-manager/postinst
-#!/bin/sh
-	if [ -z "$${IPKG_INSTROOT}" ]; then
-	zte_config_changed=0
-
-	zte_ensure_config() {
-		zte_config_key=$$1
-		zte_config_default=$$2
-		if uci -q get "$$zte_config_key" >/dev/null 2>&1; then
-			return 0
-		fi
-		uci set "$$zte_config_key=$$zte_config_default" || exit 1
-		zte_config_changed=1
-	}
-
-	zte_set_config() {
-		zte_config_key=$$1
-		zte_config_value=$$2
-		[ "$$(uci -q get "$$zte_config_key" 2>/dev/null)" = \
-			"$$zte_config_value" ] && return 0
-		uci set "$$zte_config_key=$$zte_config_value" || exit 1
-		zte_config_changed=1
-	}
-
-	zte_ensure_config zte-usb-wifi-manager.main core
-	zte_ensure_config zte-usb-wifi-manager.writes actions
-	zte_ensure_config zte-usb-wifi-manager.charging smart_charge
-	zte_ensure_config zte-usb-wifi-manager.zte device
-
-	# charge_v1: smart-charge product only. Migrate once from full console
-	# installs; later explicit user changes are preserved.
-	if [ "$$(uci -q get zte-usb-wifi-manager.main.access_profile 2>/dev/null)" != \
-		charge_v1 ]; then
-		zte_set_config zte-usb-wifi-manager.main.write_enabled 1
-		zte_set_config zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 1
-		for zte_action_gate in \
-			switch_sim set_apn set_connection_mode set_wifi \
-			set_traffic_plan reset_traffic send_sms delete_sms \
-			mark_sms_read reboot_device shutdown_device; do
-			if uci -q get \
-				"zte-usb-wifi-manager.writes.$${zte_action_gate}_enabled" \
-				>/dev/null 2>&1; then
-				zte_set_config \
-					"zte-usb-wifi-manager.writes.$${zte_action_gate}_enabled" 0
-			fi
-		done
-		zte_set_config zte-usb-wifi-manager.charging.enabled 1
-		zte_set_config zte-usb-wifi-manager.zte.adapter zte_u30
-		zte_set_config zte-usb-wifi-manager.main.access_profile charge_v1
-	fi
-	zte_ensure_config zte-usb-wifi-manager.charging.low_percent 30
-	zte_ensure_config zte-usb-wifi-manager.charging.high_percent 80
-	zte_ensure_config zte-usb-wifi-manager.charging.retry_seconds 300
-	zte_ensure_config zte-usb-wifi-manager.writes.set_power_supply_mode_enabled 1
-
-	[ "$$zte_config_changed" = 0 ] ||
-		uci commit zte-usb-wifi-manager || exit 1
-fi
-exit 0
 endef
 
 define Package/zte-usb-wifi-manager/prerm
@@ -122,7 +61,51 @@ exit 0
 endef
 
 define Package/zte-usb-wifi-manager/install
-	$(CP) ./files/* $(1)/
+	$(INSTALL_DIR) $(1)/etc/config $(1)/etc/init.d
+	$(INSTALL_CONF) ./files/etc/config/zte-usb-wifi-manager \
+		$(1)/etc/config/zte-usb-wifi-manager
+	$(INSTALL_BIN) ./files/etc/init.d/zte-usb-wifi-manager \
+		$(1)/etc/init.d/zte-usb-wifi-manager
+
+	$(INSTALL_DIR) $(1)/usr/lib/zte-usb-wifi-manager
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/validation.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/validation.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/json.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/json.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/http.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/http.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/credentials.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/credentials.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/session.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/session.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/smart-charge-policy.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/smart-charge-policy.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/smart-charge-state.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/smart-charge-state.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/event-log.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/event-log.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/charging-transaction.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/charging-transaction.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/actions.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/actions.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/action-executor.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/action-executor.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/snapshot.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/snapshot.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/netifd-adapter.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/netifd-adapter.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/device-profile.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/device-profile.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh
+	$(INSTALL_DATA) ./files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh \
+		$(1)/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s.sh
+
+	$(INSTALL_DIR) $(1)/usr/libexec/rpcd $(1)/usr/sbin
+	$(INSTALL_BIN) ./files/usr/libexec/rpcd/zte_usb_wifi \
+		$(1)/usr/libexec/rpcd/zte_usb_wifi
+	$(INSTALL_BIN) ./files/usr/sbin/zte-usb-wifi-managerd \
+		$(1)/usr/sbin/zte-usb-wifi-managerd
 endef
 
 $(eval $(call BuildPackage,zte-usb-wifi-manager))

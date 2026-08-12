@@ -18,7 +18,7 @@
 
 仓库当前候选版本为 **backend r33 / LuCI r14**（`access_profile=charge_v1`）：
 
-- 目标设备：**U30 Pro only**（默认 `adapter=zte_u30`）。
+- 目标设备：**U30 Pro only**（默认 `adapter=auto`）。只有 USB 身份被精确识别为 U30 Pro 后，才会启用设备能力和智能充电写入。
 - LuCI 三 Tab：**设备 / 智能充电 / 日志**。
 - 唯一产品写入口：保存智能充电策略（开关 + 低/高阈值）。
 - 日志页仅展示 `smart_charge` 事件。

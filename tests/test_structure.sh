@@ -15,6 +15,7 @@ view="$luci/htdocs/luci-static/resources/view/zte-usb-wifi-manager/index.js"
 acl="$luci/root/usr/share/rpcd/acl.d/luci-app-zte-usb-wifi-manager.json"
 menu="$luci/root/usr/share/luci/menu.d/luci-app-zte-usb-wifi-manager.json"
 metadata="$backend/files/usr/lib/zte-usb-wifi-manager/adapter-zte-u25s-metadata.sh"
+init="$backend/files/etc/init.d/zte-usb-wifi-manager"
 
 # Config: charge product only.
 if grep -Eq "^config (battery 'policy'|schedule 'work'|power 'usb')$" "$config"; then
@@ -27,7 +28,7 @@ assert_file_contains "$config" "option enabled '1'"
 assert_file_contains "$config" "option low_percent '30'"
 assert_file_contains "$config" "option high_percent '80'"
 assert_file_contains "$config" "option access_profile 'charge_v1'"
-assert_file_contains "$config" "option adapter 'zte_u30'"
+assert_file_contains "$config" "option adapter 'auto'"
 assert_file_contains "$config" "option set_power_supply_mode_enabled '1'"
 if grep -E "switch_sim_enabled|set_apn_enabled|set_wifi_enabled|send_sms_enabled|reboot_device_enabled" "$config" >/dev/null; then
     fail 'default config must not enable removed product write gates'
@@ -62,10 +63,48 @@ esac
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
 assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=33$'
-assert_file_contains "$backend/Makefile" 'charge_v1'
-assert_file_contains "$backend/Makefile" 'set_power_supply_mode_enabled 1'
+if grep -q '^define Package/zte-usb-wifi-manager/postinst$' "$backend/Makefile"; then
+    fail 'first release must not carry an upgrade migration hook'
+else
+    pass
+fi
+assert_file_contains "$daemon" 'device_identity_invalid=1'
+assert_file_contains "$daemon" 'publish_unsupported_device'
+install_definition=$(sed -n \
+    '/^define Package\/zte-usb-wifi-manager\/install$/,/^endef$/p' \
+    "$backend/Makefile")
+# Match the literal OpenWrt make expression, not a shell substitution.
+# shellcheck disable=SC2016
+copy_all_marker='$(CP) ./files/*'
+case $install_definition in
+    *"$copy_all_marker"*)
+        fail 'release package must use an explicit runtime file allowlist'
+        ;;
+    *) pass ;;
+esac
+for removed_runtime in \
+    zte-u25s-sim-calibrate zte-u30-power-calibrate \
+    zte-usb-power-calibrate zte-usb-power-restore \
+    zte-usb-recovery-allowed zte-usb-soak \
+    zte-usb-recovery-coordinatord
+do
+    case $install_definition in
+        *"$removed_runtime"*)
+            fail "release install list must not contain $removed_runtime"
+            ;;
+        *) pass ;;
+    esac
+done
 if grep -q 'zte-usb-power-restore' "$backend/Makefile"; then
     fail 'package must not require USB power restore on uninstall'
+else
+    pass
+fi
+
+# procd starts only the smart-charge manager.
+assert_file_contains "$init" '/usr/sbin/zte-usb-wifi-managerd'
+if grep -E 'recovery-coordinator|CALIBRATION' "$init" >/dev/null; then
+    fail 'service init must not retain legacy recovery or calibration runtime'
 else
     pass
 fi

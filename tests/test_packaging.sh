@@ -65,7 +65,7 @@ release_config=package/zte-usb-wifi-manager/files/etc/config/zte-usb-wifi-manage
 for charge_default in \
     "option write_enabled '1'" \
     "option set_power_supply_mode_enabled '1'" \
-    "option adapter 'zte_u30'" \
+    "option adapter 'auto'" \
     "option access_profile 'charge_v1'"
 do
     assert_file_contains "$release_config" "$charge_default"
@@ -90,61 +90,25 @@ else
     pass
 fi
 
-# charge_v1 postinst migration (fresh install)
-postinst_bin=$work/postinst-bin
-postinst_uci=$work/postinst-uci
-mkdir -p "$postinst_bin" "$postinst_uci"
-cat >"$postinst_bin/uci" <<'EOF'
-#!/bin/sh
-set -eu
-key_file() {
-	printf '%s/%s\n' "$ZTE_TEST_UCI_DIR" "$(printf '%s' "$1" | tr . _)"
-}
-case $1:$2 in
-	-q:get) cat "$(key_file "$3")" ;;
-	set:*)
-		assignment=$2
-		key=${assignment%%=*}
-		printf '%s\n' "${assignment#*=}" >"$(key_file "$key")"
-		;;
-	commit:zte-usb-wifi-manager)
-		printf '%s\n' commit >>"$ZTE_TEST_UCI_DIR/commits"
-		;;
-	*) exit 1 ;;
+# First release has no upgrade migration and ships an explicit runtime allowlist.
+if grep -q '^define Package/zte-usb-wifi-manager/postinst$' \
+    package/zte-usb-wifi-manager/Makefile; then
+    fail 'first release package must not contain migration code'
+else
+    pass
+fi
+install_definition=$(sed -n \
+    '/^define Package\/zte-usb-wifi-manager\/install$/,/^endef$/p' \
+    package/zte-usb-wifi-manager/Makefile)
+# Match the literal OpenWrt make expression, not a shell substitution.
+# shellcheck disable=SC2016
+copy_all_marker='$(CP) ./files/*'
+case $install_definition in
+    *"$copy_all_marker"*)
+        fail 'package install must not copy the entire historical files tree'
+        ;;
+    *) pass ;;
 esac
-EOF
-chmod +x "$postinst_bin/uci"
-hook_postinst=$work/postinst
-{
-	printf '%s\n' '#!/bin/sh' 'set -eu'
-	sed -n '/^define Package\/zte-usb-wifi-manager\/postinst$/,/^endef$/p' \
-		package/zte-usb-wifi-manager/Makefile |
-		sed -e '1d' -e '$d' -e 's/\$\$/\$/g'
-} >"$hook_postinst"
-chmod +x "$hook_postinst"
-: >"$postinst_uci/commits"
-assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
-	PATH="$postinst_bin:$PATH" sh "$hook_postinst"
-assert_eq charge_v1 "$(cat "$postinst_uci/zte-usb-wifi-manager_main_access_profile")"
-assert_eq 1 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_set_power_supply_mode_enabled")"
-assert_eq zte_u30 "$(cat "$postinst_uci/zte-usb-wifi-manager_zte_adapter")"
-assert_eq 1 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_enabled")"
-assert_eq commit "$(cat "$postinst_uci/commits")"
-
-printf '%s\n' core >"$postinst_uci/zte-usb-wifi-manager_main"
-printf '%s\n' actions >"$postinst_uci/zte-usb-wifi-manager_writes"
-printf '%s\n' smart_charge >"$postinst_uci/zte-usb-wifi-manager_charging"
-printf '%s\n' device >"$postinst_uci/zte-usb-wifi-manager_zte"
-printf '%s\n' charge_v1 >"$postinst_uci/zte-usb-wifi-manager_main_access_profile"
-printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_writes_set_power_supply_mode_enabled"
-printf '%s\n' 0 >"$postinst_uci/zte-usb-wifi-manager_charging_enabled"
-printf '%s\n' zte_u30 >"$postinst_uci/zte-usb-wifi-manager_zte_adapter"
-: >"$postinst_uci/commits"
-assert_success env IPKG_INSTROOT= ZTE_TEST_UCI_DIR="$postinst_uci" \
-	PATH="$postinst_bin:$PATH" sh "$hook_postinst"
-assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_writes_set_power_supply_mode_enabled")"
-assert_eq 0 "$(cat "$postinst_uci/zte-usb-wifi-manager_charging_enabled")"
-assert_eq '' "$(cat "$postinst_uci/commits")"
 
 # Internal architecture must be read from the built packages, not assumed.
 assert_file_contains "$builder" 'adbdump'
@@ -540,9 +504,10 @@ if grep -Fiq 'read-only developer preview' "$workflow"; then
 else
     pass
 fi
-assert_file_contains "$workflow" 'U25S and U30 Pro management-console preview'
-assert_file_contains "$workflow" 'U30 Pro device-side smart charging uses power_supply_mode'
-assert_file_contains "$workflow" 'Every semantic write is independently capability-gated'
+assert_file_contains "$workflow" 'U30 Pro smart-charge manager with cached device basics'
+assert_file_contains "$workflow" 'Smart charging changes only power_supply_mode'
+assert_file_contains "$workflow" 'no cellular, Wi-Fi, traffic, SMS, SIM-switch, restart, shutdown, or USB-power action RPCs'
+assert_file_contains "$workflow" 'exact calibrated U30 Pro USB identity'
 if grep -Eq 'Backend r[89]([^0-9]|$)' "$workflow"; then
     fail 'r24 workflow must not retain stale r8 or r10 release notes'
 else
@@ -556,7 +521,10 @@ assert_file_contains "$workflow" 'ea165f8d65b6e75b540449e92b4886f43607fa02'
 assert_file_contains "$workflow" 'd3f86a106a0bac45b974a628896c90dbdf5c8093'
 assert_file_contains docs/validation/github-packages-and-qemu.md \
     'gh release download v0\.1\.0-rc1-r15'
-assert_file_contains README.md 'v0\.1\.0-rc1-r15'
+assert_file_contains README.md 'backend r33 / LuCI r14'
+# shellcheck disable=SC2016  # Literal Markdown inline-code marker.
+assert_file_contains README.md '默认 `adapter=auto`'
+assert_file_contains README.md '精确识别为 U30 Pro'
 
 if grep -Eq 'pull_request:|--force-depends|--force-architecture' \
     "$workflow" 2>/dev/null; then

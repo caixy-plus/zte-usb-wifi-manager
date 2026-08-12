@@ -116,9 +116,10 @@ jobs:
           esac
           printf '%s\n' \
             "$release_summary" \
-            'U25S and U30 Pro management-console preview with cached cellular, Wi-Fi, client, traffic, SMS, device, diagnostic, and log views.' \
-            'U30 Pro device-side smart charging uses power_supply_mode and never disables USB data.' \
-            'Every semantic write is independently capability-gated; uncalibrated production writes remain locked by default.' \
+            'U30 Pro smart-charge manager with cached device basics, charging policy, filtered logs, and a native-console link.' \
+            'Smart charging changes only power_supply_mode and never disables USB VBUS or the USB data connection.' \
+            'The release exposes no cellular, Wi-Fi, traffic, SMS, SIM-switch, restart, shutdown, or USB-power action RPCs.' \
+            'Device writes remain locked until the daemon caches the exact calibrated U30 Pro USB identity.' \
             '' \
             'Verify downloaded files with SHA256SUMS before installation.' \
             >release-notes.md

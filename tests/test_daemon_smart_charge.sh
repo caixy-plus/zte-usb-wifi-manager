@@ -62,6 +62,7 @@ load_cooldown() {
 date() { printf '%s\n' 1722345680; }
 logger() { :; }
 record_event() { :; }
+device_profile_still_valid() { [ "${identity_valid:-1}" = 1 ]; }
 zte_adapter_action_supported() { [ "$1" = set_power_supply_mode ]; }
 configured_action_enabled() { [ "$1" = set_power_supply_mode ]; }
 zte_execute_power_supply_mode() {
@@ -144,6 +145,23 @@ assert_eq keep "$power_action"
 assert_eq 'charging
 direct_supply
 direct_supply' "$(cat "$execute_log")"
+
+# The USB identity is revalidated immediately before any device POST. A
+# hot-unplug or replacement after the snapshot must fail closed.
+zte_adapter_action_supported() { [ "$1" = set_power_supply_mode ]; }
+identity_valid=0
+assert_success apply_smart_charge_policy
+assert_eq UNSUPPORTED_DEVICE "$policy_state"
+assert_eq keep "$power_action"
+assert_eq 1 "$device_identity_invalid"
+assert_eq '' "$device_json" \
+    'known identity loss must remove the cached adapter identity immediately'
+assert_eq 'charging
+direct_supply
+direct_supply' "$(cat "$execute_log")"
+identity_valid=1
+device_identity_invalid=0
+device_json='{"battery":{"percent":85},"power_supply":{"mode_raw":"0","direct_supply":false}}'
 
 # Automatic charging preserves the executor's stable rejection/preflight
 # classification in cooldown state instead of degrading it to executor_failed.

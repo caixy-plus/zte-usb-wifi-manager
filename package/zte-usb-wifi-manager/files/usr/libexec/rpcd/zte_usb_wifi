@@ -37,41 +37,23 @@ get_credential_status() {
 }
 
 apply_cached_profile_from_status() {
-	if [ -s "$STATUS_FILE" ]; then
-		_zte_profile_status=$(cat "$STATUS_FILE" 2>/dev/null) || return 1
-		if [ -n "$_zte_profile_status" ]; then
-			_zte_profile_cached_adapter=$(zte_json_path_get \
-				"$_zte_profile_status" device adapter 2>/dev/null) ||
-				_zte_profile_cached_adapter=''
-			_zte_profile_cached_model=$(zte_json_path_get \
-				"$_zte_profile_status" device model 2>/dev/null) ||
-				_zte_profile_cached_model=''
-			# Product surface is U30-only. Ignore stale non-U30 cache.
-			case $_zte_profile_cached_adapter in
-				zte_u30|'')
-					;;
-				*)
-					_zte_profile_cached_adapter=zte_u30
-					_zte_profile_cached_model='U30 Pro'
-					;;
-			esac
-			[ -n "$_zte_profile_cached_adapter" ] ||
-				_zte_profile_cached_adapter=zte_u30
-			[ -n "$_zte_profile_cached_model" ] ||
-				_zte_profile_cached_model='U30 Pro'
-			zte_adapter_apply_cached_profile \
-				"$_zte_profile_cached_adapter" "$_zte_profile_cached_model"
-			return
-		fi
-	fi
-	return 1
+	[ -s "$STATUS_FILE" ] || return 1
+	_zte_profile_status=$(cat "$STATUS_FILE" 2>/dev/null) || return 1
+	[ -n "$_zte_profile_status" ] || return 1
+	_zte_profile_cached_adapter=$(zte_json_path_get \
+		"$_zte_profile_status" device adapter 2>/dev/null) || return 1
+	_zte_profile_cached_model=$(zte_json_path_get \
+		"$_zte_profile_status" device model 2>/dev/null) || return 1
+	[ "$_zte_profile_cached_adapter" = zte_u30 ] || return 1
+	[ "$_zte_profile_cached_model" = 'U30 Pro' ] || return 1
+	zte_adapter_apply_cached_profile \
+		"$_zte_profile_cached_adapter" "$_zte_profile_cached_model"
 }
 
 get_capabilities() {
 	if ! apply_cached_profile_from_status; then
-		# Default product profile before the first successful poll.
-		zte_adapter_apply_cached_profile zte_u30 'U30 Pro' ||
-			zte_adapter_apply_profile_capabilities zte_u30 || true
+		zte_adapter_unavailable_capabilities_json
+		return
 	fi
 	_zte_cap_write=$(
 		uci -q get zte-usb-wifi-manager.main.write_enabled 2>/dev/null

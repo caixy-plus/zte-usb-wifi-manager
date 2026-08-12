@@ -67,15 +67,20 @@ assert_eq '{"status":{},"capabilities":{},"charging_settings":{},"set_charging_s
     "$list_output" \
     'rpcd list must expose charge-only product methods'
 
-# Without a trusted status snapshot, default to the U30 product profile.
+# Capabilities fail closed until the daemon has cached an exact U30 identity.
 capabilities=$(rpcd_call call capabilities)
 assert_success assert_json "$capabilities"
 assert_eq false "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).sim_switch)))')"
-assert_eq zte_u30 "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).adapter))')"
-assert_eq 'U30 Pro' "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).model))')"
+assert_eq unknown "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).adapter))')"
+assert_eq Unavailable "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).model))')"
 assert_eq unsupported "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).switch_sim?.implementation)))')"
-assert_eq implemented "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).set_power_supply_mode?.implementation)))')"
+assert_eq unsupported "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).set_power_supply_mode?.implementation)))')"
 assert_eq native_console_only "$(printf '%s' "$capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String((JSON.parse(s).feature_status||{}).factory_reset?.implementation)))')"
+
+printf '%s\n' '{"online":false,"state":"unsupported_device","device":null}' >"$status_file"
+unsupported_capabilities=$(rpcd_call call capabilities)
+assert_eq unknown "$(printf '%s' "$unsupported_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).adapter))')"
+assert_eq false "$(printf '%s' "$unsupported_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_power_supply_mode)))')"
 
 printf '%s\n' '{"online":true,"model":"U30 Pro","device":{"adapter":"zte_u30","model":"U30 Pro"}}' >"$status_file"
 u30_capabilities=$(rpcd_call call capabilities)
@@ -134,6 +139,9 @@ printf '%s\n' \
     'zte_charging_transaction_apply() {' \
     '  printf "%s\n" ok' \
     '}' >"$write_lib/charging-transaction.sh"
+# The single-quoted lines below are the literal body of the generated UCI
+# test double; their parameter expansions must happen when that script runs.
+# shellcheck disable=SC2016
 printf '%s\n' \
     '#!/bin/sh' \
     'case " $* " in' \
@@ -153,6 +161,15 @@ chmod +x "$test_bin/uci"
 
 RPCD_TEST_LIB_DIR=$write_lib
 export RPCD_TEST_LIB_DIR
+
+printf '%s\n' '{"online":true,"model":"U30 Pro","device":{"adapter":"zte_u30","model":"U30 Pro"}}' >"$status_file"
+u30_write_capabilities=$(rpcd_call call capabilities)
+assert_eq true "$(printf '%s' "$u30_write_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_power_supply_mode)))')"
+u30_global_gate_closed=$(ZTE_TEST_WRITE_ENABLED=0 rpcd_call call capabilities)
+assert_eq false "$(printf '%s' "$u30_global_gate_closed" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_power_supply_mode)))')"
+u30_feature_gate_closed=$(ZTE_TEST_POWER_ENABLED=0 rpcd_call call capabilities)
+assert_eq false "$(printf '%s' "$u30_feature_gate_closed" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(String(JSON.parse(s).set_power_supply_mode)))')"
+rm -f "$status_file"
 
 charging_settings=$(ZTE_TEST_CHARGING_ENABLED=1 ZTE_TEST_CHARGING_LOW=35 \
     ZTE_TEST_CHARGING_HIGH=75 rpcd_call call charging_settings)

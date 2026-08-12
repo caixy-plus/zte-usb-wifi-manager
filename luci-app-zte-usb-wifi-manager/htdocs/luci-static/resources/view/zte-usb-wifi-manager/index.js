@@ -390,19 +390,37 @@ function renderDevice(status, capabilities, credentialsResult, onCredentialSave,
 }
 
 function smartChargeStatusLabel(status) {
-	var smart = status.smart_charge && typeof status.smart_charge === 'object'
-		? status.smart_charge : null;
-	if (!smart)
-		return null;
-	if (smart.last_error)
-		return _('最近错误') + ': ' + smart.last_error;
-	if (smart.retry_after)
-		return _('冷却中，稍后重试');
-	if (smart.enabled === true)
-		return _('策略已启用');
-	if (smart.enabled === false)
+	var policy = status.policy && typeof status.policy === 'object'
+		? status.policy : {};
+	switch (policy.state) {
+	case 'DISABLED':
 		return _('策略已关闭');
-	return null;
+	case 'BATTERY_LOW':
+		return _('低电量，保持电池充电');
+	case 'BATTERY_HIGH':
+		return _('高电量，保持电源直供');
+	case 'HYSTERESIS':
+		return _('电量处于阈值区间，保持当前模式');
+	case 'COOLDOWN':
+		return _('冷却中，稍后重试');
+	case 'WRITE_FAILED':
+		return _('设备写入失败，等待重试');
+	case 'COOLDOWN_PERSIST_FAILED':
+		return _('状态保存失败，自动写入已暂停');
+	case 'WRITE_DISABLED':
+		return _('设备写入已关闭');
+	case 'AWAITING_CALIBRATION':
+		return _('设备供电模式能力不可用');
+	case 'ACTION_BUSY':
+		return _('其他设备写入正在进行');
+	case 'UNSUPPORTED_DEVICE':
+		return _('不支持的设备');
+	case 'STATE_UNKNOWN':
+	case 'unavailable':
+		return _('状态信息不足');
+	default:
+		return policy.state || null;
+	}
 }
 
 function renderCharging(status, capabilities, settingsResult, onSave, notice, busy) {

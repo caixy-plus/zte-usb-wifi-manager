@@ -21,10 +21,7 @@ work=$(mktemp -d /tmp/zte-test-actions.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 state=$work/state
 
-for action in set_power_supply_mode
-do
-    assert_success zte_action_type_valid "$action"
-done
+assert_success zte_action_type_valid set_power_supply_mode
 for action in '' factory_reset switch_sim set_apn set_wifi send_sms reboot_device \
     'switch sim' '../switch_sim' SWITCH_SIM; do
     assert_failure zte_action_type_valid "$action"

@@ -70,6 +70,48 @@ zte_device_profile_detect() {
 	return 1
 }
 
+# Select the USB identity that owns one specific network interface. netifd's
+# configured device, not an unrelated matching modem elsewhere on the bus,
+# is the authority for enabling the product profile.
+zte_device_profile_detect_netdev() {
+	_zte_profile_net_root=${1-/sys/class/net}
+	_zte_profile_netdev=${2-}
+	zte_device_profile_clear
+	case $_zte_profile_netdev in
+		''|*[!A-Za-z0-9_.:-]*) return 1 ;;
+	esac
+	_zte_profile_net_link=$_zte_profile_net_root/$_zte_profile_netdev/device
+	[ -e "$_zte_profile_net_link" ] || return 1
+	_zte_profile_net_path=$(
+		cd -P "$_zte_profile_net_link" 2>/dev/null && pwd -P
+	) || return 1
+
+	while [ -n "$_zte_profile_net_path" ] &&
+		[ "$_zte_profile_net_path" != / ]; do
+		if [ -f "$_zte_profile_net_path/idVendor" ] &&
+			[ -f "$_zte_profile_net_path/idProduct" ] &&
+			[ -f "$_zte_profile_net_path/product" ]; then
+			_zte_profile_vendor=$(cat \
+				"$_zte_profile_net_path/idVendor" 2>/dev/null) || break
+			_zte_profile_product_id=$(cat \
+				"$_zte_profile_net_path/idProduct" 2>/dev/null) || break
+			_zte_profile_product=$(cat \
+				"$_zte_profile_net_path/product" 2>/dev/null) || break
+			if zte_device_profile_select \
+				"$_zte_profile_vendor" "$_zte_profile_product_id" \
+				"$_zte_profile_product"; then
+				return 0
+			fi
+			break
+		fi
+		_zte_profile_parent=${_zte_profile_net_path%/*}
+		[ "$_zte_profile_parent" != "$_zte_profile_net_path" ] || break
+		_zte_profile_net_path=$_zte_profile_parent
+	done
+	zte_device_profile_clear
+	return 1
+}
+
 zte_device_profile_id() { printf '%s\n' "$ZTE_DEVICE_PROFILE_ID"; }
 zte_device_profile_model() { printf '%s\n' "$ZTE_DEVICE_PROFILE_MODEL"; }
 zte_device_profile_scheme() { printf '%s\n' "$ZTE_DEVICE_PROFILE_SCHEME"; }

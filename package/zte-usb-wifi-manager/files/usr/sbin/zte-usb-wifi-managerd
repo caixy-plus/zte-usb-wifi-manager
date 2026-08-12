@@ -7,13 +7,8 @@ set -e
 . /usr/lib/zte-usb-wifi-manager/http.sh
 . /usr/lib/zte-usb-wifi-manager/credentials.sh
 . /usr/lib/zte-usb-wifi-manager/session.sh
-. /usr/lib/zte-usb-wifi-manager/policy.sh
 . /usr/lib/zte-usb-wifi-manager/smart-charge-policy.sh
 . /usr/lib/zte-usb-wifi-manager/smart-charge-state.sh
-. /usr/lib/zte-usb-wifi-manager/schedule.sh
-. /usr/lib/zte-usb-wifi-manager/power-adapter.sh
-. /usr/lib/zte-usb-wifi-manager/recovery-inhibit.sh
-. /usr/lib/zte-usb-wifi-manager/recovery-adapter.sh
 . /usr/lib/zte-usb-wifi-manager/event-log.sh
 . /usr/lib/zte-usb-wifi-manager/charging-transaction.sh
 . /usr/lib/zte-usb-wifi-manager/actions.sh
@@ -26,47 +21,15 @@ set -e
 
 STATE_DIR=/var/run/zte-usb-wifi-manager
 STATUS_FILE=$STATE_DIR/status.json
-SMS_FILE=$STATE_DIR/sms.json
 COOKIE_FILE=$STATE_DIR/cookies.txt
 PID_FILE=$STATE_DIR/manager.pid
 EVENT_LOG_MAX_BYTES=524288
-ACTION_RESULT_MAX_COUNT=50
-PRIVATE_AUTH_BACKOFF_SECONDS=900
-SMS_POLL_INTERVAL_SECONDS=300
 SMART_CHARGE_RETRY_SECONDS=300
-RECOVERY_INHIBIT_FILE=$STATE_DIR/inhibit-recovery
-RECOVERY_INHIBIT_SECONDS=600
-RECOVERY_SERVICE=/etc/init.d/zte-usb-recover
-# USB VBUS / hardware power control is product-removed. Smart charge uses only
-# the device power_supply_mode HTTP API. These hooks remain as no-ops so older
-# status fields stay stable without ever unbinding xHCI or cutting VBUS.
-early_safety_restore() {
-	return 0
-}
-
-restore_power_on() {
-	return 0
-}
-
-handle_planned_power_off() {
-	return 1
-}
 
 load_config() {
 	# config_get assigns these global variables by the name in its first argument.
 	enabled=''
 	write_enabled=''
-	switch_sim_enabled=''
-	set_apn_enabled=''
-	set_connection_mode_enabled=''
-	set_wifi_enabled=''
-	set_traffic_plan_enabled=''
-	reset_traffic_enabled=''
-	send_sms_enabled=''
-	delete_sms_enabled=''
-	mark_sms_read_enabled=''
-	reboot_device_enabled=''
-	shutdown_device_enabled=''
 	set_power_supply_mode_enabled=''
 	poll_interval=''
 	failure_threshold=''
@@ -79,37 +42,15 @@ load_config() {
 	battery_low=''
 	battery_high=''
 	smart_charge_retry_seconds=''
-	manual_full=''
-	schedule_enabled=''
-	schedule_weekdays=''
-	schedule_departure=''
-	schedule_lead=''
-	power_backend=''
-	power_control_path=''
-	power_calibrated=''
-	power_off_probe_interval=''
-	power_probe_settle_seconds=''
 
 	config_load zte-usb-wifi-manager
 	config_get enabled main enabled 1
 	config_get write_enabled main write_enabled 0
-	# Product-removed action gates default to 0 and are ignored by capabilities.
-	switch_sim_enabled=0
-	set_apn_enabled=0
-	set_connection_mode_enabled=0
-	set_wifi_enabled=0
-	set_traffic_plan_enabled=0
-	reset_traffic_enabled=0
-	send_sms_enabled=0
-	delete_sms_enabled=0
-	mark_sms_read_enabled=0
-	reboot_device_enabled=0
-	shutdown_device_enabled=0
 	config_get set_power_supply_mode_enabled writes set_power_supply_mode_enabled 0
 	config_get poll_interval main poll_interval 30
 	config_get failure_threshold main failure_threshold 3
 	config_get host zte host 192.168.0.1
-	config_get adapter zte adapter zte_u30
+	config_get adapter zte adapter auto
 	config_get interface zte interface usbwan
 	config_get netdev zte netdev eth2
 	config_get credential_file zte credential_file \
@@ -118,16 +59,6 @@ load_config() {
 	config_get battery_low charging low_percent 30
 	config_get battery_high charging high_percent 80
 	config_get smart_charge_retry_seconds charging retry_seconds 300
-	manual_full=0
-	schedule_enabled=0
-	schedule_weekdays='1 2 3 4 5'
-	schedule_departure='18:00'
-	schedule_lead=90
-	power_backend=unconfigured
-	power_control_path=auto
-	power_calibrated=0
-	power_off_probe_interval=900
-	power_probe_settle_seconds=15
 
 	zte_validate_host "$host" || {
 		logger -t zte-usb-wifi-manager 'invalid device host'
@@ -142,8 +73,7 @@ load_config() {
 		return 1
 	}
 	ZTE_HTTP_INTERFACE=$netdev
-	ZTE_POWER_NETDEV_PATH=/sys/class/net/$netdev
-	export ZTE_HTTP_INTERFACE ZTE_POWER_NETDEV_PATH
+	export ZTE_HTTP_INTERFACE
 	if ! zte_is_uint "$failure_threshold" ||
 		[ "$failure_threshold" -lt 1 ]; then
 		logger -t zte-usb-wifi-manager 'invalid failure threshold'
@@ -166,29 +96,26 @@ load_config() {
 		return 1
 	fi
 	SMART_CHARGE_RETRY_SECONDS=$smart_charge_retry_seconds
-	case $enabled:$write_enabled:$switch_sim_enabled:$set_apn_enabled:\
-$set_connection_mode_enabled:$set_wifi_enabled:$set_traffic_plan_enabled:\
-$reset_traffic_enabled:$send_sms_enabled:$delete_sms_enabled:\
-$mark_sms_read_enabled:$reboot_device_enabled:$shutdown_device_enabled:\
-$set_power_supply_mode_enabled:\
-$battery_enabled:$manual_full:$schedule_enabled in
-		[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]:[01]) ;;
+	case $enabled:$write_enabled:$set_power_supply_mode_enabled:$battery_enabled in
+		[01]:[01]:[01]:[01]) ;;
 		*)
 			logger -t zte-usb-wifi-manager 'invalid policy flags'
 			return 1
 			;;
 	esac
-	# Schedule and USB hardware power are product-removed; keep inert defaults.
-	schedule_departure_minutes=1080
+}
+
+device_profile_still_valid() {
+	zte_device_profile_detect_netdev \
+		"${ZTE_SYS_CLASS_NET_ROOT:-/sys/class/net}" "$netdev" || return 1
+	[ "${ZTE_DEVICE_PROFILE_ID:-}" = zte_u30 ]
 }
 
 configure_device_profile() {
-	profile_error=unsupported_device
-	# Product target is U30 Pro only. auto/zte_u30 both select the U30 profile.
+	# Product target is U30 Pro only. Configuration may constrain the accepted
+	# profile, but it never substitutes for the USB identity bound to netdev.
 	case $adapter in
-		auto|zte_u30|'')
-			zte_device_profile_select_named zte_u30 || return 1
-			;;
+		auto|zte_u30|'') device_profile_still_valid || return 1 ;;
 		*)
 			logger -t zte-usb-wifi-manager \
 				'only zte_u30 is supported in the smart-charge product'
@@ -202,58 +129,13 @@ configure_device_profile() {
 	ZTE_DEVICE_TLS_INSECURE=$ZTE_DEVICE_PROFILE_TLS_INSECURE
 	ZTE_LOGIN_REQUIRED=$ZTE_DEVICE_PROFILE_LOGIN_REQUIRED
 	export ZTE_DEVICE_ORIGIN ZTE_DEVICE_TLS_INSECURE ZTE_LOGIN_REQUIRED
-	profile_error=''
 }
 
 configured_action_enabled() {
-	_zte_configured_action=$1
-	case $_zte_configured_action in
-		switch_sim) _zte_configured_feature=$switch_sim_enabled ;;
-		set_apn) _zte_configured_feature=$set_apn_enabled ;;
-		set_connection_mode) _zte_configured_feature=$set_connection_mode_enabled ;;
-		set_wifi) _zte_configured_feature=$set_wifi_enabled ;;
-		set_traffic_plan) _zte_configured_feature=$set_traffic_plan_enabled ;;
-		reset_traffic) _zte_configured_feature=$reset_traffic_enabled ;;
-		send_sms) _zte_configured_feature=$send_sms_enabled ;;
-		delete_sms) _zte_configured_feature=$delete_sms_enabled ;;
-		mark_sms_read) _zte_configured_feature=$mark_sms_read_enabled ;;
-		reboot_device) _zte_configured_feature=$reboot_device_enabled ;;
-		shutdown_device) _zte_configured_feature=$shutdown_device_enabled ;;
-		set_power_supply_mode) _zte_configured_feature=$set_power_supply_mode_enabled ;;
-		*) return 1 ;;
-	esac
+	[ "${1-}" = set_power_supply_mode ] || return 1
 	zte_adapter_action_effectively_enabled \
-		"$_zte_configured_action" "$write_enabled" \
-		"$_zte_configured_feature"
-}
-
-power_inhibit_expiry() {
-	_zte_power_expiry_now=$1
-	zte_is_uint "$_zte_power_expiry_now" || return 1
-	_zte_power_expiry_horizon=$((
-		power_off_probe_interval + power_probe_settle_seconds + 60
-	))
-	_zte_power_poll_horizon=$((poll_interval + 90))
-	if [ "$_zte_power_poll_horizon" -gt \
-		"$_zte_power_expiry_horizon" ]; then
-		_zte_power_expiry_horizon=$_zte_power_poll_horizon
-	fi
-	printf '%s\n' \
-		"$((_zte_power_expiry_now + _zte_power_expiry_horizon))"
-}
-
-schedule_pre_departure_now() {
-	_zte_schedule_weekday=$(date +%u)
-	_zte_schedule_hour=$(date +%H)
-	_zte_schedule_minute=$(date +%M)
-	_zte_schedule_now=$(
-		zte_schedule_time_to_minutes \
-			"$_zte_schedule_hour:$_zte_schedule_minute"
-	) || return 1
-	zte_schedule_pre_departure \
-		"$schedule_enabled" "$schedule_weekdays" \
-		"$schedule_departure" "$schedule_lead" \
-		"$_zte_schedule_weekday" "$_zte_schedule_now"
+		set_power_supply_mode "$write_enabled" \
+		"$set_power_supply_mode_enabled"
 }
 
 init_state() {
@@ -289,13 +171,12 @@ write_status() {
 	mv "$_zte_status_tmp" "$STATUS_FILE"
 }
 
-write_sms_cache() {
-	umask 077
-	mkdir -p "$STATE_DIR"
-	_zte_sms_tmp=$SMS_FILE.tmp.$$
-	printf '%s\n' "$1" >"$_zte_sms_tmp"
-	chmod 600 "$_zte_sms_tmp"
-	mv "$_zte_sms_tmp" "$SMS_FILE"
+publish_unsupported_device() {
+	_zte_profile_updated=$(date +%s)
+	_zte_profile_status=$(zte_snapshot_compose \
+		unsupported_device unsupported_device '' '' unavailable none 0 \
+		"$_zte_profile_updated" '' 'Unknown ZTE')
+	write_status "$_zte_profile_status"
 }
 
 collect_network() {
@@ -308,297 +189,15 @@ collect_network() {
 }
 
 collect_power_snapshot() {
-	# Legacy USB power block remains in the snapshot schema as unconfigured so
-	# consumers do not mistake absence for a calibrated hardware path.
-	power_json=$(zte_power_snapshot_json \
-		unconfigured 0 "$write_enabled" \
-		'' '' '' '' \
-		0 0 0 \
-		0 backend_unconfigured)
-}
-
-zte_power_detect_board() {
-	[ -r /tmp/sysinfo/board_name ] || return 1
-	_zte_detected_board=$(cat /tmp/sysinfo/board_name) || return 1
-	zte_power_board_supported "$_zte_detected_board" || return 1
-	printf '%s\n' "$_zte_detected_board"
-}
-
-write_power_outcome_record() {
-	_zte_power_outcome_backend=$1
-	_zte_power_outcome_action=$2
-	_zte_power_outcome_executed=$3
-	_zte_power_outcome_reason=$4
-	_zte_power_outcome_result=$5
-	_zte_power_outcome_board=$6
-	_zte_power_outcome_path=$7
-	_zte_power_outcome_updated=$(date +%s)
-	_zte_power_outcome_profile=$(zte_power_profile_id \
-		"$_zte_power_outcome_backend" "$power_calibrated" "$write_enabled" \
-		"$_zte_power_outcome_board" "$_zte_power_outcome_path") || return 1
-	_zte_power_outcome_json=$(printf \
-		'{"backend":"%s","action":"%s","executed":%s,"reason":"%s","outcome":"%s","updated":%s,"profile":"%s"}' \
-		"$_zte_power_outcome_backend" "$_zte_power_outcome_action" \
-		"$_zte_power_outcome_executed" "$_zte_power_outcome_reason" \
-		"$_zte_power_outcome_result" "$_zte_power_outcome_updated" \
-		"$(zte_json_escape "$_zte_power_outcome_profile")")
-	if ! zte_power_write_record \
-		"$STATE_DIR/power-decision.json" "$_zte_power_outcome_json"; then
-		rm -f "$STATE_DIR/power-decision.json"
-		return 1
-	fi
-}
-
-apply_policy_action() {
-	_zte_policy_state=$1
-	_zte_policy_action=$2
-	case $_zte_policy_state in
-		MAINTAIN_CHARGING) _zte_power_reason=battery_low ;;
-		MAINTAIN_BATTERY) _zte_power_reason=battery_high ;;
-		MANUAL_FULL) _zte_power_reason=manual_full ;;
-		PRE_DEPARTURE) _zte_power_reason=pre_departure ;;
-		FAIL_SAFE_ON) _zte_power_reason=fail_safe ;;
-		*) return 0 ;;
-	esac
-
-	_zte_power_board=''
-	_zte_power_effective_control_path=${power_control_path-}
-	case $power_backend in
-		mock)
-			_zte_power_effective_control_path=''
-			;;
-		dry-run)
-			_zte_power_board=$(zte_power_detect_board 2>/dev/null) ||
-				_zte_power_board=''
-			if [ -n "$_zte_power_board" ]; then
-				_zte_power_effective_control_path=$(
-					zte_power_resolve_control_path \
-						"$_zte_power_board" "$power_control_path" \
-						2>/dev/null
-				) || _zte_power_effective_control_path=''
-			else
-				_zte_power_effective_control_path=''
-			fi
-			;;
-		hardware)
-			[ "$write_enabled" = 1 ] || return 0
-			[ "$power_calibrated" = 1 ] || return 0
-			_zte_power_board=$(zte_power_detect_board) || {
-				logger -t zte-usb-wifi-manager \
-					'unsupported or unreadable power-control board'
-				return 0
-			}
-			_zte_power_effective_control_path=$(
-				zte_power_resolve_control_path \
-					"$_zte_power_board" "$power_control_path"
-			) || {
-				logger -t zte-usb-wifi-manager \
-					'power-control profile does not match board'
-				return 0
-			}
-			zte_recovery_service_available "$RECOVERY_SERVICE" || {
-				write_power_outcome_record \
-					hardware "$_zte_policy_action" false \
-					"$_zte_power_reason" failed "$_zte_power_board" \
-					"$_zte_power_effective_control_path" || :
-				logger -t zte-usb-wifi-manager \
-					'USB recovery service unavailable'
-				return 0
-			}
-			;;
-		*) return 0 ;;
-	esac
-	[ "$_zte_policy_action" != KEEP ] || return 0
-	[ "$_zte_policy_action" != "$last_power_action" ] || return 0
-	if [ "$power_backend" = hardware ] &&
-		[ "$_zte_policy_action" = OFF ]; then
-		_zte_power_is_default=$(
-			zte_json_top_get "$network_json" is_default_route 2>/dev/null
-		) || _zte_power_is_default=''
-		[ "$_zte_power_is_default" = false ] || {
-			logger -t zte-usb-wifi-manager \
-				'power-off deferred while U25S is the default route'
-			return 0
-		}
-	fi
-	if [ "$_zte_policy_action" = OFF ] &&
-		[ "$power_backend" = mock ] &&
-		zte_action_has_active "$STATE_DIR"; then
-		logger -t zte-usb-wifi-manager \
-			'power-off deferred while a device action is active'
-		return 0
-	fi
-
-	_zte_power_inhibit_written=0
-	_zte_power_transition_claimed=0
-	if { [ "$power_backend" = mock ] ||
-		[ "$power_backend" = hardware ]; } &&
-		[ "$_zte_policy_action" = OFF ]; then
-		if [ "$power_backend" = hardware ]; then
-			zte_power_transition_claim "$STATE_DIR" || {
-				logger -t zte-usb-wifi-manager \
-					'power-off deferred by device-action lock'
-				return 0
-			}
-			_zte_power_transition_claimed=1
-		fi
-		_zte_power_now=$(date +%s)
-		if [ "$power_backend" = hardware ]; then
-			_zte_power_expires=$(
-				power_inhibit_expiry "$_zte_power_now"
-			) || {
-				zte_power_transition_release "$STATE_DIR" || :
-				write_power_outcome_record \
-					hardware "$_zte_policy_action" false \
-					"$_zte_power_reason" failed "$_zte_power_board" \
-					"$_zte_power_effective_control_path" || :
-				return 1
-			}
-		else
-			_zte_power_expires=$((_zte_power_now + RECOVERY_INHIBIT_SECONDS))
-		fi
-		if [ "$power_backend" = hardware ]; then
-			zte_recovery_prepare_off \
-				"$RECOVERY_INHIBIT_FILE" battery_high \
-				"$_zte_power_expires" "$_zte_power_now" \
-				"$RECOVERY_SERVICE" || {
-				zte_power_transition_release "$STATE_DIR" || :
-				write_power_outcome_record \
-					hardware "$_zte_policy_action" false \
-					"$_zte_power_reason" failed "$_zte_power_board" \
-					"$_zte_power_effective_control_path" || :
-				return 1
-			}
-		else
-			zte_recovery_inhibit_write \
-				"$RECOVERY_INHIBIT_FILE" battery_high \
-				"$_zte_power_expires" "$_zte_power_now" ||
-				{
-					write_power_outcome_record \
-						"$power_backend" "$_zte_policy_action" false \
-						"$_zte_power_reason" failed "$_zte_power_board" \
-						"$_zte_power_effective_control_path" || :
-					return 1
-				}
-		fi
-		_zte_power_inhibit_written=1
-	fi
-
-	_zte_power_decision_updated=$(date +%s)
-	_zte_power_apply_completed=0
-	_zte_power_audit_retry_failed=0
-	_zte_power_apply_result=''
-	if _zte_power_apply_result=$(zte_power_apply \
-		"$power_backend" "$_zte_policy_action" "$_zte_power_reason" \
-		"$STATE_DIR/power-decision.json" \
-		"$_zte_power_effective_control_path" \
-		"$power_calibrated" "$_zte_power_board" \
-		"$write_enabled" "$_zte_power_decision_updated"); then
-		_zte_power_apply_completed=1
-	else
-		_zte_power_apply_status=$?
-		if [ "$_zte_power_apply_status" = 2 ]; then
-			_zte_power_expected_profile=$(zte_power_profile_id \
-				"$power_backend" "$power_calibrated" "$write_enabled" \
-				"$_zte_power_board" \
-				"$_zte_power_effective_control_path") ||
-				_zte_power_expected_profile=''
-			if zte_power_decision_current_json \
-				"$_zte_power_apply_result" \
-				"$_zte_power_expected_profile" >/dev/null 2>&1; then
-				_zte_power_apply_completed=1
-				logger -t zte-usb-wifi-manager \
-					'power action succeeded but initial audit write failed'
-				zte_power_write_record \
-					"$STATE_DIR/power-decision.json" \
-					"$_zte_power_apply_result" ||
-					_zte_power_audit_retry_failed=1
-			fi
-		fi
-	fi
-	if [ "$_zte_power_apply_completed" = 1 ]; then
-		if [ "$_zte_policy_action" = ON ]; then
-			case $power_backend in
-				hardware)
-					zte_recovery_finish_on \
-						"$RECOVERY_INHIBIT_FILE" \
-						"$RECOVERY_SERVICE" || {
-						logger -t zte-usb-wifi-manager \
-							'USB recovery service restart failed'
-						write_power_outcome_record \
-							hardware "$_zte_policy_action" true \
-							"$_zte_power_reason" failed \
-							"$_zte_power_board" \
-							"$_zte_power_effective_control_path" || :
-						return 1
-					}
-					;;
-				mock)
-					zte_recovery_inhibit_clear \
-						"$RECOVERY_INHIBIT_FILE" || :
-					;;
-			esac
-		fi
-		last_power_action=$_zte_policy_action
-		if [ "$power_backend" = hardware ]; then
-			case $_zte_policy_action in
-				OFF)
-					planned_power_off=1
-					_zte_power_off_started=$(date +%s)
-					next_power_probe_at=$((_zte_power_off_started +
-						power_off_probe_interval))
-					;;
-				ON)
-					planned_power_off=0
-					next_power_probe_at=0
-					zte_power_transition_release "$STATE_DIR" || :
-					;;
-			esac
-		fi
-		if [ "$_zte_power_audit_retry_failed" = 1 ]; then
-			rm -f "$STATE_DIR/power-decision.json"
-			logger -t zte-usb-wifi-manager \
-				'power audit retry failed; stale decision cleared'
-			return 1
-		fi
-	else
-		if [ "$_zte_power_inhibit_written" = 1 ] &&
-			[ "$power_backend" != hardware ]; then
-			zte_recovery_inhibit_clear "$RECOVERY_INHIBIT_FILE" || :
-		fi
-		write_power_outcome_record \
-			"$power_backend" "$_zte_policy_action" false \
-			"$_zte_power_reason" failed "$_zte_power_board" \
-			"$_zte_power_effective_control_path" || :
-		logger -t zte-usb-wifi-manager 'power action or verification failed'
-		if [ "$power_backend" = hardware ] &&
-			[ "$_zte_policy_action" = OFF ] &&
-			[ "$_zte_power_transition_claimed" = 1 ]; then
-			planned_power_off=1
-			next_power_probe_at=$((
-				$(date +%s) + power_probe_settle_seconds
-			))
-		fi
-		return 1
-	fi
-}
-
-restore_power_on() {
-	# USB VBUS control is product-removed; never toggle hardware power.
-	planned_power_off=0
-	next_power_probe_at=0
-	return 0
+	# USB VBUS control is outside the product, so no hardware-power block is
+	# published in the status snapshot.
+	power_json=''
 }
 
 shutdown_manager() {
 	[ "${shutdown_started:-0}" = 0 ] || return 0
 	shutdown_started=1
 	trap - 0 1 2 15
-	set +e
-	restore_power_on || {
-		logger -t zte-usb-wifi-manager \
-			'failed to restore USB power during shutdown'
-	}
 	remove_pid_file
 }
 
@@ -635,7 +234,7 @@ record_state_change() {
 	[ "$_zte_new_state" != "$last_logged_state" ] || return 0
 
 	case $_zte_new_state in
-		ok|planned_off) _zte_state_level=info ;;
+		ok) _zte_state_level=info ;;
 		degraded|credentials_missing|authentication_failed) _zte_state_level=warn ;;
 		fail_safe) _zte_state_level=error ;;
 		*) return 0 ;;
@@ -645,167 +244,6 @@ record_state_change() {
 		"$_zte_state_time"; then
 		last_logged_state=$_zte_new_state
 	fi
-}
-
-process_actions() {
-	(
-	_zte_action_record=$(zte_action_claim "$STATE_DIR" 2>/dev/null) ||
-		return 0
-	_zte_operation_id=$(zte_json_top_get "$_zte_action_record" operation_id)
-	_zte_action_type=$(zte_json_top_get "$_zte_action_record" type)
-	if ! zte_operation_id_valid "$_zte_operation_id" ||
-		! zte_action_type_valid "$_zte_action_type"; then
-		logger -t zte-usb-wifi-manager 'invalid queued action record'
-		return 1
-	fi
-	_zte_action_time=$(date +%s)
-	_zte_action_state=failed
-	_zte_action_code=unsupported
-	_zte_action_event_level=warn
-	_zte_action_event_code=action_unsupported
-	_zte_action_payload=$(zte_json_top_object_get \
-		"$_zte_action_record" payload 2>/dev/null) || _zte_action_payload=''
-
-	if [ -z "$_zte_action_payload" ] ||
-		! zte_adapter_action_payload_valid \
-			"$_zte_action_type" "$_zte_action_payload"; then
-		_zte_action_code=invalid_action
-		_zte_action_event_level=error
-		_zte_action_event_code=action_failed
-	elif zte_adapter_action_supported "$_zte_action_type" &&
-		! configured_action_enabled "$_zte_action_type"; then
-		_zte_action_code=write_not_enabled
-		_zte_action_event_level=error
-		_zte_action_event_code=action_failed
-	elif zte_adapter_action_supported "$_zte_action_type"; then
-		case $_zte_action_type in
-			set_power_supply_mode)
-				_zte_action_mode=$(zte_json_path_get \
-					"$_zte_action_record" payload mode)
-				_zte_action_result=''
-				if _zte_action_result=$(zte_execute_power_supply_mode \
-					"$host" '' "$COOKIE_FILE" "$_zte_action_mode"); then
-					_zte_action_state=succeeded
-					_zte_action_code=ok
-					_zte_action_event_level=info
-					_zte_action_event_code=action_succeeded
-				else
-					if zte_action_code_valid "$_zte_action_result"; then
-						_zte_action_code=$_zte_action_result
-					else
-						_zte_action_code=executor_failed
-					fi
-					_zte_action_event_level=error
-					_zte_action_event_code=action_failed
-				fi
-				;;
-			*)
-				_zte_action_code=unsupported
-				_zte_action_event_level=warn
-				_zte_action_event_code=action_unsupported
-				;;
-			esac
-		fi
-		_zte_action_record=''
-		_zte_action_payload=''
-		if [ "$_zte_action_state" = failed ] &&
-			[ "$_zte_action_code" = write_ambiguous ]; then
-			_zte_action_state=timed_out
-			_zte_action_event_level=warn
-			_zte_action_event_code=action_timed_out
-		fi
-
-		zte_action_finish \
-		"$STATE_DIR" "$_zte_operation_id" "$_zte_action_state" \
-		"$_zte_action_code" "$_zte_action_time" || return 1
-	zte_action_prune_results \
-		"$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || return 1
-	record_event \
-		"$_zte_action_event_level" action "$_zte_action_event_code" \
-		"$_zte_action_time" || :
-	)
-}
-
-# Resolve an action that may already have reached the device before a daemon
-# restart. Recovery is read-only and independent of current feature flags: a
-# second POST could duplicate a non-idempotent operation.
-process_verifying_actions() {
-	(
-	if _zte_verify_record=$(zte_action_verifying_next \
-		"$STATE_DIR" 2>/dev/null); then
-		_zte_verify_record_status=0
-	else
-		_zte_verify_record_status=$?
-	fi
-	if [ "$_zte_verify_record_status" = 2 ]; then
-		zte_action_recover_running "$STATE_DIR" "$(date +%s)" || return 1
-		if _zte_verify_record=$(zte_action_verifying_next \
-			"$STATE_DIR" 2>/dev/null); then
-			_zte_verify_record_status=0
-		else
-			_zte_verify_record_status=$?
-		fi
-	fi
-	if [ "$_zte_verify_record_status" != 0 ]; then
-		[ "$_zte_verify_record_status" = 1 ] && return 0
-		return 1
-	fi
-	_zte_verify_operation=$(zte_json_top_get \
-		"$_zte_verify_record" operation_id)
-	_zte_verify_action=$(zte_json_top_get "$_zte_verify_record" type)
-	if ! zte_operation_id_valid "$_zte_verify_operation" ||
-		! zte_action_type_valid "$_zte_verify_action"; then
-		return 1
-	fi
-	_zte_verify_time=$(date +%s)
-	_zte_verify_state=timed_out
-	_zte_verify_code=readback_failed
-	_zte_verify_event_level=warn
-	_zte_verify_event_code=action_timed_out
-	_zte_verify_payload=$(zte_json_top_object_get \
-		"$_zte_verify_record" payload 2>/dev/null) || _zte_verify_payload=''
-
-	if [ -n "$_zte_verify_payload" ] &&
-		zte_adapter_action_payload_valid \
-			"$_zte_verify_action" "$_zte_verify_payload" &&
-		[ -z "${profile_error:-}" ] &&
-		[ "${ZTE_DEVICE_PROFILE_ID:-}" = "${ZTE_ADAPTER_ID:-}" ]; then
-		if zte_action_restart_verification_supported \
-			"${ZTE_DEVICE_PROFILE_ID:-}" "${ZTE_ADAPTER_ID:-}" \
-			"$_zte_verify_action"; then
-			_zte_verify_result=''
-			if _zte_verify_result=$(zte_verify_action_after_restart \
-				"$host" "$COOKIE_FILE" "$_zte_verify_action" \
-				"$_zte_verify_record"); then
-				if [ "$_zte_verify_result" = verified_after_restart ]; then
-					_zte_verify_state=succeeded
-					_zte_verify_code=verified_after_restart
-					_zte_verify_event_level=info
-					_zte_verify_event_code=action_succeeded
-				fi
-			else
-				case $_zte_verify_result in
-					readback_mismatch|readback_failed|verification_inconclusive)
-						_zte_verify_code=$_zte_verify_result
-						;;
-				esac
-			fi
-		else
-			_zte_verify_code=verification_inconclusive
-		fi
-	fi
-	_zte_verify_record=''
-	_zte_verify_payload=''
-
-	zte_action_finish \
-		"$STATE_DIR" "$_zte_verify_operation" "$_zte_verify_state" \
-		"$_zte_verify_code" "$_zte_verify_time" || return 1
-	zte_action_prune_results \
-		"$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || return 1
-	record_event \
-		"$_zte_verify_event_level" action "$_zte_verify_event_code" \
-		"$_zte_verify_time" || :
-	)
 }
 
 # Evaluate and, when every server-side gate is open, apply U30 Pro's
@@ -888,6 +326,16 @@ apply_smart_charge_policy() {
 	if [ "$_zte_smart_target" = "$_zte_smart_current" ]; then
 		return 0
 	fi
+	# The interface may have been unplugged or replaced after this poll's read.
+	# Revalidate its exact USB owner immediately before any device write. Clear
+	# the candidate identity too, so rpcd cannot advertise capabilities from a
+	# snapshot that is already known to be stale.
+	if ! device_profile_still_valid; then
+		device_identity_invalid=1
+		device_json=''
+		policy_state=UNSUPPORTED_DEVICE
+		return 0
+	fi
 	if ! zte_adapter_action_supported set_power_supply_mode; then
 		policy_state=AWAITING_CALIBRATION
 		return 0
@@ -955,100 +403,6 @@ apply_smart_charge_policy() {
 	return 0
 }
 
-read_current_power_state() {
-	case $power_backend in
-		dry-run) ;;
-		hardware)
-			if [ "$power_calibrated" != 1 ]; then
-				printf '%s\n' UNKNOWN
-				return
-			fi
-			;;
-		*)
-			printf '%s\n' UNKNOWN
-			return
-			;;
-	esac
-	_zte_current_power_board=$(zte_power_detect_board 2>/dev/null) || {
-		printf '%s\n' UNKNOWN
-		return
-	}
-	_zte_current_power_path=$(
-		zte_power_resolve_control_path \
-			"$_zte_current_power_board" "$power_control_path" \
-			2>/dev/null
-	) || {
-		printf '%s\n' UNKNOWN
-		return
-	}
-	zte_power_observed_state "$_zte_current_power_path"
-}
-
-calculate_policy() {
-	policy_state=unavailable
-	power_action=none
-	policy_result=''
-
-	case $health in
-		fail_safe|credentials_missing)
-			policy_result=$(zte_policy_decide \
-				"$battery_enabled" 1 0 0 0 \
-				"$battery_low" "$battery_high" UNKNOWN) ||
-				policy_result=''
-			;;
-		*)
-			if [ "$ok" = 1 ]; then
-				battery_percent=$(
-					zte_json_path_get "$device_json" battery percent
-				)
-				current_power=$(read_current_power_state) ||
-					current_power=UNKNOWN
-				if zte_is_uint "$battery_percent"; then
-					pre_departure=0
-					pre_departure=$(schedule_pre_departure_now) ||
-						pre_departure=0
-					policy_result=$(zte_policy_decide \
-						"$battery_enabled" 0 "$manual_full" \
-						"$pre_departure" "$battery_percent" \
-				"$battery_low" "$battery_high" "$current_power") ||
-						policy_result=''
-				fi
-			fi
-			;;
-	esac
-
-	if [ -n "$policy_result" ]; then
-		policy_state=${policy_result%%:*}
-		power_action=${policy_result#*:}
-		apply_policy_action "$policy_state" "$power_action"
-	fi
-}
-
-write_power_status() {
-	_zte_power_status_state=$1
-	_zte_power_status_reason=$2
-	_zte_power_status_policy=$3
-	_zte_power_status_action=$4
-	collect_network
-	collect_power_snapshot
-	device_json=$last_device_json
-	_zte_power_status_updated=$(date +%s)
-	_zte_power_status_json=$(zte_snapshot_compose \
-		"$_zte_power_status_state" "$_zte_power_status_reason" \
-		"$device_json" "$network_json" "$_zte_power_status_policy" \
-		"$_zte_power_status_action" "$failures" \
-		"$_zte_power_status_updated" "$power_json" \
-		"${ZTE_ADAPTER_MODEL:-U25S}")
-	write_status "$_zte_power_status_json"
-	record_state_change \
-		"$_zte_power_status_state" "$_zte_power_status_updated"
-}
-
-handle_planned_power_off() {
-	# Battery-driven USB power-off is product-removed.
-	return 1
-}
-
 # Apply an atomically replaced or removed credential on the next poll. The
 # revision contains file metadata only; password content never leaves the
 # credential reader.
@@ -1064,113 +418,31 @@ refresh_credential_revision() {
 			'failed to clear stale device session after credential change'
 		return 1
 	}
-	private_auth_retry_after=0
-	next_sms_poll_at=0
 	credential_revision=$_zte_current_credential_revision
 }
 
-# Populate the private, authenticated collections without turning a partial
-# failure into a full device outage. Rejected credentials enter a cooldown so
-# a bad saved password cannot trigger the U25S login lockout on every poll.
-collect_private_clients() {
-	_zte_private_now=$1
-	_zte_private_password=$2
-	clients_json=$(zte_adapter_clients_unavailable_json not_loaded) || return 1
-
-	if [ -z "$_zte_private_password" ] && zte_adapter_login_required; then
-		clients_json=$(zte_adapter_clients_unavailable_json \
-			credentials_missing) || return 1
-		return 0
-	fi
-	if [ "$private_auth_retry_after" -gt "$_zte_private_now" ]; then
-		clients_json=$(zte_adapter_clients_unavailable_json \
-			authentication_backoff) || return 1
-		return 0
-	fi
-
-	_zte_private_status=0
-	if _zte_private_clients=$(zte_adapter_fetch_clients \
-		"$host" "$_zte_private_password" "$COOKIE_FILE"); then
-		clients_json=$_zte_private_clients
-		private_auth_retry_after=0
-		return 0
-	else
-		_zte_private_status=$?
-	fi
-	if [ "$_zte_private_status" = 3 ]; then
-		clients_json=$(zte_adapter_clients_unavailable_json \
-			authentication_failed) || return 1
-		private_auth_retry_after=$((
-			_zte_private_now + PRIVATE_AUTH_BACKOFF_SECONDS
-		))
-	else
-		clients_json=$(zte_adapter_clients_unavailable_json read_failed) ||
-			return 1
-	fi
-}
-
-collect_private_sms() {
-	_zte_sms_now=$1
-	_zte_sms_password=$2
-
-	if [ -z "$_zte_sms_password" ] && zte_adapter_login_required; then
-		sms_json=$(zte_adapter_sms_unavailable_json credentials_missing) ||
-			return 1
-		return 0
-	fi
-	if [ "$private_auth_retry_after" -gt "$_zte_sms_now" ]; then
-		sms_json=$(zte_adapter_sms_unavailable_json \
-			authentication_backoff) || return 1
-		return 0
-	fi
-	if [ "$next_sms_poll_at" -gt "$_zte_sms_now" ]; then
-		return 0
-	fi
-
-	_zte_sms_status=0
-	if _zte_sms_result=$(zte_adapter_fetch_sms \
-		"$host" "$_zte_sms_password" "$COOKIE_FILE"); then
-		sms_json=$_zte_sms_result
-		private_auth_retry_after=0
-		next_sms_poll_at=$((_zte_sms_now + SMS_POLL_INTERVAL_SECONDS))
-		return 0
-	else
-		_zte_sms_status=$?
-	fi
-	if [ "$_zte_sms_status" = 3 ]; then
-		sms_json=$(zte_adapter_sms_unavailable_json \
-			authentication_failed) || return 1
-		private_auth_retry_after=$((
-			_zte_sms_now + PRIVATE_AUTH_BACKOFF_SECONDS
-		))
-	else
-		sms_json=$(zte_adapter_sms_unavailable_json read_failed) || return 1
-	fi
-	next_sms_poll_at=$((_zte_sms_now + SMS_POLL_INTERVAL_SECONDS))
-}
-
 poll_once() {
-	if handle_planned_power_off; then
-		return 0
-	fi
 	refresh_credential_revision || return 1
+	device_identity_invalid=0
+	if ! device_profile_still_valid; then
+		publish_unsupported_device
+		return 1
+	fi
 	ok=0
 	candidate_device_json=''
 	health=degraded
 	password=''
 	fetch_status=0
-	poll_now=$(date +%s)
 
 	if _zte_saved_password=$(zte_read_password "$credential_file" 2>/dev/null); then
 		password=$_zte_saved_password
 	fi
 	_zte_saved_password=''
 
-	# Product scope no longer exposes clients/SMS private collections.
+	# The normalized device schema retains a clients placeholder, but the
+	# product never fetches the private collection.
 	clients_json=$(zte_adapter_clients_unavailable_json not_loaded) ||
 		clients_json='{"available":false,"reason":"not_loaded","items":[]}'
-	sms_json=$(zte_adapter_sms_unavailable_json not_loaded) ||
-		sms_json='{"available":false,"reason":"not_loaded","items":[]}'
 	if raw_json=$(zte_adapter_fetch "$host" "$password" "$COOKIE_FILE"); then
 		if candidate_device_json=$(zte_adapter_normalize \
 			"$raw_json" "$clients_json"); then
@@ -1230,6 +502,10 @@ poll_once() {
 	if [ "$ok" = 1 ]; then
 		apply_smart_charge_policy
 	fi
+	if [ "$device_identity_invalid" = 1 ]; then
+		publish_unsupported_device
+		return 1
+	fi
 	collect_power_snapshot
 
 	updated=$(date +%s)
@@ -1242,30 +518,17 @@ poll_once() {
 }
 
 main() {
-	early_safety_restore || {
-		logger -t zte-usb-wifi-manager \
-			'early USB power safety restore failed'
-		return 1
-	}
 	load_config
 	init_state
 	recover_charging_transaction
 	if ! configure_device_profile; then
-		_zte_profile_updated=$(date +%s)
-		_zte_profile_status=$(zte_snapshot_compose \
-			unsupported_device "${profile_error:-unsupported_device}" \
-			'' '' unavailable none 0 "$_zte_profile_updated" '' \
-			'Unknown ZTE')
-		write_status "$_zte_profile_status"
+		publish_unsupported_device
 		logger -t zte-usb-wifi-manager 'unsupported USB device profile'
 		return 1
 	fi
 	failures=0
 	last_device_json=''
-	last_power_action=''
 	last_logged_state=''
-	private_auth_retry_after=0
-	next_sms_poll_at=0
 	smart_charge_retry_after=0
 	smart_charge_last_error=''
 	smart_charge_persistence_failed=0
@@ -1283,39 +546,14 @@ main() {
 	credential_revision=$(
 		zte_credential_revision "$credential_file" 2>/dev/null
 	) || credential_revision=invalid
-	sms_json=$(zte_adapter_sms_unavailable_json not_loaded)
-	planned_power_off=0
-	next_power_probe_at=0
 	shutdown_started=0
 	trap shutdown_manager 0
 	trap 'exit 0' 1 2 15
 	write_pid_file || return 1
-	# USB recovery coordinator is product-removed; never block startup on it.
-	restore_power_on || :
 	zte_action_reconcile_active "$STATE_DIR" || :
-	zte_action_recover_running "$STATE_DIR" "$(date +%s)" || :
-	zte_action_prune_results "$STATE_DIR" "$ACTION_RESULT_MAX_COUNT" || :
 	record_event info service service_started "$(date +%s)" || :
-	action_recovery_error_active=0
 	while [ "$enabled" = 1 ]; do
 		poll_once
-		_zte_action_recovery_failed=0
-		zte_action_recover_running "$STATE_DIR" "$(date +%s)" ||
-			_zte_action_recovery_failed=1
-		process_verifying_actions || _zte_action_recovery_failed=1
-		if [ "$_zte_action_recovery_failed" = 1 ]; then
-			if [ "$action_recovery_error_active" != 1 ]; then
-				_zte_recovery_error_time=$(date +%s)
-				logger -t zte-usb-wifi-manager \
-					'action restart-verification state is corrupt; writes remain locked'
-				record_event error action recovery_corrupt \
-					"$_zte_recovery_error_time" || :
-			fi
-			action_recovery_error_active=1
-		else
-			action_recovery_error_active=0
-		fi
-		process_actions
 		sleep "$(zte_backoff_interval "$poll_interval" "$failures")"
 	done
 }

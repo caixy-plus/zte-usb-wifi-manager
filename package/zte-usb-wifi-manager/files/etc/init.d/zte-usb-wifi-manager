@@ -10,45 +10,9 @@ STOP=10
 # shellcheck disable=SC2034
 USE_PROCD=1
 
-ZTE_SIM_CALIBRATION_STATE_DIR=${ZTE_SIM_CALIBRATION_STATE_DIR:-/etc/zte-usb-wifi-manager/sim-calibration}
-ZTE_SIM_CALIBRATION_LOCK_DIR=${ZTE_SIM_CALIBRATION_LOCK_DIR:-/etc/zte-usb-wifi-manager/sim-calibration.lock}
-ZTE_POWER_CALIBRATION_STATE_DIR=${ZTE_POWER_CALIBRATION_STATE_DIR:-/var/run/zte-usb-wifi-manager/calibration}
-ZTE_POWER_CALIBRATION_LOCK_DIR=${ZTE_POWER_CALIBRATION_LOCK_DIR:-/var/lock/zte-usb-power-calibration.lock}
-ZTE_U30_CALIBRATION_STATE_DIR=${ZTE_U30_CALIBRATION_STATE_DIR:-/etc/zte-usb-wifi-manager/u30-power-calibration}
-ZTE_U30_CALIBRATION_LOCK_DIR=${ZTE_U30_CALIBRATION_LOCK_DIR:-/etc/zte-usb-wifi-manager/u30-power-calibration.lock}
-
 start_service() {
-	if [ -e "$ZTE_SIM_CALIBRATION_STATE_DIR" ] ||
-		[ -L "$ZTE_SIM_CALIBRATION_STATE_DIR" ] ||
-		[ -e "$ZTE_SIM_CALIBRATION_LOCK_DIR" ] ||
-		[ -L "$ZTE_SIM_CALIBRATION_LOCK_DIR" ]; then
-		return 1
-	fi
-	if [ "${ZTE_U30_CALIBRATION_BYPASS_LOCK:-0}" != 1 ] &&
-		{ [ -e "$ZTE_U30_CALIBRATION_STATE_DIR" ] ||
-			[ -L "$ZTE_U30_CALIBRATION_STATE_DIR" ] ||
-			[ -e "$ZTE_U30_CALIBRATION_LOCK_DIR" ] ||
-			[ -L "$ZTE_U30_CALIBRATION_LOCK_DIR" ]; }; then
-		return 1
-	fi
-	if [ "${ZTE_POWER_CALIBRATION_BYPASS_LOCK:-0}" != 1 ] &&
-		{ [ -e "$ZTE_POWER_CALIBRATION_LOCK_DIR" ] ||
-			[ -L "$ZTE_POWER_CALIBRATION_LOCK_DIR" ] ||
-			[ -e "$ZTE_POWER_CALIBRATION_STATE_DIR/inhibit-recovery" ] ||
-			[ -L "$ZTE_POWER_CALIBRATION_STATE_DIR/inhibit-recovery" ]; }; then
-		return 1
-	fi
-
 	procd_open_instance manager
 	procd_set_param command /usr/sbin/zte-usb-wifi-managerd
-	procd_set_param respawn 3600 5 5
-	procd_set_param stdout 1
-	procd_set_param stderr 1
-	procd_close_instance
-
-	procd_open_instance recovery-coordinator
-	procd_set_param command \
-		/usr/sbin/zte-usb-recovery-coordinatord run
 	procd_set_param respawn 3600 5 5
 	procd_set_param stdout 1
 	procd_set_param stderr 1

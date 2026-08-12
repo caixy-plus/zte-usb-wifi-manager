@@ -14,7 +14,7 @@ config device 'zte'
 	option host '192.168.0.1'
 	option interface 'usbwan'
 	option netdev 'eth2'
-	option adapter 'zte_u30'
+	option adapter 'auto'
 	option credential_file '/etc/zte-usb-wifi-manager/credentials'
 
 # U30 Pro device-side charging policy. This changes only the modem's

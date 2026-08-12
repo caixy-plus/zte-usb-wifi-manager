@@ -96,6 +96,22 @@ function collectTabs(node, tabs) {
 	collectTabs(node.children, tabs);
 }
 
+function findNode(node, predicate) {
+	if (!node || typeof node !== 'object')
+		return null;
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			const found = findNode(child, predicate);
+			if (found)
+				return found;
+		}
+		return null;
+	}
+	if (predicate(node))
+		return node;
+	return findNode(node.children, predicate);
+}
+
 function render(status, capabilities, charging) {
 	return app.render([
 		{ ok: true, value: status },
@@ -130,11 +146,12 @@ assert.ok(!source.includes("id: 'network'"));
 assert.ok(!source.includes("id: 'wifi'"));
 assert.ok(!source.includes("id: 'sms'"));
 
-const root = render({
+const statusFixture = {
 	state: 'ok',
 	online: true,
 	updated: Math.floor(Date.now() / 1000),
 	model: 'U30 Pro',
+	policy: { state: 'BATTERY_HIGH', power_action: 'keep' },
 	device: {
 		model: 'U30 Pro',
 		market_name: 'U30 Pro',
@@ -155,11 +172,13 @@ const root = render({
 		gateway: '192.168.0.1',
 		is_default_route: true
 	}
-}, {
+};
+const capabilitiesFixture = {
 	model: 'U30 Pro',
 	transport: 'https',
 	set_power_supply_mode: true
-});
+};
+const root = render(statusFixture, capabilitiesFixture);
 
 const body = text(root);
 assert.ok(body.includes('中兴 U30 智能充电'));
@@ -177,5 +196,23 @@ assert.ok(titles.includes('设备型号') || titles.includes('电量') || body.i
 
 assert.strictEqual(pollEntries.length, 1);
 assert.strictEqual(pollEntries[0].interval, 30);
+
+const chargingTab = findNode(root, function(node) {
+	return node.attrs && node.attrs['data-tab'] === 'charging';
+});
+assert.ok(chargingTab);
+chargingTab.attrs.click();
+const chargingRoot = render(statusFixture, capabilitiesFixture, {
+	enabled: true,
+	low_percent: 30,
+	high_percent: 80
+});
+const chargingRows = [];
+collectRows(chargingRoot, chargingRows);
+const policyRow = chargingRows.find(function(item) {
+	return item.title === '策略运行状态';
+});
+assert.ok(policyRow);
+assert.strictEqual(policyRow.value, '高电量，保持电源直供');
 
 console.log('test_luci: ok');

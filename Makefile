@@ -14,6 +14,7 @@ test:
 		tests/test_credentials.sh \
 		tests/test_session.sh \
 		tests/test_device_profile.sh \
+		tests/test_daemon_profile.sh \
 		tests/test_adapter.sh \
 		tests/test_actions.sh \
 		tests/test_action_executor.sh \
