@@ -21,6 +21,10 @@ zte_netifd_route_uses_device() {
 zte_netifd_device_is_default_route() {
     _zte_default_route_device=$1
     [ -n "$_zte_default_route_device" ] || return 2
+    # iproute2 reports route-filter errors when the requested interface has
+    # disappeared. Prove the device exists first so hot-unplug is a definite
+    # "not default" result rather than an ambiguous routing-table failure.
+    ip link show dev "$_zte_default_route_device" >/dev/null 2>&1 || return 1
     _zte_default_route_ipv4=$(ip route show default dev \
         "$_zte_default_route_device" 2>/dev/null) || return 2
     _zte_default_route_ipv6=$(ip -6 route show default dev \

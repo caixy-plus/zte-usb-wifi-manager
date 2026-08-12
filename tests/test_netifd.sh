@@ -50,6 +50,12 @@ jsonfilter() {
 ip() {
     printf '%s\n' "$*" >>"$_zte_test_ip_calls"
     case $_zte_test_ip_mode:$* in
+        device_missing:'link show dev eth0.1')
+            return 1
+            ;;
+        *:'link show dev eth0.1'|*:'link show dev eth2'|*:'link show dev eth9')
+            return 0
+            ;;
         ipv4:'route show default dev eth0.1')
             printf '%s\n' 'default via 192.0.2.1 dev eth0.1'
             ;;
@@ -110,6 +116,11 @@ default_route_status=0
 zte_netifd_device_is_default_route eth0.1 || default_route_status=$?
 assert_eq 2 "$default_route_status" \
     'routing-table inspection errors must be distinguishable from no route'
+_zte_test_ip_mode=device_missing
+default_route_status=0
+zte_netifd_device_is_default_route eth0.1 || default_route_status=$?
+assert_eq 1 "$default_route_status" \
+    'a missing network device must not be treated as a default route'
 _zte_test_ip_mode=none
 actual=$(zte_netifd_collect wwan eth9)
 assert_eq \
@@ -163,9 +174,12 @@ assert_eq \
     '{"up":true,"l3_device":"eth0.1","ipv4":"","gateway":"","is_default_route":true}' \
     "$actual" \
     'an exact IPv4 default route must be detected'
-assert_eq 'route show default dev eth0.1' \
+assert_eq 'link show dev eth0.1' \
     "$(sed -n '1p' "$_zte_test_ip_calls")" \
-    'the device must be passed as an exact ip argument'
+    'the device existence check must use an exact ip argument'
+assert_eq 'route show default dev eth0.1' \
+    "$(sed -n '2p' "$_zte_test_ip_calls")" \
+    'the route filter must use the same exact device argument'
 
 _zte_test_ip_mode=ipv6
 : >"$_zte_test_ip_calls"
