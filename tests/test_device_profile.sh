@@ -15,7 +15,7 @@ assert_eq zte_u30 "$(zte_device_profile_id)"
 assert_eq 'U30 Pro' "$(zte_device_profile_model)"
 assert_eq https "$(zte_device_profile_scheme)"
 assert_eq 1 "$(zte_device_profile_tls_insecure)"
-assert_eq 0 "$(zte_device_profile_login_required)"
+assert_eq 1 "$(zte_device_profile_login_required)"
 assert_eq kmod-usb-net-cdc-ncm "$(zte_device_profile_driver)"
 
 assert_success zte_device_profile_select_named zte_u25s

@@ -207,7 +207,7 @@ const fs = require("fs");
 const contract = JSON.parse(fs.readFileSync("tests/fixtures/u30/config-contract.json", "utf8"));
 if (contract.profile !== "u30" || contract.device_model !== "U30Air" ||
     contract.device_family !== "ufi/mu3351" || contract.scheme !== "https" ||
-    contract.referer !== "https://192.168.0.1/" || contract.login_required !== false)
+    contract.referer !== "https://192.168.0.1/" || contract.login_required !== true)
     process.exit(1);
 '
 

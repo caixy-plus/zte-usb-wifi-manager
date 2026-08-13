@@ -20,6 +20,11 @@ not recorded here or in fixtures.
   `HAS_LOGIN=false`, `LOGIN_SECURITY_SUPPORT=false`, and
   `ACCESSIBLE_ID_SUPPORT=false`.
 
+Authentication correction (2026-08-13): the current live file expresses
+`HAS_LOGIN:!0`, which evaluates to `true`, and serves a password login page.
+The login conclusion above is superseded by
+`2026-08-13-u30-auth-recheck.md`; the read-field calibration remains valid.
+
 ## Sanitized observed fields
 
 The committed `tests/fixtures/u30/status.json` contains only reviewed fields.

@@ -145,7 +145,7 @@ zte_adapter_apply_cached_profile() {
 		zte_u30:'U30 Pro')
 			ZTE_ADAPTER_ID=zte_u30
 			ZTE_ADAPTER_MODEL='U30 Pro'
-			ZTE_LOGIN_REQUIRED=0
+			ZTE_LOGIN_REQUIRED=1
 			ZTE_ADAPTER_TRANSPORT=https
 			ZTE_ADAPTER_TLS_VERIFICATION=device_certificate_unverified
 			zte_adapter_apply_profile_capabilities zte_u30 || return 1

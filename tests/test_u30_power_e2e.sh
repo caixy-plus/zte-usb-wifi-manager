@@ -18,6 +18,11 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/action-executor.sh"
 
 work=$(mktemp -d /tmp/zte-test-u30-power-e2e.XXXXXX)
+ZTE_SESSION_LOCK_FILE=$work/session.lock
+ZTE_SESSION_LOCK_ATTEMPTS=1
+ZTE_SESSION_LOCK_INTERVAL=0
+export ZTE_SESSION_LOCK_FILE ZTE_SESSION_LOCK_ATTEMPTS
+export ZTE_SESSION_LOCK_INTERVAL
 simulator_pid=
 trap 'stop_simulator; rm -rf "$work"' EXIT HUP INT TERM
 
@@ -69,7 +74,7 @@ run_action() {
     target=$1
     action_status=0
     action_output=$(zte_execute_power_supply_mode \
-        "$simulator_host" '' "$work/cookies" "$target" \
+        "$simulator_host" unused-u30-secret "$work/cookies" "$target" \
         2>>"$work/action.err") || action_status=$?
 }
 
@@ -94,11 +99,10 @@ assert_exchange() {
     else
         pass
     fi
-    if grep -E 'GET LD|POST LOGIN' "$request_log" >/dev/null 2>&1; then
-        fail 'anonymous U30 power flow unexpectedly used the login contract'
-    else
-        pass
-    fi
+    assert_eq 1 "$(grep -c '^GET LD ' "$request_log")" \
+        'U30 power writes must fetch a fresh login challenge'
+    assert_eq 1 "$(grep -c '^POST LOGIN ' "$request_log")" \
+        'U30 power writes must authenticate before POST'
 }
 
 # Select the production U30 adapter explicitly, then replace only its scheme
@@ -111,7 +115,7 @@ export ZTE_DEVICE_PROFILE_SCHEME ZTE_DEVICE_PROFILE_TLS_INSECURE
 assert_success zte_adapter_apply_profile
 assert_eq zte_u30 "$ZTE_ADAPTER_ID"
 assert_eq http "$ZTE_ADAPTER_TRANSPORT"
-assert_failure zte_adapter_login_required
+assert_success zte_adapter_login_required
 assert_eq 1 "$ZTE_CAP_SET_POWER_SUPPLY_MODE"
 assert_success zte_adapter_action_supported set_power_supply_mode
 
@@ -120,6 +124,28 @@ ZTE_POWER_SUPPLY_READBACK_INTERVAL=0
 ZTE_POWER_SUPPLY_READBACK_ATTEMPTS=3
 export ZTE_HTTP_TIMEOUT ZTE_POWER_SUPPLY_READBACK_INTERVAL
 export ZTE_POWER_SUPPLY_READBACK_ATTEMPTS
+
+# A structurally valid anonymous write must be rejected before application.
+start_simulator u30-power-success 1
+anonymous_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
+    -H "Referer: http://$simulator_host/" \
+    -H 'X-Requested-With: XMLHttpRequest' \
+    -H 'Content-Type: application/x-www-form-urlencoded' \
+    --data-binary 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=0' \
+    "http://$simulator_host/goform/goform_set_cmd_process")
+assert_eq 401 "$anonymous_code" 'anonymous U30 power write must be rejected'
+assert_eq 1 "$(grep -c '^POST U30_POWER 401 requested=0 count=1$' \
+    "$request_log")"
+
+# A rejected credential must stop at LOGIN and issue no power POST.
+start_simulator u30-power-success 1
+rejected_status=0
+rejected_output=$(zte_execute_power_supply_mode "$simulator_host" wrong-fixture \
+    "$work/cookies" charging 2>>"$work/action.err") || rejected_status=$?
+assert_eq authentication_failed "$rejected_output"
+assert_eq 1 "$rejected_status"
+assert_eq 0 "$(grep -c '^POST U30_POWER ' "$request_log")"
+assert_eq 1 "$(grep -c '^POST LOGIN 403$' "$request_log")"
 
 # The simulator rejects header drift and duplicate form keys so this E2E
 # cannot pass with a looser request contract than the production WebUI shape.

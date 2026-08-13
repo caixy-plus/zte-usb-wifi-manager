@@ -35,7 +35,7 @@ assert_success zte_device_profile_select_named zte_u30
 assert_success zte_adapter_apply_profile
 assert_eq zte_u30 "$ZTE_ADAPTER_ID"
 assert_eq 'U30 Pro' "$ZTE_ADAPTER_MODEL"
-assert_failure zte_adapter_login_required
+assert_success zte_adapter_login_required
 u30_capabilities=$(zte_adapter_capabilities_json)
 assert_eq https "$(printf '%s' "$u30_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).transport))')"
 assert_eq device_certificate_unverified "$(printf '%s' "$u30_capabilities" | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).tls_verification))')"
@@ -301,7 +301,7 @@ const fs = require("fs");
 const contract = JSON.parse(fs.readFileSync("tests/fixtures/u30/write-contracts.json"));
 const action = contract.actions.set_power_supply_mode;
 if (contract.profile !== "zte_u30" || contract.security.https_required !== true ||
-    contract.security.login_required !== false ||
+    contract.security.login_required !== true ||
     contract.security.accessible_id_support !== false ||
     contract.security.session_material_persisted !== false ||
     action.goform_id !== "POWER_SUPPLY_SETTING" ||

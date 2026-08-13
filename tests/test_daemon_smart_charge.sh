@@ -33,6 +33,7 @@ host=192.168.0.1
 work=$(mktemp -d /tmp/zte-smart-charge.XXXXXX)
 STATE_DIR=$work/state
 COOKIE_FILE=$work/cookies
+credential_file=$work/credentials
 battery_enabled=1
 battery_low=30
 battery_high=80
@@ -65,7 +66,15 @@ record_event() { :; }
 device_profile_still_valid() { [ "${identity_valid:-1}" = 1 ]; }
 zte_adapter_action_supported() { [ "$1" = set_power_supply_mode ]; }
 configured_action_enabled() { [ "$1" = set_power_supply_mode ]; }
+zte_read_password() {
+    [ "$1" = "$credential_file" ] || return 1
+    printf '%s\n' fixture-credential
+}
 zte_execute_power_supply_mode() {
+    [ "$2" = fixture-credential ] || {
+        printf '%s\n' credentials_missing
+        return 1
+    }
     printf '%s\n' "$4" >>"$execute_log"
     printf '%s\n' ok
 }

@@ -31,6 +31,11 @@ jsonfilter() {
 }
 
 work=$(mktemp -d /tmp/zte-test-u30-actions-e2e.XXXXXX)
+ZTE_SESSION_LOCK_FILE=$work/session.lock
+ZTE_SESSION_LOCK_ATTEMPTS=1
+ZTE_SESSION_LOCK_INTERVAL=0
+export ZTE_SESSION_LOCK_FILE ZTE_SESSION_LOCK_ATTEMPTS
+export ZTE_SESSION_LOCK_INTERVAL
 simulator_pid=
 trap 'stop_simulator; rm -rf "$work"' EXIT HUP INT TERM
 
@@ -75,7 +80,7 @@ run_sms() {
 	action=$1
 	record=$2
 	action_status=0
-	action_output=$(zte_execute_u30_sms_action "$simulator_host" '' \
+	action_output=$(zte_execute_u30_sms_action "$simulator_host" unused \
 		"$work/cookies" "$action" "$record" 2>>"$work/action.err") ||
 		action_status=$?
 }
@@ -83,7 +88,7 @@ run_sms() {
 run_device() {
 	action=$1
 	action_status=0
-	action_output=$(zte_execute_u30_device_action "$simulator_host" '' \
+	action_output=$(zte_execute_u30_device_action "$simulator_host" unused \
 		"$work/cookies" "$action" 2>>"$work/action.err") ||
 		action_status=$?
 }
@@ -106,7 +111,7 @@ ZTE_DEVICE_PROFILE_SCHEME=http
 ZTE_DEVICE_PROFILE_TLS_INSECURE=0
 export ZTE_DEVICE_PROFILE_SCHEME ZTE_DEVICE_PROFILE_TLS_INSECURE
 assert_success zte_adapter_apply_profile
-assert_failure zte_adapter_login_required
+assert_success zte_adapter_login_required
 
 ZTE_HTTP_TIMEOUT=0.2
 ZTE_SMS_READBACK_ATTEMPTS=3

@@ -300,7 +300,17 @@ assert_eq preflight_failed "$(zte_execute_power_supply_mode \
     192.168.0.1 '' "$work/cookies" direct_supply)"
 power_password_lifetime_log=$work/power-password-lifetime
 : >"$power_password_lifetime_log"
+: >"$power_write_log"
 ZTE_LOGIN_REQUIRED=1
+assert_eq credentials_missing "$(zte_execute_power_supply_mode \
+    192.168.0.1 '' "$work/cookies" direct_supply)"
+assert_eq 0 "$(wc -l <"$power_write_log" | tr -d ' ')" \
+    'missing credentials must stop before the power POST'
+zte_session_login() { return 1; }
+assert_eq authentication_failed "$(zte_execute_power_supply_mode \
+    192.168.0.1 rejected-fixture "$work/cookies" direct_supply)"
+assert_eq 0 "$(wc -l <"$power_write_log" | tr -d ' ')" \
+    'rejected credentials must stop before the power POST'
 zte_session_login() { return 0; }
 zte_adapter_set_power_supply_mode() {
     [ -z "${_zte_power_execute_password-}" ] ||

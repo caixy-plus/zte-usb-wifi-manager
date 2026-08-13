@@ -8,8 +8,10 @@ The contract is transcribed from the U30 Pro files served by the device itself:
   `setPowerSupplySetting`;
 - `js/adm/power_supply.js` binds the page switch to the value `1` and sends
   `0` or `1`;
-- `js/config/config.js` plus `js/config/ufi/mu3351/config.js` resolve to
-  anonymous login and no accessible-ID support on the inspected firmware.
+- `js/config/config.js` resolves `HAS_LOGIN:!0` to login-required and keeps
+  accessible-ID support disabled on the current firmware. This authentication
+  correction supersedes the earlier anonymous interpretation; see
+  `2026-08-13-u30-auth-recheck.md`.
 
 User-provided browser captures were used only as a discovery hint. Their
 Cookie and AD values are session material and are deliberately absent from the
@@ -41,6 +43,12 @@ as configuration because it is derived session material. A future firmware
 that enables accessible-ID support must be treated as a different, unsupported
 write-security contract until its derivation is independently implemented and
 tested.
+
+Every device write first completes the reviewed LD challenge and LOGIN digest
+exchange using the root-owned, mode-0600 credential file. Anonymous status GETs
+remain allowed, but an anonymous POST returning HTTP 200 with an empty body is
+not success and must remain `write_ambiguous` unless exact readback proves the
+target state.
 
 ## Execution rule
 

@@ -877,6 +877,10 @@ class U25SHandler(BaseHTTPRequestHandler):
                 self.state.record_u30_power_post(safe_mode, "400")
                 self.send_payload(400, '{"result":"invalid_request"}')
                 return
+            if self.state.session_state(self.session_id(), "write") != "valid":
+                self.state.record_u30_power_post(mode, "401")
+                self.send_payload(401, '{"result":"session_expired"}')
+                return
 
             scenario = self.state.scenario
             if scenario == "u30-power-reject":
@@ -936,6 +940,10 @@ class U25SHandler(BaseHTTPRequestHandler):
                 self.state.record_u30_setting_post(action, "400")
                 self.send_payload(400, '{"result":"invalid_request"}')
                 return
+            if self.state.session_state(self.session_id(), "write") != "valid":
+                self.state.record_u30_setting_post(action, "401")
+                self.send_payload(401, '{"result":"session_expired"}')
+                return
 
             scenario = self.state.scenario
             if scenario == "u30-setting-reject":
@@ -992,6 +1000,10 @@ class U25SHandler(BaseHTTPRequestHandler):
             ):
                 self.state.record_u30_action_post(action, "400")
                 self.send_payload(400, '{"result":"invalid_request"}')
+                return
+            if self.state.session_state(self.session_id(), "write") != "valid":
+                self.state.record_u30_action_post(action, "401")
+                self.send_payload(401, '{"result":"session_expired"}')
                 return
 
             scenario = self.state.scenario

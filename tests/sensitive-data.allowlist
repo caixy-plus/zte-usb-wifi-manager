@@ -21,7 +21,7 @@ tests/test_sensitive_data.sh:145:PHONE_NUMBER
 tests/test_adapter.sh:643:MAC_ADDRESS
 tests/test_adapter.sh:644:MAC_ADDRESS
 tests/test_adapter.sh:702:MAC_ADDRESS
-tests/test_action_executor.sh:392:SECRET_ASSIGNMENT
-tests/test_action_executor.sh:456:SECRET_ASSIGNMENT
+tests/test_action_executor.sh:402:SECRET_ASSIGNMENT
+tests/test_action_executor.sh:466:SECRET_ASSIGNMENT
 tests/test_json.sh:75:MAC_ADDRESS
 tests/test_json.sh:76:MAC_ADDRESS

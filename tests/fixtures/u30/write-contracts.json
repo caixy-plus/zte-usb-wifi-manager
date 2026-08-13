@@ -8,7 +8,7 @@
   "security": {
     "https_required": true,
     "referer": "https://192.168.0.1/",
-    "login_required": false,
+    "login_required": true,
     "accessible_id_support": false,
     "ad_policy": "omit_when_accessible_id_support_is_false",
     "session_material_persisted": false

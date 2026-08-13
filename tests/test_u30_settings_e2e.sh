@@ -18,6 +18,11 @@ lib=./package/zte-usb-wifi-manager/files/usr/lib/zte-usb-wifi-manager
 . "$lib/action-executor.sh"
 
 work=$(mktemp -d /tmp/zte-test-u30-settings-e2e.XXXXXX)
+ZTE_SESSION_LOCK_FILE=$work/session.lock
+ZTE_SESSION_LOCK_ATTEMPTS=1
+ZTE_SESSION_LOCK_INTERVAL=0
+export ZTE_SESSION_LOCK_FILE ZTE_SESSION_LOCK_ATTEMPTS
+export ZTE_SESSION_LOCK_INTERVAL
 simulator_pid=
 trap 'stop_simulator; rm -rf "$work"' EXIT HUP INT TERM
 
@@ -62,7 +67,7 @@ run_setting() {
 	action=$1
 	record=$2
 	setting_status=0
-	setting_output=$(zte_execute_u30_setting "$simulator_host" '' \
+	setting_output=$(zte_execute_u30_setting "$simulator_host" unused \
 		"$work/cookies" "$action" "$record" 2>>"$work/action.err") ||
 		setting_status=$?
 }
@@ -88,7 +93,7 @@ ZTE_DEVICE_PROFILE_TLS_INSECURE=0
 export ZTE_DEVICE_PROFILE_SCHEME ZTE_DEVICE_PROFILE_TLS_INSECURE
 assert_success zte_adapter_apply_profile
 assert_eq zte_u30 "$ZTE_ADAPTER_ID"
-assert_failure zte_adapter_login_required
+assert_success zte_adapter_login_required
 
 ZTE_HTTP_TIMEOUT=0.2
 ZTE_SETTING_READBACK_ATTEMPTS=3

@@ -22,11 +22,26 @@ extract_daemon_function() {
 
 eval "$(extract_daemon_function device_profile_still_valid)"
 eval "$(extract_daemon_function configure_device_profile)"
+eval "$(extract_daemon_function reset_device_session)"
 
 logger() { :; }
 
 work=$(mktemp -d /tmp/zte-test-daemon-profile.XXXXXX)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
+COOKIE_FILE=$work/cookies
+printf '%s\n' stale-session >"$COOKIE_FILE"
+assert_success reset_device_session
+assert_failure test -e "$COOKIE_FILE"
+rm -f "$COOKIE_FILE"
+cookie_target=$work/cookie-target
+printf '%s\n' untouched >"$cookie_target"
+ln -s "$cookie_target" "$COOKIE_FILE"
+assert_success reset_device_session
+assert_eq untouched "$(cat "$cookie_target")"
+mkdir "$COOKIE_FILE"
+assert_failure reset_device_session
+assert_success test -d "$COOKIE_FILE"
+rmdir "$COOKIE_FILE"
 sysfs=$work/sys/bus/usb/devices
 netfs=$work/sys/class/net
 mkdir -p "$sysfs/1-1/1-1:1.0" "$netfs/eth2"

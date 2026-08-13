@@ -162,6 +162,11 @@ remove_pid_file() {
 	rm -f "$PID_FILE"
 }
 
+reset_device_session() {
+	rm -f "$COOKIE_FILE" 2>/dev/null || return 1
+	[ ! -e "$COOKIE_FILE" ] && [ ! -L "$COOKIE_FILE" ]
+}
+
 write_status() {
 	umask 077
 	mkdir -p "$STATE_DIR"
@@ -361,9 +366,17 @@ apply_smart_charge_policy() {
 			smart_charge_persistence_failed "$_zte_smart_now" || :
 		return 0
 	fi
+	_zte_smart_password=''
+	if _zte_smart_saved_password=$(zte_read_password \
+		"$credential_file" 2>/dev/null); then
+		_zte_smart_password=$_zte_smart_saved_password
+	fi
+	_zte_smart_saved_password=''
 	_zte_smart_execute_result=''
 	if _zte_smart_execute_result=$(zte_execute_power_supply_mode \
-		"$host" '' "$COOKIE_FILE" "$_zte_smart_target"); then
+		"$host" "$_zte_smart_password" "$COOKIE_FILE" \
+		"$_zte_smart_target"); then
+		_zte_smart_password=''
 		power_action=$_zte_smart_target
 		if zte_smart_charge_cooldown_clear "$STATE_DIR"; then
 			smart_charge_retry_after=0
@@ -381,6 +394,7 @@ apply_smart_charge_policy() {
 		zte_device_action_release "$STATE_DIR" || :
 		return 0
 	fi
+	_zte_smart_password=''
 	if zte_smart_charge_error_valid "$_zte_smart_execute_result"; then
 		smart_charge_last_error=$_zte_smart_execute_result
 	else
@@ -520,6 +534,11 @@ poll_once() {
 main() {
 	load_config
 	init_state
+	if ! reset_device_session; then
+		logger -t zte-usb-wifi-manager \
+			'failed to clear stale device session at startup'
+		return 1
+	fi
 	recover_charging_transaction
 	if ! configure_device_profile; then
 		publish_unsupported_device
