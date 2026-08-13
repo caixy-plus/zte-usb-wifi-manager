@@ -13,6 +13,8 @@ from urllib.parse import parse_qs, urlparse
 
 
 CHALLENGE = "fixture-challenge"
+U30_ACCESS_WA = "U30ProV1.0.0B23"
+U30_ACCESS_CR = "MU5358V1.0.0B23"
 STATUS_PATH = "/goform/goform_get_cmd_process"
 ACTION_PATH = "/goform/goform_set_cmd_process"
 SCENARIOS = (
@@ -38,6 +40,7 @@ SCENARIOS = (
     "u30-power-readback-malformed",
     "u30-power-readback-timeout",
     "u30-power-readback-invalid-mode",
+    "u30-power-access-missing-rd",
     "u30-setting-success",
     "u30-setting-reject",
     "u30-setting-timeout-before-apply",
@@ -238,6 +241,8 @@ class SimulatorState:
         self.u30_power_pending_mode = None
         self.u30_power_post_count = 0
         self.u30_power_read_count = 0
+        self.u30_access_challenge_count = 0
+        self.u30_access_challenges = {}
         self.allow_u30_setting_writes = allow_u30_setting_writes
         self.u30_setting_post_count = 0
         self.u30_setting_read_count = 0
@@ -279,6 +284,31 @@ class SimulatorState:
             self.login_secret.encode("utf-8")
         ).hexdigest().upper()
         return hashlib.sha256((first + CHALLENGE).encode("utf-8")).hexdigest().upper()
+
+    def expected_u30_access_digest(self, rd):
+        versions = hashlib.sha256(
+            (U30_ACCESS_WA + U30_ACCESS_CR).encode("utf-8")
+        ).hexdigest().upper()
+        return hashlib.sha256(
+            (versions + rd).encode("utf-8")
+        ).hexdigest().upper()
+
+    def issue_u30_access_challenge(self, session_id):
+        with self.lock:
+            self.u30_access_challenge_count += 1
+            sequence = self.u30_access_challenge_count
+            rd = f"fixture-rd-challenge-{sequence}"
+            self.u30_access_challenges[session_id] = rd
+            with self.request_log.open("a", encoding="utf-8") as stream:
+                stream.write(f"GET U30_ACCESS 200 sequence={sequence}\n")
+            return rd
+
+    def consume_u30_access_digest(self, session_id, supplied_digest):
+        with self.lock:
+            rd = self.u30_access_challenges.pop(session_id, None)
+            if rd is None:
+                return False
+            return supplied_digest == self.expected_u30_access_digest(rd)
 
     def create_session(self):
         with self.lock:
@@ -734,6 +764,29 @@ class U25SHandler(BaseHTTPRequestHandler):
             self.send_payload(200, json.dumps({"LD": CHALLENGE}, separators=(",", ":")))
             return
 
+        if self.state.profile == "u30" and command == "wa_inner_version,cr_version,RD":
+            query = parse_qs(request.query)
+            expected_referer = f"http://{self.headers.get('Host', '')}/"
+            if (
+                self.headers.get("Referer") != expected_referer
+                or query.get("isTest", [""])[0] != "false"
+                or query.get("multi_data", [""])[0] != "1"
+                or self.state.session_state(self.session_id(), "write") != "valid"
+            ):
+                self.state.record("GET U30_ACCESS INVALID_REQUEST")
+                self.send_payload(400, '{"result":"invalid_request"}')
+                return
+            rd = self.state.issue_u30_access_challenge(self.session_id())
+            payload = {
+                "wa_inner_version": U30_ACCESS_WA,
+                "cr_version": U30_ACCESS_CR,
+                "RD": rd,
+            }
+            if self.state.scenario == "u30-power-access-missing-rd":
+                payload.pop("RD")
+            self.send_payload(200, json.dumps(payload, separators=(",", ":")))
+            return
+
         requested_fields = command.split(",") if command else []
         if not requested_fields or (
             command not in U30_SETTING_COMMANDS
@@ -873,7 +926,7 @@ class U25SHandler(BaseHTTPRequestHandler):
                 or self.headers.get("Content-Type")
                 != "application/x-www-form-urlencoded; charset=UTF-8"
                 or set(form)
-                != {"isTest", "goformId", "power_supply_mode"}
+                != {"isTest", "goformId", "power_supply_mode", "AD"}
                 or any(len(values) != 1 for values in form.values())
             ):
                 self.state.record_u30_power_post(safe_mode, "400")
@@ -882,6 +935,12 @@ class U25SHandler(BaseHTTPRequestHandler):
             if self.state.session_state(self.session_id(), "write") != "valid":
                 self.state.record_u30_power_post(mode, "401")
                 self.send_payload(401, '{"result":"session_expired"}')
+                return
+            if not self.state.consume_u30_access_digest(
+                self.session_id(), form.get("AD", [""])[0]
+            ):
+                self.state.record_u30_power_post(mode, "400")
+                self.send_payload(400, '{"result":"invalid_request"}')
                 return
 
             scenario = self.state.scenario

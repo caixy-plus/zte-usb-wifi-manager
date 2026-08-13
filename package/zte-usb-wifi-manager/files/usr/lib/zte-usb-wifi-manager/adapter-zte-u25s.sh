@@ -369,6 +369,42 @@ zte_adapter_power_supply_raw_mode() {
 	esac
 }
 
+# Derive the U30 WebUI's per-write accessible identifier. The device supplies
+# all three inputs; only the fixed-size digest leaves this subshell.
+zte_adapter_u30_access_digest() (
+	[ "${ZTE_ADAPTER_ID:-}" = zte_u30 ] || return 1
+	_zte_access_origin=$(zte_adapter_origin "$1") || return 1
+	_zte_access_response=$(zte_http_get \
+		"$_zte_access_origin/goform/goform_get_cmd_process?cmd=wa_inner_version,cr_version,RD&multi_data=1&isTest=false" \
+		"$2") || return 1
+	zte_json_is_flat_object "$_zte_access_response" || return 1
+	for _zte_access_field in wa_inner_version cr_version RD; do
+		zte_json_flat_has "$_zte_access_response" \
+			"$_zte_access_field" || return 1
+		[ "$(zte_json_flat_type "$_zte_access_response" \
+			"$_zte_access_field")" = string ] || return 1
+	done
+	_zte_access_wa=$(zte_json_flat_get \
+		"$_zte_access_response" wa_inner_version) || return 1
+	_zte_access_cr=$(zte_json_flat_get \
+		"$_zte_access_response" cr_version) || return 1
+	_zte_access_rd=$(zte_json_flat_get "$_zte_access_response" RD) || return 1
+	for _zte_access_value in \
+		"$_zte_access_wa" "$_zte_access_cr" "$_zte_access_rd"; do
+		case $_zte_access_value in
+			''|*[!A-Za-z0-9._-]*) return 1 ;;
+		esac
+		[ "${#_zte_access_value}" -le 128 ] || return 1
+	done
+	_zte_access_versions=$(zte_sha256_hex \
+		"$_zte_access_wa$_zte_access_cr") || return 1
+	_zte_access_versions=$(printf '%s\n' "$_zte_access_versions" |
+		tr 'a-f' 'A-F') || return 1
+	_zte_access_digest=$(zte_sha256_hex \
+		"$_zte_access_versions$_zte_access_rd") || return 1
+	printf '%s\n' "$_zte_access_digest" | tr 'a-f' 'A-F'
+)
+
 # U30 Pro's calibrated WebUI contract. The caller supplies only a semantic
 # mode; every request key and value is fixed here.
 zte_adapter_set_power_supply_mode() {
@@ -378,9 +414,14 @@ zte_adapter_set_power_supply_mode() {
 	_zte_power_jar=$3
 	_zte_power_raw=$(zte_adapter_power_supply_raw_mode \
 		"$_zte_power_target") || return 1
+	_zte_power_ad=$(zte_adapter_u30_access_digest \
+		"$_zte_power_host" "$_zte_power_jar") || return 12
+	_zte_power_post_status=0
 	zte_adapter_u30_post_body "$_zte_power_host" \
-		"isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=$_zte_power_raw" \
-		"$_zte_power_jar"
+		"goformId=POWER_SUPPLY_SETTING&isTest=false&power_supply_mode=$_zte_power_raw&AD=$_zte_power_ad" \
+		"$_zte_power_jar" || _zte_power_post_status=$?
+	_zte_power_ad=''
+	return "$_zte_power_post_status"
 }
 
 zte_adapter_fetch_power_supply_mode() {

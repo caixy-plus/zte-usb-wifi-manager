@@ -103,6 +103,8 @@ assert_exchange() {
         'U30 power writes must fetch a fresh login challenge'
     assert_eq 1 "$(grep -c '^POST LOGIN ' "$request_log")" \
         'U30 power writes must authenticate before POST'
+    assert_eq 1 "$(grep -c '^GET U30_ACCESS 200 sequence=' "$request_log")" \
+        'U30 power writes must derive one fresh AD challenge'
 }
 
 # Select the production U30 adapter explicitly, then replace only its scheme
@@ -124,6 +126,7 @@ ZTE_POWER_SUPPLY_READBACK_INTERVAL=0
 ZTE_POWER_SUPPLY_READBACK_ATTEMPTS=3
 export ZTE_HTTP_TIMEOUT ZTE_POWER_SUPPLY_READBACK_INTERVAL
 export ZTE_POWER_SUPPLY_READBACK_ATTEMPTS
+fixture_ad=627EA69353D81E1D73415ABC9420B7A2C86BB49EC3C8DB38C5B22E80C3D3A1C8
 
 # A structurally valid anonymous write must be rejected before application.
 start_simulator u30-power-success 1
@@ -132,7 +135,7 @@ anonymous_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
     -H "Origin: http://$simulator_host" \
     -H 'X-Requested-With: XMLHttpRequest' \
     -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
-    --data-binary 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=0' \
+    --data-binary "goformId=POWER_SUPPLY_SETTING&isTest=false&power_supply_mode=0&AD=$fixture_ad" \
     "http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 401 "$anonymous_code" 'anonymous U30 power write must be rejected'
 assert_eq 1 "$(grep -c '^POST U30_POWER 401 requested=0 count=1$' \
@@ -155,7 +158,7 @@ invalid_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
     -H "Referer: http://$simulator_host/" \
     -H "Origin: http://$simulator_host" \
     -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
-    --data-binary 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=1' \
+    --data-binary "goformId=POWER_SUPPLY_SETTING&isTest=false&power_supply_mode=1&AD=$fixture_ad" \
     "http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 400 "$invalid_code" 'missing XHR header must be rejected'
 start_simulator u30-power-success 0
@@ -164,7 +167,7 @@ invalid_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
     -H "Origin: http://$simulator_host" \
     -H 'X-Requested-With: XMLHttpRequest' \
     -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
-    --data-binary 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=1&power_supply_mode=0' \
+    --data-binary "goformId=POWER_SUPPLY_SETTING&isTest=false&power_supply_mode=1&power_supply_mode=0&AD=$fixture_ad" \
     "http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 400 "$invalid_code" 'duplicate form keys must be rejected'
 assert_eq 1 "$(grep -c 'requested=<invalid>' "$request_log")" \
@@ -178,6 +181,33 @@ assert_exchange ok 0 1 1
 start_simulator u30-power-success 1
 run_action charging
 assert_exchange ok 0 0 1
+
+# A single authenticated session must fetch and consume a different challenge
+# for every write. The simulator accepts only the latest unconsumed digest, so
+# caching or replaying the first AD makes the second POST fail.
+start_simulator u30-power-success 0
+assert_success zte_session_login "$simulator_host" unused-u30-secret \
+    "$work/cookies"
+assert_success zte_adapter_set_power_supply_mode \
+    "$simulator_host" direct_supply "$work/cookies"
+assert_success zte_adapter_set_power_supply_mode \
+    "$simulator_host" charging "$work/cookies"
+assert_eq 1 "$(grep -c '^POST LOGIN 200$' "$request_log")"
+assert_eq 2 "$(grep -c '^GET U30_ACCESS 200 sequence=' "$request_log")"
+assert_eq '1 2' "$(sed -n 's/^GET U30_ACCESS 200 sequence=//p' \
+    "$request_log" | paste -sd ' ' -)"
+assert_eq '1 0' "$(sed -n \
+    's/^POST U30_POWER 200 requested=\([01]\).*$/\1/p' \
+    "$request_log" | paste -sd ' ' -)"
+
+# Missing challenge material is a preflight failure and must never reach the
+# non-idempotent power POST.
+start_simulator u30-power-access-missing-rd 0
+run_action direct_supply
+assert_eq preflight_failed "$action_output"
+assert_eq 1 "$action_status"
+assert_eq 1 "$(grep -c '^GET U30_ACCESS 200 sequence=' "$request_log")"
+assert_eq 0 "$(grep -c '^POST U30_POWER ' "$request_log")"
 
 # Explicit rejection and a timeout before application leave state unchanged.
 start_simulator u30-power-reject 0

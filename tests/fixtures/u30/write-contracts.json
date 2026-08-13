@@ -9,8 +9,9 @@
     "https_required": true,
     "referer": "https://192.168.0.1/",
     "login_required": true,
-    "accessible_id_support": false,
-    "ad_policy": "omit_when_accessible_id_support_is_false",
+    "accessible_id_support_advertised": false,
+    "power_write_ad_required": true,
+    "ad_policy": "derive_sha256_sha256_versions_plus_rd_per_write",
     "session_material_persisted": false
   },
   "actions": {
@@ -20,7 +21,8 @@
       "allowed_keys": [
         "isTest",
         "goformId",
-        "power_supply_mode"
+        "power_supply_mode",
+        "AD"
       ],
       "fixed_values": {
         "isTest": "false"

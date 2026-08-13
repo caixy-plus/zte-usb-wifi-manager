@@ -302,11 +302,14 @@ const contract = JSON.parse(fs.readFileSync("tests/fixtures/u30/write-contracts.
 const action = contract.actions.set_power_supply_mode;
 if (contract.profile !== "zte_u30" || contract.security.https_required !== true ||
     contract.security.login_required !== true ||
-    contract.security.accessible_id_support !== false ||
+    contract.security.accessible_id_support_advertised !== false ||
+    contract.security.power_write_ad_required !== true ||
+    contract.security.ad_policy !==
+        "derive_sha256_sha256_versions_plus_rd_per_write" ||
     contract.security.session_material_persisted !== false ||
     action.goform_id !== "POWER_SUPPLY_SETTING" ||
     JSON.stringify(action.allowed_keys) !==
-        JSON.stringify(["isTest", "goformId", "power_supply_mode"]) ||
+        JSON.stringify(["isTest", "goformId", "power_supply_mode", "AD"]) ||
     action.semantic_values.charging !== "0" ||
     action.semantic_values.direct_supply !== "1" ||
     action.readback_command !== "power_supply_mode" ||
@@ -336,19 +339,44 @@ assert_success zte_adapter_apply_profile
     }
     zte_http_post_classified() { zte_http_post "$@"; }
     zte_http_get() {
-        printf '%s\n%s\n' "$1" "$2" >"$get_log"
-        printf '%s\n' '{"power_supply_mode":"1"}'
+        printf '%s\n%s\n' "$1" "$2" >>"$get_log"
+        case $1 in
+            *'cmd=wa_inner_version,cr_version,RD'*)
+                printf '%s\n' '{"wa_inner_version":"U30ProV1.0.0B23","cr_version":"MU5358V1.0.0B23","RD":"fixture-rd-challenge"}'
+                ;;
+            *) printf '%s\n' '{"power_supply_mode":"1"}' ;;
+        esac
     }
     assert_success zte_adapter_set_power_supply_mode \
         192.168.0.1 direct_supply "$jar"
     assert_eq 'https://192.168.0.1/goform/goform_set_cmd_process' \
         "$(sed -n '1p' "$post_log")"
-    assert_eq 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=1' \
+    assert_eq 'goformId=POWER_SUPPLY_SETTING&isTest=false&power_supply_mode=1&AD=627EA69353D81E1D73415ABC9420B7A2C86BB49EC3C8DB38C5B22E80C3D3A1C8' \
         "$(sed -n '2p' "$post_log")"
     assert_eq "$jar" "$(sed -n '3p' "$post_log")"
     assert_eq direct_supply "$(zte_adapter_fetch_power_supply_mode 192.168.0.1 "$jar")"
-    assert_eq 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=power_supply_mode&isTest=false' \
+    assert_eq 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=wa_inner_version,cr_version,RD&multi_data=1&isTest=false' \
         "$(sed -n '1p' "$get_log")"
+    assert_eq 'https://192.168.0.1/goform/goform_get_cmd_process?cmd=power_supply_mode&isTest=false' \
+        "$(sed -n '3p' "$get_log")"
+    : >"$post_log"
+    zte_http_get() {
+        printf '%s\n' '{"wa_inner_version":"U30ProV1.0.0B23","cr_version":"MU5358V1.0.0B23"}'
+    }
+    assert_failure zte_adapter_set_power_supply_mode \
+        192.168.0.1 charging "$jar"
+    assert_eq 0 "$(wc -c <"$post_log" | tr -d ' ')" \
+        'missing RD must fail before the device POST'
+    for malformed_challenge in \
+        '{"wa_inner_version":true,"cr_version":"MU5358V1.0.0B23","RD":"fixture-rd-challenge"}' \
+        '{"wa_inner_version":"U30ProV1.0.0B23","cr_version":7,"RD":"fixture-rd-challenge"}' \
+        '{"wa_inner_version":"U30ProV1.0.0B23","cr_version":"MU5358V1.0.0B23","RD":null}'; do
+        zte_http_get() { printf '%s\n' "$malformed_challenge"; }
+        assert_failure zte_adapter_set_power_supply_mode \
+            192.168.0.1 charging "$jar"
+    done
+    assert_eq 0 "$(wc -c <"$post_log" | tr -d ' ')" \
+        'non-string AD inputs must fail before the device POST'
 assert_failure zte_adapter_set_power_supply_mode 192.168.0.1 invalid "$jar"
 
 # Additional U30 contracts are sourced from the device WebUI but remain

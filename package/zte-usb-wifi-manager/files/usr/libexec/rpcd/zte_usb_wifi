@@ -90,7 +90,7 @@ set_charging_settings() {
 	IFS= read -r _zte_charging_request || :
 	if ! zte_json_is_flat_object "$_zte_charging_request" ||
 		! zte_adapter_payload_schema "$_zte_charging_request" \
-			'enabled low_percent high_percent' \
+			'enabled low_percent high_percent ubus_rpc_session' \
 			'enabled low_percent high_percent'; then
 		printf '%s\n' '{"ok":false,"error":"invalid_settings"}'
 		return

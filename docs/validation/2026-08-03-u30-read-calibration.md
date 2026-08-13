@@ -59,8 +59,10 @@ The device WebUI service and page modules independently show:
 - write command: `POWER_SUPPLY_SETTING`;
 - write key: `power_supply_mode` with values `0` and `1`;
 - the page binds the switch as enabled when the read value is `1`;
-- the generic service adds AD only when `ACCESSIBLE_ID_SUPPORT` is true; it is
-  false on the inspected U30 configuration.
+- the static files advertised `ACCESSIBLE_ID_SUPPORT=false`; later controlled
+  write evidence proved that current firmware nevertheless requires a dynamic
+  AD for `POWER_SUPPLY_SETTING` (superseded by the r40 correction in
+  `2026-08-13-u30-auth-recheck.md`).
 
 This records the request shape only. The charging semantics, data-link
 continuity and write/readback behavior must still pass the controlled Stage 2

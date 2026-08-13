@@ -181,6 +181,17 @@ charging_saved=$(printf '%s\n' \
     rpcd_call call set_charging_settings)
 assert_eq '{"ok":true,"enabled":true,"low_percent":40,"high_percent":85}' \
     "$charging_saved"
+# uhttpd injects the authenticated LuCI session into ubus request payloads.
+# The transport field must not make an otherwise valid settings request fail.
+charging_saved_from_luci=$(printf '%s\n' \
+    '{"enabled":true,"low_percent":40,"high_percent":85,"ubus_rpc_session":"0123456789abcdef0123456789abcdef"}' |
+    rpcd_call call set_charging_settings)
+assert_eq '{"ok":true,"enabled":true,"low_percent":40,"high_percent":85}' \
+    "$charging_saved_from_luci"
+assert_eq '{"ok":false,"error":"invalid_settings"}' \
+    "$(printf '%s\n' \
+        '{"enabled":true,"low_percent":40,"high_percent":85,"unexpected":true}' |
+        rpcd_call call set_charging_settings)"
 assert_eq '{"ok":false,"error":"invalid_settings"}' \
     "$(printf '%s\n' '{"enabled":true,"low_percent":90,"high_percent":80}' |
         rpcd_call call set_charging_settings)"

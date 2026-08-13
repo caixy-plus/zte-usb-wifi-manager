@@ -69,3 +69,17 @@ behavior and requires the reviewed digest vector to remain exact.
 The authenticated two-way real-device mode transition remains pending until a
 U30 Web management password is installed through the write-only credential
 RPC. All three production write gates remain closed in the meantime.
+
+## r40 accessible-ID correction
+
+A user-captured native `POWER_SUPPLY_SETTING` request showed an `AD` field,
+contradicting the static `ACCESSIBLE_ID_SUPPORT=false` configuration. Controlled
+replay established the load-bearing difference: authenticated writes without
+AD returned HTTP 200 with an empty body and did not change the mode, while an
+AD dynamically derived from `wa_inner_version`, `cr_version`, and a fresh `RD`
+challenge returned `result=success` and changed the exact readback.
+
+The adapter now derives `SHA256(SHA256(wa_inner_version + cr_version) + RD)`
+for each power-mode POST. No captured or derived AD is stored. A production-code
+two-way real-device test changed charging to direct supply and back to charging,
+with exact readback and the USB management link preserved in both directions.

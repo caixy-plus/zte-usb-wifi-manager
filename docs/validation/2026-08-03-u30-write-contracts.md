@@ -30,19 +30,23 @@ repository, fixtures, logs and commands.
 | Success marker | `result=success` |
 | Readback | exact `power_supply_mode` match |
 
-Only the three reviewed POST keys are permitted. Extra values, Cookie text,
-caller-supplied AD, arbitrary origins and arbitrary goform IDs must be rejected
-before an HTTP call is built.
+Only the three fixed setting keys plus an internally derived `AD` are
+permitted. Extra values, Cookie text, caller-supplied AD, arbitrary origins
+and arbitrary goform IDs must be rejected before an HTTP call is built.
 
 ## AD and session rule
 
-The common WebUI request wrapper adds `AD` only when
-`ACCESSIBLE_ID_SUPPORT=true`. It is false for the inspected U30 profile, so the
-production profile omits AD. The implementation must not accept a browser AD
-as configuration because it is derived session material. A future firmware
-that enables accessible-ID support must be treated as a different, unsupported
-write-security contract until its derivation is independently implemented and
-tested.
+Although the inspected base and model configuration files advertise
+`ACCESSIBLE_ID_SUPPORT=false`, a captured native request and controlled
+real-device replay proved that the current U30 firmware requires `AD` for
+`POWER_SUPPLY_SETTING`. A request without it returns HTTP 200 with an empty
+body and leaves the mode unchanged.
+
+The WebUI derivation is `SHA256(SHA256(wa_inner_version + cr_version) + RD)`,
+with uppercase hexadecimal digests. Production fetches all three device values
+immediately before each power-mode write, validates them, derives AD in an
+ephemeral subshell, and clears the final digest after POST. It must never
+accept a browser AD as configuration or persist/log the derived value.
 
 Every device write first completes the reviewed LD challenge and LOGIN digest
 exchange using the root-owned, mode-0600 credential file. Anonymous status GETs
