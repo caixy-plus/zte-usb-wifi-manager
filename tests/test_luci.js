@@ -194,6 +194,27 @@ collectRows(root, rows);
 const titles = rows.map(function(row) { return row.title; });
 assert.ok(titles.includes('设备型号') || titles.includes('电量') || body.includes('55%'));
 
+const credentialEntry = findNode(root, function(node) {
+	return node.attrs && node.attrs['class'] === 'cbi-section zte-credential-entry';
+});
+assert.ok(credentialEntry);
+const credentialRows = [];
+collectRows(credentialEntry, credentialRows);
+const passwordRow = credentialRows.find(function(item) {
+	return item.title === '设备管理密码';
+});
+assert.ok(passwordRow);
+assert.ok(passwordRow.value.includes('保存密码'));
+const clearRow = credentialRows.find(function(item) {
+	return item.title === '清除本地凭据';
+});
+assert.ok(clearRow);
+assert.ok(clearRow.value.includes('我确认清除路由器中保存的中兴设备管理密码。'));
+assert.ok(clearRow.value.includes('清除本地凭据'));
+assert.strictEqual(findNode(credentialEntry, function(node) {
+	return node.attrs && node.attrs['class'] === 'cbi-page-actions';
+}), null);
+
 assert.strictEqual(pollEntries.length, 1);
 assert.strictEqual(pollEntries[0].interval, 30);
 

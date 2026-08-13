@@ -1,6 +1,6 @@
 # 首版能力矩阵冻结（charge_v1）
 
-当前源码基线：backend r40 / LuCI r14（`access_profile=charge_v1`）。
+当前源码基线：backend r40 / LuCI r15（`access_profile=charge_v1`）。
 
 产品面已收敛为 **U30 Pro 智能充电 + 设备基础信息只读 + 原生管理页跳转**。
 历史完整控制台能力（移动网络/Wi‑Fi/短信/流量写操作等）从产品面删除；

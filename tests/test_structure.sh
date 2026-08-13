@@ -135,7 +135,7 @@ else
 fi
 
 # LuCI product surface.
-assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=14$'
+assert_file_contains "$luci/Makefile" '^PKG_RELEASE:=15$'
 assert_file_contains "$menu" '中兴智能充电'
 assert_file_contains "$view" "id: 'device'"
 assert_file_contains "$view" "id: 'charging'"

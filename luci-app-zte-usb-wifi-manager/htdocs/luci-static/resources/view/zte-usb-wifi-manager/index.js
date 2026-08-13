@@ -283,40 +283,47 @@ function renderCredentialEntry(credentialsResult, onSave, onClear, notice) {
 		'type': 'password',
 		'class': 'cbi-input-password',
 		'autocomplete': 'new-password',
-		'data-purpose': 'device-password'
+		'data-purpose': 'device-password',
+		'style': 'flex:1 1 10rem;min-width:0;width:auto;max-width:30rem'
 	});
 	var clearConfirm = E('input', {
 		'type': 'checkbox',
 		'class': 'cbi-input-checkbox',
 		'data-purpose': 'clear-credentials'
 	});
+	var saveButton = E('button', {
+		'class': 'cbi-button cbi-button-apply',
+		'type': 'button',
+		'click': function() {
+			return onSave(password);
+		}
+	}, _('保存密码'));
+	var clearButton = E('button', {
+		'class': 'cbi-button cbi-button-negative',
+		'type': 'button',
+		'click': function() {
+			return onClear(clearConfirm);
+		}
+	}, _('清除本地凭据'));
+	var inlineLayout = 'display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;width:min(100%,38rem)';
 	var children = [
 		E('p', { 'class': 'cbi-value-description' },
 			_('管理密码仅保存在本路由器，用于登录中兴 U30 Pro 设备；页面不会回显密码。')),
 		row(_('本地凭据'), value.configured === true ? _('已配置') : _('未配置')),
-		actionRow(_('设备管理密码'), password),
-		E('div', { 'class': 'cbi-page-actions' }, [
-			E('button', {
-				'class': 'cbi-button cbi-button-apply',
-				'type': 'button',
-				'click': function() {
-					return onSave(password);
-				}
-			}, _('保存密码'))
-		]),
-		E('label', { 'class': 'cbi-value' }, [
-			clearConfirm, ' ',
-			_('我确认清除路由器中保存的中兴设备管理密码。')
-		]),
-		E('div', { 'class': 'cbi-page-actions' }, [
-			E('button', {
-				'class': 'cbi-button cbi-button-negative',
-				'type': 'button',
-				'click': function() {
-					return onClear(clearConfirm);
-				}
-			}, _('清除本地凭据'))
-		])
+		actionRow(_('设备管理密码'), E('div', {
+			'style': inlineLayout
+		}, [ password, saveButton ])),
+		actionRow(_('清除本地凭据'), E('div', {
+			'style': inlineLayout
+		}, [
+			E('label', {
+				'style': 'display:inline-flex;align-items:center;gap:.5rem'
+			}, [
+				clearConfirm,
+				_('我确认清除路由器中保存的中兴设备管理密码。')
+			]),
+			clearButton
+		]))
 	];
 	if (notice)
 		children.unshift(E('div', {
