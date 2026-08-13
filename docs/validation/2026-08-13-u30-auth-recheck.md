@@ -55,6 +55,17 @@ only `Referer`. All POST helpers now send the validated origin and
 login and write requests when either value drifts. No password, digest, cookie,
 or device identifier is retained in this record.
 
+## r37 BusyBox digest portability
+
+The r36 request headers reached the native contract, but the installed helper
+still produced result code `3`. A fixed, non-secret SHA-256 test vector matched
+through the first hash and diverged only during uppercase conversion. The
+target BusyBox `tr` leaves the `[:lower:]`/`[:upper:]` operands unchanged, so
+both digest stages were sent in lowercase even though the WebUI requires
+uppercase hexadecimal. The conversion now maps only the hexadecimal range
+`a-f` to `A-F`. A regression test injects the target BusyBox character-class
+behavior and requires the reviewed digest vector to remain exact.
+
 The authenticated two-way real-device mode transition remains pending until a
 U30 Web management password is installed through the write-only credential
 RPC. All three production write gates remain closed in the meantime.

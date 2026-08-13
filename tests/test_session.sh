@@ -30,6 +30,30 @@ assert_eq '9677B188078A8ABD861E7FFD312B35BC7EA176616DF6BF0BA2AC7F22764710A7' \
 assert_eq 'BB0BCCC1797AF4B9132536CAE0CD0E4E580DC4D043F386F848C79C4A559CD83A' \
     "$(zte_session_digest admin 0000000000)"
 
+# The target BusyBox tr does not expand POSIX character-class operands. Keep
+# the digest portable by exercising it with that exact failure mode.
+mkdir -p "$work/busybox-tr-bin"
+real_tr=$(command -v tr)
+cat >"$work/busybox-tr-bin/tr" <<'EOF'
+#!/bin/sh
+if [ "${1-}" = '[:lower:]' ] && [ "${2-}" = '[:upper:]' ]; then
+    cat
+else
+    exec "$ZTE_TEST_REAL_TR" "$@"
+fi
+EOF
+chmod +x "$work/busybox-tr-bin/tr"
+saved_path=$PATH
+ZTE_TEST_REAL_TR=$real_tr
+PATH="$work/busybox-tr-bin:$PATH"
+export ZTE_TEST_REAL_TR PATH
+assert_eq '9677B188078A8ABD861E7FFD312B35BC7EA176616DF6BF0BA2AC7F22764710A7' \
+    "$(zte_session_digest test123 LD-abc123)" \
+    'digest casing must work with the target BusyBox tr behavior'
+PATH=$saved_path
+unset ZTE_TEST_REAL_TR
+export PATH
+
 # successful login posts the expected digest (stub writes body to a file
 # because zte_http_post runs inside command substitution)
 post_log=$work/post-body

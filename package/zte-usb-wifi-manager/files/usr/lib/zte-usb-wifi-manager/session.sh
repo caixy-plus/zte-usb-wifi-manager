@@ -87,9 +87,9 @@ zte_sha256_hex() {
 zte_session_digest() {
     _zte_step1=$(zte_sha256_hex "$1") || return 1
     _zte_step1=$(printf '%s\n' "$_zte_step1" |
-        tr '[:lower:]' '[:upper:]') || return 1
+        tr 'a-f' 'A-F') || return 1
     _zte_step2=$(zte_sha256_hex "$_zte_step1$2") || return 1
-    printf '%s\n' "$_zte_step2" | tr '[:lower:]' '[:upper:]'
+    printf '%s\n' "$_zte_step2" | tr 'a-f' 'A-F'
 }
 
 zte_session_origin() {
