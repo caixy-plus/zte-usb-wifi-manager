@@ -206,6 +206,25 @@ shutdown_manager() {
 	remove_pid_file
 }
 
+handle_shutdown_signal() {
+	trap - 1 2 15
+	if [ -n "${sleep_pid:-}" ]; then
+		kill "$sleep_pid" 2>/dev/null || :
+		wait "$sleep_pid" 2>/dev/null || :
+		sleep_pid=''
+	fi
+	exit 0
+}
+
+wait_for_next_poll() {
+	_zte_wait_status=0
+	sleep "$1" &
+	sleep_pid=$!
+	wait "$sleep_pid" || _zte_wait_status=$?
+	sleep_pid=''
+	return "$_zte_wait_status"
+}
+
 record_event() {
 	_zte_event_level=$1
 	_zte_event_type=$2
@@ -566,14 +585,15 @@ main() {
 		zte_credential_revision "$credential_file" 2>/dev/null
 	) || credential_revision=invalid
 	shutdown_started=0
+	sleep_pid=''
 	trap shutdown_manager 0
-	trap 'exit 0' 1 2 15
+	trap handle_shutdown_signal 1 2 15
 	write_pid_file || return 1
 	zte_action_reconcile_active "$STATE_DIR" || :
 	record_event info service service_started "$(date +%s)" || :
 	while [ "$enabled" = 1 ]; do
 		poll_once
-		sleep "$(zte_backoff_interval "$poll_interval" "$failures")"
+		wait_for_next_poll "$(zte_backoff_interval "$poll_interval" "$failures")" || :
 	done
 }
 

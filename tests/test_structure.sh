@@ -62,7 +62,7 @@ esac
 # Package metadata.
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=34$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=35$'
 if grep -q '^define Package/zte-usb-wifi-manager/postinst$' "$backend/Makefile"; then
     fail 'first release must not carry an upgrade migration hook'
 else
@@ -103,6 +103,10 @@ fi
 
 # procd starts only the smart-charge manager.
 assert_file_contains "$init" '/usr/sbin/zte-usb-wifi-managerd'
+assert_file_contains "$daemon" '^handle_shutdown_signal\(\) \{$'
+assert_file_contains "$daemon" '^wait_for_next_poll\(\) \{$'
+assert_file_contains "$daemon" "trap handle_shutdown_signal 1 2 15"
+assert_file_contains "$daemon" 'wait_for_next_poll "\$\(zte_backoff_interval "\$poll_interval" "\$failures"\)"'
 if grep -E 'recovery-coordinator|CALIBRATION' "$init" >/dev/null; then
     fail 'service init must not retain legacy recovery or calibration runtime'
 else

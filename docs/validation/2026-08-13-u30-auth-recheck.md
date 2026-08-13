@@ -34,6 +34,15 @@ recorded here.
 - U30 action E2E: 46 assertions PASS.
 - U30 power calibration and recovery: 110 assertions PASS.
 
+## r35 lifecycle correction
+
+The first r34 field upgrade also showed that a daemon sleeping between polls
+could outlive procd's TERM grace period and be killed. The poll wait is now a
+tracked child process: TERM interrupts that wait, reaps it, and lets the normal
+exit cleanup run. A lifecycle regression test requires a 30-second wait to
+terminate within three seconds; the complete `make check` suite passes with
+the correction.
+
 The authenticated two-way real-device mode transition remains pending until a
 U30 Web management password is installed through the write-only credential
 RPC. All three production write gates remain closed in the meantime.

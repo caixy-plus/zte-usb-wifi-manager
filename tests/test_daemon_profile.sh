@@ -23,6 +23,8 @@ extract_daemon_function() {
 eval "$(extract_daemon_function device_profile_still_valid)"
 eval "$(extract_daemon_function configure_device_profile)"
 eval "$(extract_daemon_function reset_device_session)"
+eval "$(extract_daemon_function handle_shutdown_signal)"
+eval "$(extract_daemon_function wait_for_next_poll)"
 
 logger() { :; }
 
@@ -85,5 +87,31 @@ assert_failure configure_device_profile
 adapter=zte_u30
 assert_failure configure_device_profile \
     'an explicit profile must also fail when the bound identity disappears'
+
+# A TERM received during the normal poll sleep must stop the manager well
+# inside procd's grace period instead of waiting for the whole poll interval.
+(
+    sleep_pid=''
+    trap handle_shutdown_signal HUP INT TERM
+    wait_for_next_poll 30
+) &
+worker_pid=$!
+sleep 1
+kill -TERM "$worker_pid"
+worker_stopped=0
+for _zte_wait_attempt in 1 2 3; do
+    if ! kill -0 "$worker_pid" 2>/dev/null; then
+        worker_stopped=1
+        break
+    fi
+    sleep 1
+done
+if [ "$worker_stopped" = 1 ]; then
+    pass
+else
+    fail 'daemon poll wait must terminate promptly on TERM'
+    kill -KILL "$worker_pid" 2>/dev/null || :
+fi
+assert_success wait "$worker_pid"
 
 finish
