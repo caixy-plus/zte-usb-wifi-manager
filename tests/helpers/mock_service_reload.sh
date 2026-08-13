@@ -49,7 +49,8 @@ write_test_ack() {
 if [ "${ZTE_TEST_SERVICE_AUTO_ACK:-1}" = 1 ]; then
 	if [ -n "${ZTE_TEST_SERVICE_ACK_DELAY:-}" ]; then
 		(
-			sleep "$ZTE_TEST_SERVICE_ACK_DELAY"
+			"${ZTE_TEST_SERVICE_SLEEP_BIN:-sleep}" \
+				"$ZTE_TEST_SERVICE_ACK_DELAY"
 			write_test_ack
 		) >/dev/null 2>&1 &
 	else

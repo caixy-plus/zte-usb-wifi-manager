@@ -9,7 +9,7 @@ ZTE_CHARGING_TX_SECTION=$ZTE_CHARGING_TX_PACKAGE.charging
 ZTE_CHARGING_TX_MARKER=$ZTE_CHARGING_TX_PACKAGE.charging_tx
 
 zte_charging_tx_uci() {
-	"${ZTE_CHARGING_UCI_BIN:-uci}" -q -P "$zte_charging_tx_savedir" "$@"
+	"${ZTE_CHARGING_UCI_BIN:-uci}" -q -t "$zte_charging_tx_savedir" "$@"
 }
 
 zte_charging_tx_unquote() {
@@ -326,7 +326,7 @@ zte_charging_tx_wait_ack() {
 	_zte_charging_tx_wait_txid=$zte_charging_tx_txid
 	_zte_charging_tx_wait_state=$zte_charging_tx_marker_state
 	_zte_charging_tx_attempt=0
-	_zte_charging_tx_attempts=${ZTE_CHARGING_TX_ACK_ATTEMPTS:-20}
+	_zte_charging_tx_attempts=${ZTE_CHARGING_TX_ACK_ATTEMPTS:-3}
 	while [ "$_zte_charging_tx_attempt" -lt "$_zte_charging_tx_attempts" ]; do
 		zte_charging_tx_verify_marker "$_zte_charging_tx_wait_txid" \
 			"$_zte_charging_tx_wait_state" || return 2
@@ -336,7 +336,7 @@ zte_charging_tx_wait_ack() {
 			"$zte_charging_tx_expected_high" && return 0
 		_zte_charging_tx_attempt=$((_zte_charging_tx_attempt + 1))
 		[ "$_zte_charging_tx_attempt" -ge "$_zte_charging_tx_attempts" ] ||
-			sleep "${ZTE_CHARGING_TX_ACK_SLEEP:-0.1}"
+			sleep "${ZTE_CHARGING_TX_ACK_SLEEP:-1}"
 	done
 	return 1
 }
@@ -477,8 +477,8 @@ zte_charging_tx_nonce() {
 	if [ -n "${ZTE_CHARGING_TX_TEST_NONCE:-}" ]; then
 		_zte_charging_tx_nonce=$ZTE_CHARGING_TX_TEST_NONCE
 	else
-		_zte_charging_tx_nonce=$(od -An -N16 -tx1 /dev/urandom 2>/dev/null |
-			tr -d ' \n') || return 1
+		_zte_charging_tx_nonce=$("${ZTE_CHARGING_TX_HEXDUMP_BIN:-hexdump}" \
+			-n 16 -e '16/1 "%02x"' /dev/urandom 2>/dev/null) || return 1
 	fi
 	[ "${#_zte_charging_tx_nonce}" = 32 ] || return 1
 	case $_zte_charging_tx_nonce in *[!0-9a-f]*) return 1 ;; esac

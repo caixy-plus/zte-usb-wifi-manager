@@ -73,6 +73,37 @@ ZTE_CHARGING_TX_ACK_ATTEMPTS=1
 ZTE_CHARGING_TX_TEST_NONCE=0123456789abcdef0123456789abcdef
 export ZTE_CHARGING_TX_ACK_ATTEMPTS ZTE_CHARGING_TX_TEST_NONCE
 
+# OpenWrt 25.12 ships hexdump but not od. Nonce generation must use the
+# target-available utility instead of silently producing an empty value.
+nonce_bin=$work/nonce-bin
+mkdir -p "$nonce_bin"
+cat >"$nonce_bin/hexdump" <<'EOF'
+#!/bin/sh
+[ "$#" -eq 5 ] && [ "$1" = -n ] && [ "$2" = 16 ] &&
+    [ "$3" = -e ] && [ "$4" = '16/1 "%02x"' ] &&
+    [ "$5" = /dev/urandom ] || exit 1
+[ "${ZTE_TEST_HEXDUMP_FAIL:-0}" = 0 ] || exit 1
+printf '%s' "${ZTE_TEST_HEXDUMP_OUTPUT:-0123456789abcdef0123456789abcdef}"
+EOF
+chmod 700 "$nonce_bin/hexdump"
+unset ZTE_CHARGING_TX_TEST_NONCE
+assert_eq 0123456789abcdef0123456789abcdef \
+    "$(PATH="$nonce_bin" zte_charging_tx_nonce)"
+ZTE_CHARGING_TX_HEXDUMP_BIN=$nonce_bin/hexdump
+ZTE_TEST_HEXDUMP_FAIL=1
+export ZTE_CHARGING_TX_HEXDUMP_BIN ZTE_TEST_HEXDUMP_FAIL
+assert_failure zte_charging_tx_nonce
+unset ZTE_TEST_HEXDUMP_FAIL
+ZTE_TEST_HEXDUMP_OUTPUT=0123456789abcdef0123456789abcde
+export ZTE_TEST_HEXDUMP_OUTPUT
+assert_failure zte_charging_tx_nonce
+ZTE_TEST_HEXDUMP_OUTPUT=0123456789ABCDEF0123456789ABCDEF
+export ZTE_TEST_HEXDUMP_OUTPUT
+assert_failure zte_charging_tx_nonce
+unset ZTE_CHARGING_TX_HEXDUMP_BIN ZTE_TEST_HEXDUMP_OUTPUT
+ZTE_CHARGING_TX_TEST_NONCE=0123456789abcdef0123456789abcdef
+export ZTE_CHARGING_TX_TEST_NONCE
+
 reset_state() {
     rm -rf "$runtime" "$savedirs" "$flock_dir"
     mkdir -p "$runtime" "$savedirs"
@@ -285,6 +316,32 @@ export ZTE_CHARGING_TX_ACK_ATTEMPTS ZTE_CHARGING_TX_ACK_SLEEP
 export ZTE_TEST_SERVICE_ACK_DELAY
 result=$(zte_charging_transaction_apply "$runtime" "$service" 1 30 80)
 unset ZTE_TEST_SERVICE_ACK_DELAY ZTE_CHARGING_TX_ACK_SLEEP
+ZTE_CHARGING_TX_ACK_ATTEMPTS=1
+export ZTE_CHARGING_TX_ACK_ATTEMPTS
+assert_eq ok "$result"
+assert_marker_absent
+
+# The target BusyBox sleep accepts integer seconds only. A delayed daemon ACK
+# must still be observed when fractional sleeps are unavailable.
+reset_state
+strict_sleep_bin=$work/strict-sleep-bin
+mkdir -p "$strict_sleep_bin"
+cat >"$strict_sleep_bin/sleep" <<'EOF'
+#!/bin/sh
+case ${1-} in
+    ''|*[!0-9]*|0) exit 1 ;;
+    *) exec /bin/sleep "$@" ;;
+esac
+EOF
+chmod 700 "$strict_sleep_bin/sleep"
+ZTE_CHARGING_TX_ACK_ATTEMPTS=2
+ZTE_TEST_SERVICE_ACK_DELAY=0.05
+ZTE_TEST_SERVICE_SLEEP_BIN=/bin/sleep
+export ZTE_CHARGING_TX_ACK_ATTEMPTS ZTE_TEST_SERVICE_ACK_DELAY
+export ZTE_TEST_SERVICE_SLEEP_BIN
+result=$(PATH="$strict_sleep_bin:$PATH" \
+    zte_charging_transaction_apply "$runtime" "$service" 1 30 80)
+unset ZTE_TEST_SERVICE_ACK_DELAY ZTE_TEST_SERVICE_SLEEP_BIN
 ZTE_CHARGING_TX_ACK_ATTEMPTS=1
 export ZTE_CHARGING_TX_ACK_ATTEMPTS
 assert_eq ok "$result"

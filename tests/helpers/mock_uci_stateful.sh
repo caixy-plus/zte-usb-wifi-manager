@@ -8,7 +8,7 @@ fail_points_file=${ZTE_TEST_UCI_FAIL_POINTS:?}
 savedir=''
 
 [ "${1-}" = -q ] && shift
-if [ "${1-}" = -P ]; then
+if [ "${1-}" = -t ]; then
 	savedir=$2
 	shift 2
 fi
