@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=zte-usb-wifi-manager
 PKG_VERSION:=0.1.0_rc1
-PKG_RELEASE:=38
+PKG_RELEASE:=39
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=caixy-plus
 

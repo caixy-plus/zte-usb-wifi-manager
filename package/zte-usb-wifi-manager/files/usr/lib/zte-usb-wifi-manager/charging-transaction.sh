@@ -326,7 +326,7 @@ zte_charging_tx_wait_ack() {
 	_zte_charging_tx_wait_txid=$zte_charging_tx_txid
 	_zte_charging_tx_wait_state=$zte_charging_tx_marker_state
 	_zte_charging_tx_attempt=0
-	_zte_charging_tx_attempts=${ZTE_CHARGING_TX_ACK_ATTEMPTS:-3}
+	_zte_charging_tx_attempts=${ZTE_CHARGING_TX_ACK_ATTEMPTS:-12}
 	while [ "$_zte_charging_tx_attempt" -lt "$_zte_charging_tx_attempts" ]; do
 		zte_charging_tx_verify_marker "$_zte_charging_tx_wait_txid" \
 			"$_zte_charging_tx_wait_state" || return 2

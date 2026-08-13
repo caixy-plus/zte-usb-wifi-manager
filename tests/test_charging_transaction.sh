@@ -330,18 +330,39 @@ cat >"$strict_sleep_bin/sleep" <<'EOF'
 #!/bin/sh
 case ${1-} in
     ''|*[!0-9]*|0) exit 1 ;;
-    *) exec /bin/sleep "$@" ;;
+    *) exec /bin/sleep "${ZTE_TEST_SLEEP_REAL_SECONDS:-$1}" ;;
 esac
 EOF
 chmod 700 "$strict_sleep_bin/sleep"
 ZTE_CHARGING_TX_ACK_ATTEMPTS=2
 ZTE_TEST_SERVICE_ACK_DELAY=0.05
 ZTE_TEST_SERVICE_SLEEP_BIN=/bin/sleep
+ZTE_TEST_SLEEP_REAL_SECONDS=0.1
 export ZTE_CHARGING_TX_ACK_ATTEMPTS ZTE_TEST_SERVICE_ACK_DELAY
-export ZTE_TEST_SERVICE_SLEEP_BIN
+export ZTE_TEST_SERVICE_SLEEP_BIN ZTE_TEST_SLEEP_REAL_SECONDS
 result=$(PATH="$strict_sleep_bin:$PATH" \
     zte_charging_transaction_apply "$runtime" "$service" 1 30 80)
 unset ZTE_TEST_SERVICE_ACK_DELAY ZTE_TEST_SERVICE_SLEEP_BIN
+unset ZTE_TEST_SLEEP_REAL_SECONDS
+ZTE_CHARGING_TX_ACK_ATTEMPTS=1
+export ZTE_CHARGING_TX_ACK_ATTEMPTS
+assert_eq ok "$result"
+assert_marker_absent
+
+# A real procd reload can take more than two seconds when the polling daemon
+# is inside a blocking device request. The default ACK window must cover that
+# slow replacement without requiring a test-only attempt override.
+reset_state
+unset ZTE_CHARGING_TX_ACK_ATTEMPTS
+ZTE_TEST_SERVICE_ACK_DELAY=0.35
+ZTE_TEST_SERVICE_SLEEP_BIN=/bin/sleep
+ZTE_TEST_SLEEP_REAL_SECONDS=0.1
+export ZTE_TEST_SERVICE_ACK_DELAY ZTE_TEST_SERVICE_SLEEP_BIN
+export ZTE_TEST_SLEEP_REAL_SECONDS
+result=$(PATH="$strict_sleep_bin:$PATH" \
+    zte_charging_transaction_apply "$runtime" "$service" 1 30 80)
+unset ZTE_TEST_SERVICE_ACK_DELAY ZTE_TEST_SERVICE_SLEEP_BIN
+unset ZTE_TEST_SLEEP_REAL_SECONDS
 ZTE_CHARGING_TX_ACK_ATTEMPTS=1
 export ZTE_CHARGING_TX_ACK_ATTEMPTS
 assert_eq ok "$result"
