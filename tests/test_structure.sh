@@ -62,7 +62,7 @@ esac
 # Package metadata.
 assert_file_contains "$backend/Makefile" '^PKG_NAME:=zte-usb-wifi-manager$'
 assert_file_contains "$backend/Makefile" '^PKG_VERSION:=0\.1\.0_rc1$'
-assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=35$'
+assert_file_contains "$backend/Makefile" '^PKG_RELEASE:=36$'
 if grep -q '^define Package/zte-usb-wifi-manager/postinst$' "$backend/Makefile"; then
     fail 'first release must not carry an upgrade migration hook'
 else

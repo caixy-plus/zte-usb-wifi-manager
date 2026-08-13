@@ -92,11 +92,13 @@ zte_http_post() {
 	_zte_http_body=$2
 	_zte_http_jar=$3
 	_zte_http_referer=$(zte_http_referer "$_zte_http_url") || return 1
+	_zte_http_origin=${_zte_http_referer%/}
 	set -- -fsS --max-time "$ZTE_HTTP_TIMEOUT" \
 		-b "$_zte_http_jar" -c "$_zte_http_jar" \
 		-H "Referer: $_zte_http_referer" \
+		-H "Origin: $_zte_http_origin" \
 		-H 'X-Requested-With: XMLHttpRequest' \
-		-H 'Content-Type: application/x-www-form-urlencoded' \
+		-H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
 		--data-binary @-
 	if [ "${ZTE_DEVICE_TLS_INSECURE:-0}" = 1 ]; then
 		set -- "$@" --insecure
@@ -126,6 +128,7 @@ zte_http_post_classified() (
 	_zte_classified_jar=$3
 	_zte_classified_referer=$(zte_http_referer \
 		"$_zte_classified_url") || return 12
+	_zte_classified_origin=${_zte_classified_referer%/}
 	zte_http_secure_cookie_jar "$_zte_classified_jar" || return 12
 	_zte_classified_response=$(mktemp \
 		"$_zte_classified_jar.response.XXXXXX") || return 12
@@ -133,8 +136,9 @@ zte_http_post_classified() (
 	set -- -sS --max-time "$ZTE_HTTP_TIMEOUT" \
 		-b "$_zte_classified_jar" -c "$_zte_classified_jar" \
 		-H "Referer: $_zte_classified_referer" \
+		-H "Origin: $_zte_classified_origin" \
 		-H 'X-Requested-With: XMLHttpRequest' \
-		-H 'Content-Type: application/x-www-form-urlencoded' \
+		-H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
 		--data-binary @- -o "$_zte_classified_response" \
 		--write-out '%{http_code}'
 	if [ "${ZTE_DEVICE_TLS_INSECURE:-0}" = 1 ]; then

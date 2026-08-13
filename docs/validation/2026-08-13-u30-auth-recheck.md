@@ -43,6 +43,18 @@ exit cleanup run. A lifecycle regression test requires a 30-second wait to
 terminate within three seconds; the complete `make check` suite passes with
 the correction.
 
+## r36 browser request alignment
+
+The user-confirmed U30 password was rejected by the existing login helper with
+device result code `3`. A bounded replay using the same password and digest but
+the complete native-browser POST contract returned result code `0`. The
+load-bearing drift was the missing same-origin POST context: the U30 WebUI sends
+both `Origin` and its jQuery form content type, while the helper previously sent
+only `Referer`. All POST helpers now send the validated origin and
+`application/x-www-form-urlencoded; charset=UTF-8`; the simulator rejects U30
+login and write requests when either value drifts. No password, digest, cookie,
+or device identifier is retained in this record.
+
 The authenticated two-way real-device mode transition remains pending until a
 U30 Web management password is installed through the write-only credential
 RPC. All three production write gates remain closed in the meantime.

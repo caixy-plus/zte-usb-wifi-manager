@@ -16,7 +16,7 @@
 
 ## 当前状态
 
-仓库当前候选版本为 **backend r35 / LuCI r14**（`access_profile=charge_v1`）：
+仓库当前候选版本为 **backend r36 / LuCI r14**（`access_profile=charge_v1`）：
 
 - 目标设备：**U30 Pro only**（默认 `adapter=auto`）。只有 USB 身份被精确识别为 U30 Pro 后，才会启用设备能力和智能充电写入。
 - LuCI 三 Tab：**设备 / 智能充电 / 日志**。

@@ -129,8 +129,9 @@ export ZTE_POWER_SUPPLY_READBACK_ATTEMPTS
 start_simulator u30-power-success 1
 anonymous_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
     -H "Referer: http://$simulator_host/" \
+    -H "Origin: http://$simulator_host" \
     -H 'X-Requested-With: XMLHttpRequest' \
-    -H 'Content-Type: application/x-www-form-urlencoded' \
+    -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
     --data-binary 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=0' \
     "http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 401 "$anonymous_code" 'anonymous U30 power write must be rejected'
@@ -152,15 +153,17 @@ assert_eq 1 "$(grep -c '^POST LOGIN 403$' "$request_log")"
 start_simulator u30-power-success 0
 invalid_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
     -H "Referer: http://$simulator_host/" \
-    -H 'Content-Type: application/x-www-form-urlencoded' \
+    -H "Origin: http://$simulator_host" \
+    -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
     --data-binary 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=1' \
     "http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 400 "$invalid_code" 'missing XHR header must be rejected'
 start_simulator u30-power-success 0
 invalid_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
     -H "Referer: http://$simulator_host/" \
+    -H "Origin: http://$simulator_host" \
     -H 'X-Requested-With: XMLHttpRequest' \
-    -H 'Content-Type: application/x-www-form-urlencoded' \
+    -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
     --data-binary 'isTest=false&goformId=POWER_SUPPLY_SETTING&power_supply_mode=1&power_supply_mode=0' \
     "http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 400 "$invalid_code" 'duplicate form keys must be rejected'

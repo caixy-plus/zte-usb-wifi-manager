@@ -152,9 +152,11 @@ $cookie_jar
 -H
 Referer: http://192.168.0.1/
 -H
+Origin: http://192.168.0.1
+-H
 X-Requested-With: XMLHttpRequest
 -H
-Content-Type: application/x-www-form-urlencoded
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
 --data-binary
 @-
 $post_url
@@ -202,6 +204,11 @@ ZTE_TEST_CURL_HTTP_CODE=200
 export ZTE_TEST_CURL_EXIT ZTE_TEST_CURL_RESPONSE ZTE_TEST_CURL_HTTP_CODE
 assert_eq classified-success \
     "$(zte_http_post_classified "$post_url" "$form_body" "$cookie_jar")"
+assert_eq 'Origin: http://192.168.0.1' "$(awk 'previous == "-H" && /^Origin:/ { print; exit }
+    { previous=$0 }' "$ZTE_TEST_CURL_ARGV")"
+assert_eq 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
+    "$(awk 'previous == "-H" && /^Content-Type:/ { print; exit }
+        { previous=$0 }' "$ZTE_TEST_CURL_ARGV")"
 ZTE_TEST_CURL_RESPONSE=classified-denied
 ZTE_TEST_CURL_HTTP_CODE=403
 export ZTE_TEST_CURL_RESPONSE ZTE_TEST_CURL_HTTP_CODE

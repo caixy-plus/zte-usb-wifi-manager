@@ -106,7 +106,8 @@ export ZTE_SETTING_READBACK_INTERVAL
 start_simulator u30-setting-success
 invalid_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
 	-H "Referer: http://$simulator_host/" \
-	-H 'Content-Type: application/x-www-form-urlencoded' \
+	-H "Origin: http://$simulator_host" \
+	-H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
 	--data-binary 'isTest=false&goformId=SET_CONNECTION_MODE&ConnectionMode=manual_dial&dial_roam_setting_option=off' \
 	"http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 400 "$invalid_code" 'missing XHR header must be rejected'
@@ -114,8 +115,9 @@ assert_eq 400 "$invalid_code" 'missing XHR header must be rejected'
 start_simulator u30-setting-success
 invalid_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 1 \
 	-H "Referer: http://$simulator_host/" \
+	-H "Origin: http://$simulator_host" \
 	-H 'X-Requested-With: XMLHttpRequest' \
-	-H 'Content-Type: application/x-www-form-urlencoded' \
+	-H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' \
 	--data-binary 'isTest=false&goformId=SET_CONNECTION_MODE&ConnectionMode=manual_dial&ConnectionMode=auto_dial&dial_roam_setting_option=off' \
 	"http://$simulator_host/goform/goform_set_cmd_process")
 assert_eq 400 "$invalid_code" 'duplicate form keys must be rejected'

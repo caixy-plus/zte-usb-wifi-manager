@@ -862,14 +862,16 @@ class U25SHandler(BaseHTTPRequestHandler):
                 self.send_payload(403, '{"result":"denied"}')
                 return
             expected_referer = f"http://{self.headers.get('Host', '')}/"
+            expected_origin = expected_referer.rstrip("/")
             if (
                 self.state.scenario not in U30_POWER_SCENARIOS
                 or mode not in {"0", "1"}
                 or form.get("isTest", [""])[0] != "false"
                 or self.headers.get("Referer") != expected_referer
+                or self.headers.get("Origin") != expected_origin
                 or self.headers.get("X-Requested-With") != "XMLHttpRequest"
                 or self.headers.get("Content-Type")
-                != "application/x-www-form-urlencoded"
+                != "application/x-www-form-urlencoded; charset=UTF-8"
                 or set(form)
                 != {"isTest", "goformId", "power_supply_mode"}
                 or any(len(values) != 1 for values in form.values())
@@ -924,6 +926,7 @@ class U25SHandler(BaseHTTPRequestHandler):
 
         if self.state.profile == "u30" and action in U30_SETTING_ACTIONS:
             expected_referer = f"http://{self.headers.get('Host', '')}/"
+            expected_origin = expected_referer.rstrip("/")
             patch = self.state.u30_setting_patch(action, form)
             if not self.state.allow_u30_setting_writes:
                 self.state.record_u30_setting_post(action, "403")
@@ -933,9 +936,10 @@ class U25SHandler(BaseHTTPRequestHandler):
                 self.state.scenario not in U30_SETTING_SCENARIOS
                 or patch is None
                 or self.headers.get("Referer") != expected_referer
+                or self.headers.get("Origin") != expected_origin
                 or self.headers.get("X-Requested-With") != "XMLHttpRequest"
                 or self.headers.get("Content-Type")
-                != "application/x-www-form-urlencoded"
+                != "application/x-www-form-urlencoded; charset=UTF-8"
             ):
                 self.state.record_u30_setting_post(action, "400")
                 self.send_payload(400, '{"result":"invalid_request"}')
@@ -986,6 +990,7 @@ class U25SHandler(BaseHTTPRequestHandler):
 
         if self.state.profile == "u30" and action in U30_ACTIONS:
             expected_referer = f"http://{self.headers.get('Host', '')}/"
+            expected_origin = expected_referer.rstrip("/")
             if not self.state.allow_u30_action_writes:
                 self.state.record_u30_action_post(action, "403")
                 self.send_payload(403, '{"result":"denied"}')
@@ -994,9 +999,10 @@ class U25SHandler(BaseHTTPRequestHandler):
                 self.state.scenario not in U30_ACTION_SCENARIOS
                 or not self.state.u30_action_valid(action, form)
                 or self.headers.get("Referer") != expected_referer
+                or self.headers.get("Origin") != expected_origin
                 or self.headers.get("X-Requested-With") != "XMLHttpRequest"
                 or self.headers.get("Content-Type")
-                != "application/x-www-form-urlencoded"
+                != "application/x-www-form-urlencoded; charset=UTF-8"
             ):
                 self.state.record_u30_action_post(action, "400")
                 self.send_payload(400, '{"result":"invalid_request"}')
@@ -1073,6 +1079,20 @@ class U25SHandler(BaseHTTPRequestHandler):
             self.state.record(f"POST {action} 200")
             self.send_payload(200, '{"result":"0"}')
             return
+
+        if self.state.profile == "u30":
+            expected_referer = f"http://{self.headers.get('Host', '')}/"
+            expected_origin = expected_referer.rstrip("/")
+            if (
+                self.headers.get("Referer") != expected_referer
+                or self.headers.get("Origin") != expected_origin
+                or self.headers.get("X-Requested-With") != "XMLHttpRequest"
+                or self.headers.get("Content-Type")
+                != "application/x-www-form-urlencoded; charset=UTF-8"
+            ):
+                self.state.record("POST LOGIN 400")
+                self.send_payload(400, '{"result":"invalid_request"}')
+                return
 
         supplied_digest = form.get("password", [""])[0]
         if not hmac.compare_digest(supplied_digest, self.state.expected_digest()):
